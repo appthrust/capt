@@ -23,12 +23,18 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
 	tfv1beta1 "github.com/upbound/provider-terraform/apis/v1beta1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+)
+
+const (
+	captClusterFinalizer = "infrastructure.cluster.x-k8s.io/finalizer"
 )
 
 // CAPTClusterReconciler reconciles a CAPTCluster object
@@ -48,8 +54,43 @@ func (r *CAPTClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Fetch the CAPTCluster instance
 	captCluster := &infrastructurev1beta1.CAPTCluster{}
 	if err := r.Get(ctx, req.NamespacedName, captCluster); err != nil {
-		log.Error(err, "Unable to fetch CAPTCluster")
-		return ctrl.Result{}, client.IgnoreNotFound(err)
+		if apierrors.IsNotFound(err) {
+			log.Info("CAPTCluster resource not found. Ignoring since object must be deleted.")
+			return ctrl.Result{}, nil
+		}
+		log.Error(err, "Failed to get CAPTCluster")
+		return ctrl.Result{}, err
+	}
+
+	// Check if the CAPTCluster instance is marked to be deleted
+	if captCluster.ObjectMeta.DeletionTimestamp.IsZero() {
+		// The object is not being deleted, so if it does not have our finalizer,
+		// then lets add the finalizer and update the object.
+		if !controllerutil.ContainsFinalizer(captCluster, captClusterFinalizer) {
+			controllerutil.AddFinalizer(captCluster, captClusterFinalizer)
+			if err := r.Update(ctx, captCluster); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+	} else {
+		// The object is being deleted
+		if controllerutil.ContainsFinalizer(captCluster, captClusterFinalizer) {
+			// our finalizer is present, so lets handle any external dependency
+			if err := r.deleteExternalResources(ctx, captCluster); err != nil {
+				// if fail to delete the external dependency here, return with error
+				// so that it can be retried
+				return ctrl.Result{}, err
+			}
+
+			// remove our finalizer from the list and update it.
+			controllerutil.RemoveFinalizer(captCluster, captClusterFinalizer)
+			if err := r.Update(ctx, captCluster); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
+
+		// Stop reconciliation as the item is being deleted
+		return ctrl.Result{}, nil
 	}
 
 	// Check if the Terraform Workspace already exists
@@ -60,55 +101,88 @@ func (r *CAPTClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	if err := r.Get(ctx, workspaceName, workspace); err != nil {
-		if client.IgnoreNotFound(err) != nil {
-			log.Error(err, "Unable to fetch Terraform Workspace")
+		if apierrors.IsNotFound(err) {
+			log.Info("Terraform Workspace not found. Creating a new one.")
+			if err := r.createWorkspace(ctx, captCluster, workspaceName); err != nil {
+				log.Error(err, "Failed to create Terraform Workspace")
+				return ctrl.Result{}, err
+			}
+			log.Info("Created Terraform Workspace", "workspace", workspaceName)
+		} else {
+			log.Error(err, "Failed to get Terraform Workspace")
 			return ctrl.Result{}, err
 		}
-
-		// Workspace doesn't exist, create a new one
-		workspace = &tfv1beta1.Workspace{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      workspaceName.Name,
-				Namespace: workspaceName.Namespace,
-			},
-			Spec: tfv1beta1.WorkspaceSpec{
-				ForProvider: tfv1beta1.WorkspaceParameters{
-					Module:       r.generateTerraformCode(captCluster),
-					Source:       tfv1beta1.ModuleSourceInline,
-					InlineFormat: tfv1beta1.FileFormatHCL,
-				},
-			},
-		}
-
-		if err := r.Create(ctx, workspace); err != nil {
-			log.Error(err, "Unable to create Terraform Workspace")
-			return ctrl.Result{}, err
-		}
-
-		log.Info("Created Terraform Workspace", "workspace", workspaceName)
 	} else {
-		// Workspace exists, update it
-		workspace.Spec.ForProvider.Module = r.generateTerraformCode(captCluster)
-		if err := r.Update(ctx, workspace); err != nil {
-			log.Error(err, "Unable to update Terraform Workspace")
+		log.Info("Updating existing Terraform Workspace", "workspace", workspaceName)
+		if err := r.updateWorkspace(ctx, captCluster, workspace); err != nil {
+			log.Error(err, "Failed to update Terraform Workspace")
 			return ctrl.Result{}, err
 		}
-
 		log.Info("Updated Terraform Workspace", "workspace", workspaceName)
 	}
 
 	// Update CAPTCluster status
-	captCluster.Status.WorkspaceName = workspace.Name
+	captCluster.Status.WorkspaceName = workspaceName.Name
 	if err := r.Status().Update(ctx, captCluster); err != nil {
-		log.Error(err, "Unable to update CAPTCluster status")
+		log.Error(err, "Failed to update CAPTCluster status")
 		return ctrl.Result{}, err
 	}
 
+	log.Info("Successfully reconciled CAPTCluster", "name", captCluster.Name)
 	return ctrl.Result{}, nil
 }
 
+func (r *CAPTClusterReconciler) deleteExternalResources(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster) error {
+	log := log.FromContext(ctx)
+
+	// Delete the associated Terraform Workspace
+	workspace := &tfv1beta1.Workspace{}
+	workspaceName := types.NamespacedName{
+		Name:      fmt.Sprintf("%s-workspace", captCluster.Name),
+		Namespace: captCluster.Namespace,
+	}
+
+	if err := r.Get(ctx, workspaceName, workspace); err != nil {
+		if apierrors.IsNotFound(err) {
+			log.Info("Terraform Workspace not found. Skipping deletion.")
+			return nil
+		}
+		return err
+	}
+
+	if err := r.Delete(ctx, workspace); err != nil {
+		log.Error(err, "Failed to delete Terraform Workspace")
+		return err
+	}
+
+	log.Info("Deleted Terraform Workspace", "workspace", workspaceName)
+	return nil
+}
+
+func (r *CAPTClusterReconciler) createWorkspace(ctx context.Context, cluster *infrastructurev1beta1.CAPTCluster, name types.NamespacedName) error {
+	workspace := &tfv1beta1.Workspace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name.Name,
+			Namespace: name.Namespace,
+		},
+		Spec: tfv1beta1.WorkspaceSpec{
+			ForProvider: tfv1beta1.WorkspaceParameters{
+				Module:       r.generateTerraformCode(cluster),
+				Source:       tfv1beta1.ModuleSourceInline,
+				InlineFormat: tfv1beta1.FileFormatHCL,
+			},
+		},
+	}
+
+	return r.Create(ctx, workspace)
+}
+
+func (r *CAPTClusterReconciler) updateWorkspace(ctx context.Context, cluster *infrastructurev1beta1.CAPTCluster, workspace *tfv1beta1.Workspace) error {
+	workspace.Spec.ForProvider.Module = r.generateTerraformCode(cluster)
+	return r.Update(ctx, workspace)
+}
+
 func (r *CAPTClusterReconciler) generateTerraformCode(cluster *infrastructurev1beta1.CAPTCluster) string {
-	// TODO: Implement the logic to generate Terraform code based on the CAPTCluster spec
 	return fmt.Sprintf(`
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
@@ -120,9 +194,11 @@ module "eks" {
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
 
-  cluster_endpoint_public_access = %t
+  cluster_endpoint_public_access  = %t
+  cluster_endpoint_private_access = %t
 
   # Add other EKS configurations based on CAPTCluster spec
+  %s
 }
 
 module "vpc" {
@@ -149,11 +225,35 @@ data "aws_availability_zones" "available" {}
 variable "vpc_cidr" {
   default = "%s"
 }
-`, cluster.Name, cluster.Spec.Version, cluster.Spec.PublicAccess, cluster.Name, cluster.Spec.VpcCIDR,
-		cluster.Spec.PublicAccess, true, // Assuming single NAT gateway for now
-		formatTags(cluster.Spec.PublicSubnetTags),
-		formatTags(cluster.Spec.PrivateSubnetTags),
-		cluster.Spec.VpcCIDR)
+`, cluster.Name, cluster.Spec.EKS.Version,
+		cluster.Spec.EKS.PublicAccess,
+		cluster.Spec.EKS.PrivateAccess,
+		r.generateNodeGroupsConfig(cluster.Spec.EKS.NodeGroups),
+		cluster.Name, cluster.Spec.VPC.CIDR,
+		cluster.Spec.VPC.EnableNatGateway,
+		cluster.Spec.VPC.SingleNatGateway,
+		formatTags(cluster.Spec.VPC.PublicSubnetTags),
+		formatTags(cluster.Spec.VPC.PrivateSubnetTags),
+		cluster.Spec.VPC.CIDR)
+}
+
+func (r *CAPTClusterReconciler) generateNodeGroupsConfig(nodeGroups []infrastructurev1beta1.NodeGroupConfig) string {
+	if len(nodeGroups) == 0 {
+		return ""
+	}
+
+	result := "eks_managed_node_groups = {\n"
+	for _, ng := range nodeGroups {
+		result += fmt.Sprintf(`    %s = {
+      instance_types = ["%s"]
+      min_size     = %d
+      max_size     = %d
+      desired_size = %d
+    }
+`, ng.Name, ng.InstanceType, ng.MinSize, ng.MaxSize, ng.DesiredSize)
+	}
+	result += "  }"
+	return result
 }
 
 func formatTags(tags map[string]string) string {

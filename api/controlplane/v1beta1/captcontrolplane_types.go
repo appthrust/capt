@@ -18,18 +18,24 @@ package v1beta1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 )
-
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // CAPTControlPlaneSpec defines the desired state of CAPTControlPlane
 type CAPTControlPlaneSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// Version is the Kubernetes version of the control plane
+	Version string `json:"version"`
 
-	// Foo is an example field of CAPTControlPlane. Edit captcontrolplane_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// MachineTemplate is a reference to the CAPTMachineTemplate that should be used
+	// to create control plane instances
+	MachineTemplate CAPTControlPlaneMachineTemplate `json:"machineTemplate"`
+}
+
+// CAPTControlPlaneMachineTemplate defines the template for creating control plane instances
+type CAPTControlPlaneMachineTemplate struct {
+	// InfrastructureRef is a reference to a provider-specific resource that holds the details
+	// for provisioning the Control Plane for a Cluster.
+	InfrastructureRef runtime.RawExtension `json:"infrastructureRef"`
 }
 
 // CAPTControlPlaneStatus defines the observed state of CAPTControlPlane

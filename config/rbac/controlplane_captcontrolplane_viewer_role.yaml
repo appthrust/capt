@@ -1,0 +1,23 @@
+# permissions for end users to view captcontrolplanes.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: capt
+    app.kubernetes.io/managed-by: kustomize
+  name: controlplane-captcontrolplane-viewer-role
+rules:
+- apiGroups:
+  - controlplane.cluster.x-k8s.io
+  resources:
+  - captcontrolplanes
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - controlplane.cluster.x-k8s.io
+  resources:
+  - captcontrolplanes/status
+  verbs:
+  - get

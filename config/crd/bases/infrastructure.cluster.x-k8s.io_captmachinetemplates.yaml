@@ -40,10 +40,44 @@ spec:
           spec:
             description: CAPTMachineTemplateSpec defines the desired state of CAPTMachineTemplate
             properties:
-              foo:
-                description: Foo is an example field of CAPTMachineTemplate. Edit
-                  captmachinetemplate_types.go to remove/update
-                type: string
+              template:
+                description: CAPTMachineTemplateResource describes the data needed
+                  to create a CAPTMachine from a template
+                properties:
+                  spec:
+                    description: CAPTMachineSpec defines the desired state of CAPTMachine
+                    properties:
+                      fargateProfile:
+                        items:
+                          description: FargateProfileConfig defines the desired state
+                            of a Fargate profile
+                          properties:
+                            name:
+                              type: string
+                            selectors:
+                              items:
+                                description: SelectorConfig defines the selectors
+                                  for a Fargate profile
+                                properties:
+                                  namespace:
+                                    type: string
+                                required:
+                                - namespace
+                                type: object
+                              type: array
+                          required:
+                          - name
+                          - selectors
+                          type: object
+                        type: array
+                    required:
+                    - fargateProfile
+                    type: object
+                required:
+                - spec
+                type: object
+            required:
+            - template
             type: object
           status:
             description: CAPTMachineTemplateStatus defines the observed state of CAPTMachineTemplate

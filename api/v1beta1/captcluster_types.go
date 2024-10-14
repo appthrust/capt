@@ -39,6 +39,12 @@ type CAPTClusterSpec struct {
 
 	// Karpenter specifies the Karpenter configuration
 	Karpenter CAPTClusterKarpenter `json:"karpenter"`
+
+	// PublicSubnetTags are the tags to apply to public subnets
+	PublicSubnetTags map[string]string `json:"publicSubnetTags,omitempty"`
+
+	// PrivateSubnetTags are the tags to apply to private subnets
+	PrivateSubnetTags map[string]string `json:"privateSubnetTags,omitempty"`
 }
 
 // CAPTClusterAddons defines the EKS add-ons configuration
@@ -67,8 +73,8 @@ type CAPTClusterKarpenter struct {
 
 // CAPTClusterStatus defines the observed state of CAPTCluster
 type CAPTClusterStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// WorkspaceName is the name of the associated Terraform Workspace
+	WorkspaceName string `json:"workspaceName,omitempty"`
 }
 
 // +kubebuilder:object:root=true

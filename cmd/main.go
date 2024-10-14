@@ -35,8 +35,10 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	controlplanev1beta1 "github.com/appthrust/capt/api/controlplane/v1beta1"
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
 	"github.com/appthrust/capt/internal/controller"
+	controlplanecontroller "github.com/appthrust/capt/internal/controller/controlplane"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -49,6 +51,7 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(infrastructurev1beta1.AddToScheme(scheme))
+	utilruntime.Must(controlplanev1beta1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -163,6 +166,13 @@ func main() {
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "CAPTVPCTemplate")
+		os.Exit(1)
+	}
+	if err = (&controlplanecontroller.CAPTControlPlaneReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "CAPTControlPlane")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

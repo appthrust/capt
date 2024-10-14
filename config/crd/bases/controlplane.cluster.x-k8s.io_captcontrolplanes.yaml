@@ -39,10 +39,26 @@ spec:
           spec:
             description: CAPTControlPlaneSpec defines the desired state of CAPTControlPlane
             properties:
-              foo:
-                description: Foo is an example field of CAPTControlPlane. Edit captcontrolplane_types.go
-                  to remove/update
+              machineTemplate:
+                description: |-
+                  MachineTemplate is a reference to the CAPTMachineTemplate that should be used
+                  to create control plane instances
+                properties:
+                  infrastructureRef:
+                    description: |-
+                      InfrastructureRef is a reference to a provider-specific resource that holds the details
+                      for provisioning the Control Plane for a Cluster.
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                required:
+                - infrastructureRef
+                type: object
+              version:
+                description: Version is the Kubernetes version of the control plane
                 type: string
+            required:
+            - machineTemplate
+            - version
             type: object
           status:
             description: CAPTControlPlaneStatus defines the observed state of CAPTControlPlane

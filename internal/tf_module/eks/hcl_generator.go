@@ -3,6 +3,7 @@ package eks
 import (
 	"bytes"
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/zclconf/go-cty/cty"
@@ -25,8 +26,8 @@ func (c *EKSConfig) GenerateHCL() (string, error) {
 	eksBody.SetAttributeValue("version", cty.StringVal("~> 20.0"))
 	eksBody.SetAttributeValue("cluster_name", cty.StringVal(c.ClusterName))
 	eksBody.SetAttributeValue("cluster_version", cty.StringVal(c.ClusterVersion))
-	eksBody.SetAttributeValue("vpc_id", cty.StringVal("${module.vpc.vpc_id}"))
-	eksBody.SetAttributeValue("subnet_ids", cty.StringVal("${module.vpc.private_subnets}"))
+	eksBody.SetAttributeValue("vpc_id", cty.StringVal(escapeInterpolation("${module.vpc.vpc_id}")))
+	eksBody.SetAttributeValue("subnet_ids", cty.StringVal(escapeInterpolation("${module.vpc.private_subnets}")))
 
 	// Add module block for VPC
 	vpcBlock := rootBody.AppendNewBlock("module", []string{"vpc"})
@@ -79,4 +80,8 @@ func stringsToValueSlice(strs []string) []cty.Value {
 		vals[i] = cty.StringVal(s)
 	}
 	return vals
+}
+
+func escapeInterpolation(s string) string {
+	return strings.ReplaceAll(s, "$", "$$")
 }

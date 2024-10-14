@@ -39,10 +39,31 @@ spec:
           spec:
             description: CAPTVPCTemplateSpec defines the desired state of CAPTVPCTemplate
             properties:
-              foo:
-                description: Foo is an example field of CAPTVPCTemplate. Edit captvpctemplate_types.go
-                  to remove/update
+              cidr:
+                description: CIDR is the IP range to use for the VPC
                 type: string
+              enableNatGateway:
+                description: EnableNatGateway determines if NAT Gateway should be
+                  created
+                type: boolean
+              privateSubnetTags:
+                additionalProperties:
+                  type: string
+                description: PrivateSubnetTags are the tags to apply to private subnets
+                type: object
+              publicSubnetTags:
+                additionalProperties:
+                  type: string
+                description: PublicSubnetTags are the tags to apply to public subnets
+                type: object
+              singleNatGateway:
+                description: SingleNatGateway determines if a single NAT Gateway should
+                  be used for all AZs
+                type: boolean
+            required:
+            - cidr
+            - enableNatGateway
+            - singleNatGateway
             type: object
           status:
             description: CAPTVPCTemplateStatus defines the observed state of CAPTVPCTemplate

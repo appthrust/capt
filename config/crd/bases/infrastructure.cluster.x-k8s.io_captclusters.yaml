@@ -1,0 +1,116 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.1
+  name: captclusters.infrastructure.cluster.x-k8s.io
+spec:
+  group: infrastructure.cluster.x-k8s.io
+  names:
+    kind: CAPTCluster
+    listKind: CAPTClusterList
+    plural: captclusters
+    singular: captcluster
+  scope: Namespaced
+  versions:
+  - name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: CAPTCluster is the Schema for the captclusters API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: CAPTClusterSpec defines the desired state of CAPTCluster
+            properties:
+              addons:
+                description: Addons specifies the EKS add-ons to be enabled
+                properties:
+                  coredns:
+                    description: CoreDNS specifies whether the CoreDNS add-on is enabled
+                    properties:
+                      enabled:
+                        description: Enabled specifies whether the add-on is enabled
+                        type: boolean
+                    required:
+                    - enabled
+                    type: object
+                  kubeProxy:
+                    description: KubeProxy specifies whether the Kube-Proxy add-on
+                      is enabled
+                    properties:
+                      enabled:
+                        description: Enabled specifies whether the add-on is enabled
+                        type: boolean
+                    required:
+                    - enabled
+                    type: object
+                  vpcCni:
+                    description: VpcCni specifies whether the VPC CNI add-on is enabled
+                    properties:
+                      enabled:
+                        description: Enabled specifies whether the add-on is enabled
+                        type: boolean
+                    required:
+                    - enabled
+                    type: object
+                required:
+                - coredns
+                - kubeProxy
+                - vpcCni
+                type: object
+              karpenter:
+                description: Karpenter specifies the Karpenter configuration
+                properties:
+                  enabled:
+                    description: Enabled specifies whether Karpenter is enabled
+                    type: boolean
+                required:
+                - enabled
+                type: object
+              publicAccess:
+                description: PublicAccess determines if the EKS cluster has public
+                  access enabled
+                type: boolean
+              region:
+                description: Region is the AWS region where the EKS cluster will be
+                  created
+                type: string
+              version:
+                description: Version is the Kubernetes version for the EKS cluster
+                type: string
+              vpcCIDR:
+                description: VpcCIDR is the CIDR block for the VPC
+                type: string
+            required:
+            - addons
+            - karpenter
+            - publicAccess
+            - region
+            - version
+            - vpcCIDR
+            type: object
+          status:
+            description: CAPTClusterStatus defines the observed state of CAPTCluster
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

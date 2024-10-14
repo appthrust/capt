@@ -11,9 +11,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/zclconf/go-cty/cty"
 )
 
 func reconcileTerraformWorkspace(ctx context.Context, c client.Client, captCluster *infrastructurev1beta1.CAPTCluster, workspaceName types.NamespacedName) error {
@@ -103,101 +100,17 @@ func deleteWorkspace(ctx context.Context, c client.Client, captCluster *infrastr
 }
 
 func generateStructuredTerraformCode(cluster *infrastructurev1beta1.CAPTCluster) ([]byte, error) {
-	f := hclwrite.NewEmptyFile()
-	rootBody := f.Body()
+	config := generateTerraformConfig(cluster)
 
-	// Add terraform block
-	tfBlock := rootBody.AppendNewBlock("terraform", nil)
-	tfBody := tfBlock.Body()
-	tfBody.SetAttributeValue("required_version", cty.StringVal("~> 1.0"))
-
-	// Add required_providers block
-	reqProvidersBlock := tfBody.AppendNewBlock("required_providers", nil)
-	reqProvidersBody := reqProvidersBlock.Body()
-	awsBlock := reqProvidersBody.AppendNewBlock("aws", nil)
-	awsBody := awsBlock.Body()
-	awsBody.SetAttributeValue("source", cty.StringVal("hashicorp/aws"))
-	awsBody.SetAttributeValue("version", cty.StringVal("~> 4.0"))
-
-	// Add provider block
-	providerBlock := rootBody.AppendNewBlock("provider", []string{"aws"})
-	providerBody := providerBlock.Body()
-	providerBody.SetAttributeValue("region", cty.StringVal(cluster.Spec.Region))
-
-	// Add VPC resource
-	vpcBlock := rootBody.AppendNewBlock("resource", []string{"aws_vpc", "main"})
-	vpcBody := vpcBlock.Body()
-	vpcBody.SetAttributeValue("cidr_block", cty.StringVal(cluster.Spec.VPC.CIDR))
-	vpcBody.SetAttributeValue("enable_dns_hostnames", cty.BoolVal(true))
-	vpcBody.SetAttributeValue("enable_dns_support", cty.BoolVal(true))
-
-	// Add EKS cluster resource
-	eksBlock := rootBody.AppendNewBlock("resource", []string{"aws_eks_cluster", "main"})
-	eksBody := eksBlock.Body()
-	eksBody.SetAttributeValue("name", cty.StringVal(cluster.Name))
-	eksBody.SetAttributeValue("version", cty.StringVal(cluster.Spec.EKS.Version))
-	eksBody.SetAttributeValue("role_arn", cty.StringVal("${aws_iam_role.eks_cluster_role.arn}"))
-
-	vpcConfigBlock := eksBody.AppendNewBlock("vpc_config", nil)
-	vpcConfigBody := vpcConfigBlock.Body()
-	vpcConfigBody.SetAttributeValue("endpoint_private_access", cty.BoolVal(cluster.Spec.EKS.PrivateAccess))
-	vpcConfigBody.SetAttributeValue("endpoint_public_access", cty.BoolVal(cluster.Spec.EKS.PublicAccess))
-	// Note: Subnet IDs should be added here, but they're not directly available in the CAPTClusterSpec
-
-	// Add IAM role for EKS cluster
-	iamRoleBlock := rootBody.AppendNewBlock("resource", []string{"aws_iam_role", "eks_cluster_role"})
-	iamRoleBody := iamRoleBlock.Body()
-	iamRoleBody.SetAttributeValue("name", cty.StringVal(fmt.Sprintf("%s-eks-cluster-role", cluster.Name)))
-	iamRoleBody.SetAttributeValue("assume_role_policy", cty.StringVal(`{
-		"Version": "2012-10-17",
-		"Statement": [
-			{
-				"Effect": "Allow",
-				"Principal": {
-					"Service": "eks.amazonaws.com"
-				},
-				"Action": "sts:AssumeRole"
-			}
-		]
-	}`))
-
-	// Add EKS node groups
-	for _, ng := range cluster.Spec.EKS.NodeGroups {
-		ngBlock := rootBody.AppendNewBlock("resource", []string{"aws_eks_node_group", ng.Name})
-		ngBody := ngBlock.Body()
-		ngBody.SetAttributeValue("cluster_name", cty.StringVal(cluster.Name))
-		ngBody.SetAttributeValue("node_group_name", cty.StringVal(ng.Name))
-		ngBody.SetAttributeValue("node_role_arn", cty.StringVal("${aws_iam_role.eks_node_role.arn}"))
-		// Note: Subnet IDs should be added here, but they're not directly available in the CAPTClusterSpec
-
-		scalingConfigBlock := ngBody.AppendNewBlock("scaling_config", nil)
-		scalingConfigBody := scalingConfigBlock.Body()
-		scalingConfigBody.SetAttributeValue("desired_size", cty.NumberIntVal(int64(ng.DesiredSize)))
-		scalingConfigBody.SetAttributeValue("max_size", cty.NumberIntVal(int64(ng.MaxSize)))
-		scalingConfigBody.SetAttributeValue("min_size", cty.NumberIntVal(int64(ng.MinSize)))
-
-		ngBody.SetAttributeValue("instance_types", cty.ListVal([]cty.Value{cty.StringVal(ng.InstanceType)}))
+	jsonData, err := convertToJSON(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert config to JSON: %w", err)
 	}
 
-	// Add IAM role for EKS nodes
-	nodeIamRoleBlock := rootBody.AppendNewBlock("resource", []string{"aws_iam_role", "eks_node_role"})
-	nodeIamRoleBody := nodeIamRoleBlock.Body()
-	nodeIamRoleBody.SetAttributeValue("name", cty.StringVal(fmt.Sprintf("%s-eks-node-role", cluster.Name)))
-	nodeIamRoleBody.SetAttributeValue("assume_role_policy", cty.StringVal(`{
-		"Version": "2012-10-17",
-		"Statement": [
-			{
-				"Effect": "Allow",
-				"Principal": {
-					"Service": "ec2.amazonaws.com"
-				},
-				"Action": "sts:AssumeRole"
-			}
-		]
-	}`))
+	hclCode, err := convertJSONToHCL(jsonData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert JSON to HCL: %w", err)
+	}
 
-	// Add other necessary resources and data sources
-	// TODO: Add VPC subnets, security groups, and other required resources
-
-	return f.Bytes(), nil
+	return hclCode, nil
 }

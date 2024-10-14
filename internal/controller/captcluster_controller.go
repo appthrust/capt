@@ -49,7 +49,8 @@ func (r *CAPTClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		Name:      fmt.Sprintf("%s-workspace", captCluster.Name),
 		Namespace: captCluster.Namespace,
 	}
-	if err := reconcileTerraformWorkspace(ctx, r.Client, captCluster, workspaceName); err != nil {
+	if err := r.reconcileTerraformWorkspace(ctx, captCluster, workspaceName); err != nil {
+		log.Error(err, "Failed to reconcile Terraform workspace")
 		return ctrl.Result{}, err
 	}
 
@@ -62,6 +63,10 @@ func (r *CAPTClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	log.Info("Successfully reconciled CAPTCluster", "name", captCluster.Name)
 	return ctrl.Result{}, nil
+}
+
+func (r *CAPTClusterReconciler) reconcileTerraformWorkspace(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster, workspaceName types.NamespacedName) error {
+	return reconcileTerraformWorkspace(ctx, r.Client, captCluster, workspaceName)
 }
 
 // SetupWithManager sets up the controller with the Manager.

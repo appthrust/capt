@@ -114,3 +114,15 @@ func generateStructuredTerraformCode(cluster *infrastructurev1beta1.CAPTCluster)
 
 	return hclCode, nil
 }
+
+// New function to switch between configurations
+func generateConfigBasedOnCluster(cluster *infrastructurev1beta1.CAPTCluster) (interface{}, error) {
+	// You can add a condition here to determine which config to use
+	// For example, based on a feature flag or cluster specification
+	useEKSConfig := false // This should be determined based on your requirements
+
+	if useEKSConfig {
+		return generateEKSTerraformConfig(cluster), nil
+	}
+	return generateTerraformConfig(cluster), nil
+}

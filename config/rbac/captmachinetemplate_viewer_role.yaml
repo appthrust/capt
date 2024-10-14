@@ -1,35 +1,23 @@
----
+# permissions for end users to view captmachinetemplates.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: manager-role
+  labels:
+    app.kubernetes.io/name: capt
+    app.kubernetes.io/managed-by: kustomize
+  name: captmachinetemplate-viewer-role
 rules:
 - apiGroups:
   - infrastructure.cluster.x-k8s.io
   resources:
-  - captclusters
   - captmachinetemplates
   verbs:
-  - create
-  - delete
   - get
   - list
-  - patch
-  - update
   - watch
 - apiGroups:
   - infrastructure.cluster.x-k8s.io
   resources:
-  - captclusters/finalizers
-  - captmachinetemplates/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - infrastructure.cluster.x-k8s.io
-  resources:
-  - captclusters/status
   - captmachinetemplates/status
   verbs:
   - get
-  - patch
-  - update

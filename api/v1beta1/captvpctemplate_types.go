@@ -20,16 +20,22 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
 // CAPTVPCTemplateSpec defines the desired state of CAPTVPCTemplate
 type CAPTVPCTemplateSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// CIDR is the IP range to use for the VPC
+	CIDR string `json:"cidr"`
 
-	// Foo is an example field of CAPTVPCTemplate. Edit captvpctemplate_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// EnableNatGateway determines if NAT Gateway should be created
+	EnableNatGateway bool `json:"enableNatGateway"`
+
+	// SingleNatGateway determines if a single NAT Gateway should be used for all AZs
+	SingleNatGateway bool `json:"singleNatGateway"`
+
+	// PublicSubnetTags are the tags to apply to public subnets
+	PublicSubnetTags map[string]string `json:"publicSubnetTags,omitempty"`
+
+	// PrivateSubnetTags are the tags to apply to private subnets
+	PrivateSubnetTags map[string]string `json:"privateSubnetTags,omitempty"`
 }
 
 // CAPTVPCTemplateStatus defines the observed state of CAPTVPCTemplate

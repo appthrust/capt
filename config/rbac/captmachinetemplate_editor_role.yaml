@@ -1,13 +1,15 @@
----
+# permissions for end users to edit captmachinetemplates.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: manager-role
+  labels:
+    app.kubernetes.io/name: capt
+    app.kubernetes.io/managed-by: kustomize
+  name: captmachinetemplate-editor-role
 rules:
 - apiGroups:
   - infrastructure.cluster.x-k8s.io
   resources:
-  - captclusters
   - captmachinetemplates
   verbs:
   - create
@@ -20,16 +22,6 @@ rules:
 - apiGroups:
   - infrastructure.cluster.x-k8s.io
   resources:
-  - captclusters/finalizers
-  - captmachinetemplates/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - infrastructure.cluster.x-k8s.io
-  resources:
-  - captclusters/status
   - captmachinetemplates/status
   verbs:
   - get
-  - patch
-  - update

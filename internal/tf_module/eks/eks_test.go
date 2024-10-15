@@ -6,8 +6,12 @@ import (
 	"testing"
 )
 
-func TestNewEKSConfig(t *testing.T) {
-	config := NewEKSConfig()
+func TestNewEKSConfigBuilder(t *testing.T) {
+	builder := NewEKSConfigBuilder().SetDefault()
+	config, err := builder.Build()
+	if err != nil {
+		t.Fatalf("Failed to build EKSConfig: %v", err)
+	}
 
 	if config.ClusterName != "eks-cluster" {
 		t.Errorf("Expected cluster name to be 'eks-cluster', got '%s'", config.ClusterName)
@@ -31,7 +35,11 @@ func TestNewEKSConfig(t *testing.T) {
 }
 
 func TestEKSConfigValidate(t *testing.T) {
-	config := NewEKSConfig()
+	builder := NewEKSConfigBuilder().SetDefault()
+	config, err := builder.Build()
+	if err != nil {
+		t.Fatalf("Failed to build valid EKSConfig: %v", err)
+	}
 
 	if err := config.Validate(); err != nil {
 		t.Errorf("Validation failed for valid config: %v", err)
@@ -40,21 +48,28 @@ func TestEKSConfigValidate(t *testing.T) {
 	// Test invalid configurations
 	invalidConfigs := []struct {
 		name string
-		mod  func(*EKSConfig)
+		mod  func(*EKSConfigBuilder)
 	}{
-		{"Empty cluster name", func(c *EKSConfig) { c.ClusterName = "" }},
-		{"Empty cluster version", func(c *EKSConfig) { c.ClusterVersion = "" }},
-		{"Empty region", func(c *EKSConfig) { c.Region = "" }},
-		{"Empty VPC CIDR", func(c *EKSConfig) { c.VPC.CIDR = "" }},
-		{"No private subnets", func(c *EKSConfig) { c.VPC.PrivateSubnets = []string{} }},
-		{"No public subnets", func(c *EKSConfig) { c.VPC.PublicSubnets = []string{} }},
+		{"Empty cluster name", func(b *EKSConfigBuilder) { b.SetClusterName("") }},
+		{"Empty cluster version", func(b *EKSConfigBuilder) { b.SetClusterVersion("") }},
+		{"Empty region", func(b *EKSConfigBuilder) { b.SetRegion("") }},
+		{"Empty VPC CIDR", func(b *EKSConfigBuilder) {
+			b.SetVPCConfig(VPCConfig{CIDR: "", PrivateSubnets: []string{"10.0.1.0/24"}, PublicSubnets: []string{"10.0.4.0/24"}})
+		}},
+		{"No private subnets", func(b *EKSConfigBuilder) {
+			b.SetVPCConfig(VPCConfig{CIDR: "10.0.0.0/16", PrivateSubnets: []string{}, PublicSubnets: []string{"10.0.4.0/24"}})
+		}},
+		{"No public subnets", func(b *EKSConfigBuilder) {
+			b.SetVPCConfig(VPCConfig{CIDR: "10.0.0.0/16", PrivateSubnets: []string{"10.0.1.0/24"}, PublicSubnets: []string{}})
+		}},
 	}
 
 	for _, ic := range invalidConfigs {
 		t.Run(ic.name, func(t *testing.T) {
-			invalidConfig := NewEKSConfig()
-			ic.mod(invalidConfig)
-			if err := invalidConfig.Validate(); err == nil {
+			invalidBuilder := NewEKSConfigBuilder().SetDefault()
+			ic.mod(invalidBuilder)
+			_, err := invalidBuilder.Build()
+			if err == nil {
 				t.Errorf("Expected validation to fail for %s", ic.name)
 			}
 		})
@@ -62,9 +77,13 @@ func TestEKSConfigValidate(t *testing.T) {
 }
 
 func TestGenerateHCL(t *testing.T) {
-	config := NewEKSConfig()
-	hcl, err := config.GenerateHCL()
+	builder := NewEKSConfigBuilder().SetDefault()
+	config, err := builder.Build()
+	if err != nil {
+		t.Fatalf("Failed to build EKSConfig: %v", err)
+	}
 
+	hcl, err := config.GenerateHCL()
 	if err != nil {
 		t.Fatalf("GenerateHCL failed: %v", err)
 	}

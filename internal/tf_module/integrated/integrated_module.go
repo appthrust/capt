@@ -1,6 +1,8 @@
 package integrated
 
 import (
+	"fmt"
+
 	"github.com/appthrust/capt/internal/tf_module/eks"
 	"github.com/appthrust/capt/internal/tf_module/eks_blueprints_addons"
 	"github.com/appthrust/capt/internal/tf_module/vpc"
@@ -57,12 +59,18 @@ type Variable struct {
 }
 
 // NewIntegratedConfig creates a new IntegratedConfig with default values
-func NewIntegratedConfig() *IntegratedConfig {
+func NewIntegratedConfig() (*IntegratedConfig, error) {
+	eksBuilder := eks.NewEKSConfigBuilder().SetDefault()
+	eksConfig, err := eksBuilder.Build()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build EKSConfig: %w", err)
+	}
+
 	return &IntegratedConfig{
 		Name:         "eks-cluster",
 		Region:       "us-west-2",
 		VPCConfig:    vpc.NewVPCConfig(),
-		EKSConfig:    eks.NewEKSConfig(),
+		EKSConfig:    eksConfig,
 		AddonsConfig: eks_blueprints_addons.NewEKSBlueprintsAddonsConfig(),
 		Tags:         make(map[string]string),
 		DataSources: DataSources{
@@ -98,22 +106,38 @@ func NewIntegratedConfig() *IntegratedConfig {
 				Default:     "us-west-2",
 			},
 		},
-	}
+	}, nil
 }
 
 // SetName sets the name for the integrated configuration
-func (c *IntegratedConfig) SetName(name string) {
+func (c *IntegratedConfig) SetName(name string) error {
 	c.Name = name
 	c.VPCConfig.SetName(name + "-vpc")
-	c.EKSConfig.SetClusterName(name)
+
+	eksBuilder := eks.NewEKSConfigBuilder().SetDefault().SetClusterName(name)
+	eksConfig, err := eksBuilder.Build()
+	if err != nil {
+		return fmt.Errorf("failed to build EKSConfig: %w", err)
+	}
+	c.EKSConfig = eksConfig
+
 	c.Variables.Name.Default = name
+	return nil
 }
 
 // SetRegion sets the region for the integrated configuration
-func (c *IntegratedConfig) SetRegion(region string) {
+func (c *IntegratedConfig) SetRegion(region string) error {
 	c.Region = region
-	c.EKSConfig.SetRegion(region)
+
+	eksBuilder := eks.NewEKSConfigBuilder().SetDefault().SetRegion(region)
+	eksConfig, err := eksBuilder.Build()
+	if err != nil {
+		return fmt.Errorf("failed to build EKSConfig: %w", err)
+	}
+	c.EKSConfig = eksConfig
+
 	c.Variables.Region.Default = region
+	return nil
 }
 
 // AddTag adds a tag to the integrated configuration

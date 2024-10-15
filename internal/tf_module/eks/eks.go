@@ -39,9 +39,21 @@ type AddOnConfig struct {
 	Version string
 }
 
-// NewEKSConfig creates a new EKSConfig with default values
-func NewEKSConfig() *EKSConfig {
-	return &EKSConfig{
+// EKSConfigBuilder is a builder for EKSConfig
+type EKSConfigBuilder struct {
+	config *EKSConfig
+}
+
+// NewEKSConfigBuilder creates a new EKSConfigBuilder with an empty configuration
+func NewEKSConfigBuilder() *EKSConfigBuilder {
+	return &EKSConfigBuilder{
+		config: &EKSConfig{},
+	}
+}
+
+// SetDefault sets the default values for the EKSConfig
+func (b *EKSConfigBuilder) SetDefault() *EKSConfigBuilder {
+	b.config = &EKSConfig{
 		ClusterName:    "eks-cluster",
 		ClusterVersion: "1.31",
 		Region:         "us-west-2",
@@ -77,31 +89,69 @@ func NewEKSConfig() *EKSConfig {
 			},
 		},
 	}
+	return b
+}
+
+// Reset resets the configuration to an empty state
+func (b *EKSConfigBuilder) Reset() *EKSConfigBuilder {
+	b.config = &EKSConfig{}
+	return b
 }
 
 // SetClusterName sets the cluster name
-func (c *EKSConfig) SetClusterName(name string) {
-	c.ClusterName = name
+func (b *EKSConfigBuilder) SetClusterName(name string) *EKSConfigBuilder {
+	b.config.ClusterName = name
+	return b
+}
+
+// SetClusterVersion sets the cluster version
+func (b *EKSConfigBuilder) SetClusterVersion(version string) *EKSConfigBuilder {
+	b.config.ClusterVersion = version
+	return b
 }
 
 // SetRegion sets the AWS region
-func (c *EKSConfig) SetRegion(region string) {
-	c.Region = region
+func (b *EKSConfigBuilder) SetRegion(region string) *EKSConfigBuilder {
+	b.config.Region = region
+	return b
+}
+
+// SetVPCConfig sets the VPC configuration
+func (b *EKSConfigBuilder) SetVPCConfig(vpc VPCConfig) *EKSConfigBuilder {
+	b.config.VPC = vpc
+	return b
+}
+
+// SetNodeGroups sets the node groups
+func (b *EKSConfigBuilder) SetNodeGroups(nodeGroups []NodeGroupConfig) *EKSConfigBuilder {
+	b.config.NodeGroups = nodeGroups
+	return b
 }
 
 // AddNodeGroup adds a new node group to the configuration
-func (c *EKSConfig) AddNodeGroup(ng NodeGroupConfig) {
-	c.NodeGroups = append(c.NodeGroups, ng)
+func (b *EKSConfigBuilder) AddNodeGroup(ng NodeGroupConfig) *EKSConfigBuilder {
+	b.config.NodeGroups = append(b.config.NodeGroups, ng)
+	return b
 }
 
-// SetVPCCIDR sets the VPC CIDR
-func (c *EKSConfig) SetVPCCIDR(cidr string) {
-	c.VPC.CIDR = cidr
+// SetAddOns sets the add-ons
+func (b *EKSConfigBuilder) SetAddOns(addOns []AddOnConfig) *EKSConfigBuilder {
+	b.config.AddOns = addOns
+	return b
 }
 
 // AddAddOn adds a new add-on to the configuration
-func (c *EKSConfig) AddAddOn(addon AddOnConfig) {
-	c.AddOns = append(c.AddOns, addon)
+func (b *EKSConfigBuilder) AddAddOn(addon AddOnConfig) *EKSConfigBuilder {
+	b.config.AddOns = append(b.config.AddOns, addon)
+	return b
+}
+
+// Build creates the final EKSConfig
+func (b *EKSConfigBuilder) Build() (*EKSConfig, error) {
+	if err := b.config.Validate(); err != nil {
+		return nil, err
+	}
+	return b.config, nil
 }
 
 // Validate checks if the EKSConfig is valid

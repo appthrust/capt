@@ -12,7 +12,7 @@ import (
 type IntegratedConfig struct {
 	Name         string
 	Region       string
-	VPCConfig    *vpc.VPCConfig
+	VPCConfig    *vpc.VPCConfigBuilder
 	EKSConfig    *eks.EKSConfig
 	AddonsConfig *eks_blueprints_addons.EKSBlueprintsAddonsConfig
 	Tags         map[string]string
@@ -149,7 +149,11 @@ func (c *IntegratedConfig) AddTag(key, value string) {
 
 // Validate checks if the IntegratedConfig is valid
 func (c *IntegratedConfig) Validate() error {
-	if err := c.VPCConfig.Validate(); err != nil {
+	vpcConfig, err := c.VPCConfig.Build()
+	if err != nil {
+		return fmt.Errorf("failed to build VPCConfig: %w", err)
+	}
+	if err := vpcConfig.Validate(); err != nil {
 		return err
 	}
 	if err := c.EKSConfig.Validate(); err != nil {

@@ -6,7 +6,11 @@ import (
 )
 
 func TestNewVPCConfig(t *testing.T) {
-	config := NewVPCConfig()
+	builder := NewVPCConfig()
+	config, err := builder.Build()
+	if err != nil {
+		t.Fatalf("Unexpected error building VPCConfig: %v", err)
+	}
 
 	if config.Name != "eks-vpc" {
 		t.Errorf("Expected VPC name to be 'eks-vpc', got '%s'", config.Name)
@@ -38,27 +42,27 @@ func TestNewVPCConfig(t *testing.T) {
 }
 
 func TestVPCConfigValidate(t *testing.T) {
-	config := NewVPCConfig()
-
-	if err := config.Validate(); err != nil {
-		t.Errorf("Validation failed for valid config: %v", err)
+	_, err := NewVPCConfig().Build()
+	if err != nil {
+		t.Fatalf("Unexpected error building valid VPCConfig: %v", err)
 	}
 
 	// Test invalid configurations
 	invalidConfigs := []struct {
 		name string
-		mod  func(*VPCConfig)
+		mod  func(*VPCConfigBuilder)
 	}{
-		{"Empty VPC name", func(c *VPCConfig) { c.Name = "" }},
-		{"Empty CIDR", func(c *VPCConfig) { c.CIDR = "" }},
-		{"No AZs", func(c *VPCConfig) { c.AZs = []string{} }},
+		{"Empty VPC name", func(b *VPCConfigBuilder) { b.SetName("") }},
+		{"Empty CIDR", func(b *VPCConfigBuilder) { b.SetCIDR("") }},
+		{"No AZs", func(b *VPCConfigBuilder) { b.SetAZs([]string{}) }},
 	}
 
 	for _, ic := range invalidConfigs {
 		t.Run(ic.name, func(t *testing.T) {
-			invalidConfig := NewVPCConfig()
-			ic.mod(invalidConfig)
-			if err := invalidConfig.Validate(); err == nil {
+			invalidBuilder := NewVPCConfig()
+			ic.mod(invalidBuilder)
+			_, err := invalidBuilder.Build()
+			if err == nil {
 				t.Errorf("Expected validation to fail for %s", ic.name)
 			}
 		})
@@ -66,10 +70,15 @@ func TestVPCConfigValidate(t *testing.T) {
 }
 
 func TestGenerateHCL(t *testing.T) {
-	config := NewVPCConfig()
-	config.SetPrivateSubnets([]string{"10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"})
-	config.SetPublicSubnets([]string{"10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"})
-	config.AddTag("Environment", "dev")
+	builder := NewVPCConfig()
+	builder.SetPrivateSubnets([]string{"10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"})
+	builder.SetPublicSubnets([]string{"10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"})
+	builder.AddTag("Environment", "dev")
+
+	config, err := builder.Build()
+	if err != nil {
+		t.Fatalf("Unexpected error building VPCConfig: %v", err)
+	}
 
 	hcl, err := config.GenerateHCL()
 

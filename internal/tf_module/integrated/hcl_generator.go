@@ -22,7 +22,11 @@ func (c *IntegratedConfig) GenerateHCL() (string, error) {
 	rootBody.AppendNewline()
 
 	// Generate VPC HCL
-	vpcHCL, err := c.VPCConfig.GenerateHCL()
+	vpcConfig, err := c.VPCConfig.Build()
+	if err != nil {
+		return "", fmt.Errorf("failed to build VPC config: %w", err)
+	}
+	vpcHCL, err := vpcConfig.GenerateHCL()
 	if err != nil {
 		return "", fmt.Errorf("failed to generate VPC HCL: %w", err)
 	}

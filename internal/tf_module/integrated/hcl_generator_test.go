@@ -10,16 +10,17 @@ import (
 )
 
 func TestGenerateHCL(t *testing.T) {
+	vpcConfigBuilder := vpc.NewVPCConfig().
+		SetName("test-vpc").
+		SetCIDR("10.0.0.0/16").
+		SetPrivateSubnets([]string{"10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"}).
+		SetPublicSubnets([]string{"10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"}).
+		SetAZs([]string{"us-west-2a", "us-west-2b", "us-west-2c"})
+
 	config := &IntegratedConfig{
-		Name:   "test-cluster",
-		Region: "us-west-2",
-		VPCConfig: &vpc.VPCConfig{
-			Name:           "test-vpc",
-			CIDR:           "10.0.0.0/16",
-			PrivateSubnets: []string{"10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"},
-			PublicSubnets:  []string{"10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"},
-			AZs:            []string{"us-west-2a", "us-west-2b", "us-west-2c"},
-		},
+		Name:      "test-cluster",
+		Region:    "us-west-2",
+		VPCConfig: vpcConfigBuilder,
 		EKSConfig: &eks.EKSConfig{
 			ClusterName:    "test-cluster",
 			ClusterVersion: "1.21",

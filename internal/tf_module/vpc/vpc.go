@@ -2,20 +2,24 @@ package vpc
 
 import (
 	"fmt"
+	"net"
+
+	"github.com/hashicorp/hcl/v2/gohcl"
+	"github.com/hashicorp/hcl/v2/hclwrite"
 )
 
 // VPCConfig represents the configuration for a VPC
 type VPCConfig struct {
-	Name              string
-	CIDR              string
-	AZs               []string
-	PrivateSubnets    []string
-	PublicSubnets     []string
-	EnableNATGateway  bool
-	SingleNATGateway  bool
-	PublicSubnetTags  map[string]string
-	PrivateSubnetTags map[string]string
-	Tags              map[string]string
+	Name              string            `hcl:"name"`
+	CIDR              string            `hcl:"cidr"`
+	AZs               []string          `hcl:"azs"`
+	PrivateSubnets    []string          `hcl:"private_subnets,optional"`
+	PublicSubnets     []string          `hcl:"public_subnets,optional"`
+	EnableNATGateway  bool              `hcl:"enable_nat_gateway"`
+	SingleNATGateway  bool              `hcl:"single_nat_gateway"`
+	PublicSubnetTags  map[string]string `hcl:"public_subnet_tags,optional"`
+	PrivateSubnetTags map[string]string `hcl:"private_subnet_tags,optional"`
+	Tags              map[string]string `hcl:"tags,optional"`
 }
 
 // VPCConfigBuilder is a builder for VPCConfig
@@ -30,6 +34,7 @@ func NewVPCConfig() *VPCConfigBuilder {
 			Name:             "eks-vpc",
 			CIDR:             "10.0.0.0/16",
 			AZs:              []string{"a", "b", "c"},
+			PrivateSubnets:   []string{"10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"},
 			EnableNATGateway: true,
 			SingleNATGateway: true,
 			PublicSubnetTags: map[string]string{
@@ -58,6 +63,32 @@ func (b *VPCConfigBuilder) SetCIDR(cidr string) *VPCConfigBuilder {
 // SetAZs sets the availability zones for the VPC
 func (b *VPCConfigBuilder) SetAZs(azs []string) *VPCConfigBuilder {
 	b.config.AZs = azs
+	// Adjust private subnets to match the number of AZs
+	if len(b.config.PrivateSubnets) > 0 {
+		newPrivateSubnets := make([]string, len(azs))
+		for i := range azs {
+			if i < len(b.config.PrivateSubnets) {
+				newPrivateSubnets[i] = b.config.PrivateSubnets[i]
+			} else {
+				// Generate a new subnet CIDR if needed
+				newPrivateSubnets[i] = fmt.Sprintf("10.0.%d.0/24", i+1)
+			}
+		}
+		b.config.PrivateSubnets = newPrivateSubnets
+	}
+	// Adjust public subnets to match the number of AZs if they exist
+	if len(b.config.PublicSubnets) > 0 {
+		newPublicSubnets := make([]string, len(azs))
+		for i := range azs {
+			if i < len(b.config.PublicSubnets) {
+				newPublicSubnets[i] = b.config.PublicSubnets[i]
+			} else {
+				// Generate a new subnet CIDR if needed
+				newPublicSubnets[i] = fmt.Sprintf("10.0.%d.0/24", 101+i)
+			}
+		}
+		b.config.PublicSubnets = newPublicSubnets
+	}
 	return b
 }
 
@@ -128,8 +159,36 @@ func (c *VPCConfig) Validate() error {
 	if c.CIDR == "" {
 		return fmt.Errorf("VPC CIDR cannot be empty")
 	}
+	if _, _, err := net.ParseCIDR(c.CIDR); err != nil {
+		return fmt.Errorf("invalid CIDR address: %v", err)
+	}
 	if len(c.AZs) == 0 {
 		return fmt.Errorf("at least one availability zone must be specified")
 	}
+	if len(c.PrivateSubnets) == 0 && len(c.PublicSubnets) == 0 {
+		return fmt.Errorf("at least one subnet (private or public) must be specified")
+	}
+	if len(c.PrivateSubnets) > 0 && len(c.PrivateSubnets) != len(c.AZs) {
+		return fmt.Errorf("number of private subnets must match the number of AZs")
+	}
+	if len(c.PublicSubnets) > 0 && len(c.PublicSubnets) != len(c.AZs) {
+		return fmt.Errorf("number of public subnets must match the number of AZs")
+	}
+	return c.validateSubnets()
+}
+
+func (c *VPCConfig) validateSubnets() error {
+	allSubnets := append(c.PrivateSubnets, c.PublicSubnets...)
+	for _, subnet := range allSubnets {
+		if _, _, err := net.ParseCIDR(subnet); err != nil {
+			return fmt.Errorf("invalid subnet CIDR address: %v", err)
+		}
+	}
 	return nil
+}
+
+func (c *VPCConfig) GenerateHCL() (string, error) {
+	f := hclwrite.NewEmptyFile()
+	gohcl.EncodeIntoBody(c, f.Body())
+	return string(f.Bytes()), nil
 }

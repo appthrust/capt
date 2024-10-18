@@ -12,6 +12,8 @@ type EKSConfig struct {
 	VPC            VPCConfig         `hcl:"vpc,block"`
 	NodeGroups     []NodeGroupConfig `hcl:"node_groups,block"`
 	AddOns         []AddOnConfig     `hcl:"cluster_addons,block"`
+	Source         string            `hcl:"source"`
+	Version        string            `hcl:"version"`
 }
 
 // VPCConfig represents the VPC configuration for the EKS cluster

@@ -22,8 +22,14 @@ func (c *EKSConfig) GenerateHCL() (string, error) {
 	// Add module block for EKS
 	eksBlock := rootBody.AppendNewBlock("module", []string{"eks"})
 	eksBody := eksBlock.Body()
-	eksBody.SetAttributeValue("source", cty.StringVal("terraform-aws-modules/eks/aws"))
-	eksBody.SetAttributeValue("version", cty.StringVal("~> 20.0"))
+
+	// Set default values for source and version if not provided
+	if c.Source == "" {
+		c.Source = "terraform-aws-modules/eks/aws"
+	}
+	if c.Version == "" {
+		c.Version = "~> 20.0"
+	}
 
 	// Encode EKSConfig into the eks module body
 	gohcl.EncodeIntoBody(c, eksBody)

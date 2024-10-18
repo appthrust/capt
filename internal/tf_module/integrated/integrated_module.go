@@ -66,12 +66,18 @@ func NewIntegratedConfig() (*IntegratedConfig, error) {
 		return nil, fmt.Errorf("failed to build EKSConfig: %w", err)
 	}
 
+	addonsConfigBuilder := eks_blueprints_addons.NewEKSBlueprintsAddonsConfig()
+	addonsConfig, err := addonsConfigBuilder.Build()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build EKSBlueprintsAddonsConfig: %w", err)
+	}
+
 	return &IntegratedConfig{
 		Name:         "eks-cluster",
 		Region:       "us-west-2",
 		VPCConfig:    vpc.NewVPCConfig(),
 		EKSConfig:    eksConfig,
-		AddonsConfig: eks_blueprints_addons.NewEKSBlueprintsAddonsConfig(),
+		AddonsConfig: addonsConfig,
 		Tags:         make(map[string]string),
 		DataSources: DataSources{
 			AvailabilityZones: AvailabilityZones{
@@ -144,7 +150,7 @@ func (c *IntegratedConfig) SetRegion(region string) error {
 func (c *IntegratedConfig) AddTag(key, value string) {
 	c.Tags[key] = value
 	c.VPCConfig.AddTag(key, value)
-	c.AddonsConfig.AddTag(key, value)
+	// Note: We've removed the AddTag call on AddonsConfig as it's not available
 }
 
 // Validate checks if the IntegratedConfig is valid
@@ -159,6 +165,8 @@ func (c *IntegratedConfig) Validate() error {
 	if err := c.EKSConfig.Validate(); err != nil {
 		return err
 	}
-	// Add validation for AddonsConfig if needed
+	if err := c.AddonsConfig.Validate(); err != nil {
+		return err
+	}
 	return nil
 }

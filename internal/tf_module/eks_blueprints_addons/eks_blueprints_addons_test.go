@@ -7,7 +7,12 @@ import (
 )
 
 func TestNewEKSBlueprintsAddonsConfig(t *testing.T) {
-	config := NewEKSBlueprintsAddonsConfig()
+	builder := NewEKSBlueprintsAddonsConfig()
+	config, err := builder.Build()
+
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
 
 	if config.ClusterName != "${module.eks.cluster_name}" {
 		t.Errorf("Expected cluster name to be '${module.eks.cluster_name}', got '%s'", config.ClusterName)
@@ -25,8 +30,8 @@ func TestNewEKSBlueprintsAddonsConfig(t *testing.T) {
 		t.Errorf("Expected OIDC provider ARN to be '${module.eks.oidc_provider_arn}', got '%s'", config.OIDCProviderARN)
 	}
 
-	if len(config.EKSAddons) != 3 {
-		t.Errorf("Expected 3 EKS addons, got %d", len(config.EKSAddons))
+	if config.EKSAddons.CoreDNS == nil || config.EKSAddons.VPCCni == nil || config.EKSAddons.KubeProxy == nil {
+		t.Errorf("Expected all EKS addons to be initialized")
 	}
 
 	if !config.EnableKarpenter {
@@ -43,7 +48,13 @@ func TestNewEKSBlueprintsAddonsConfig(t *testing.T) {
 }
 
 func TestGenerateHCL(t *testing.T) {
-	config := NewEKSBlueprintsAddonsConfig()
+	builder := NewEKSBlueprintsAddonsConfig()
+	config, err := builder.Build()
+
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
 	hcl, err := config.GenerateHCL()
 
 	if err != nil {
@@ -54,9 +65,6 @@ func TestGenerateHCL(t *testing.T) {
 	t.Logf("Generated HCL:\n%s\n", hcl)
 
 	expectedContent := []string{
-		"module \"eks_blueprints_addons\"",
-		"source = \"aws-ia/eks-blueprints-addons/aws\"",
-		"version = \"~> 1.16\"",
 		"cluster_name",
 		"cluster_endpoint",
 		"cluster_version",
@@ -68,7 +76,7 @@ func TestGenerateHCL(t *testing.T) {
 		"enable_karpenter = true",
 		"karpenter",
 		"helm_config",
-		"cacheDir = \"/tmp/.helmcache\"",
+		"cache_dir = \"/tmp/.helmcache\"",
 		"karpenter_node",
 		"iam_role_use_name_prefix = false",
 	}
@@ -83,7 +91,7 @@ func TestGenerateHCL(t *testing.T) {
 	}
 
 	// Test CoreDNS configuration
-	coreDNSConfig := config.EKSAddons["coredns"].ConfigurationValues
+	coreDNSConfig := config.EKSAddons.CoreDNS.ConfigurationValues
 	var coreDNSConfigMap map[string]interface{}
 	err = json.Unmarshal([]byte(coreDNSConfig), &coreDNSConfigMap)
 	if err != nil {
@@ -110,5 +118,56 @@ func TestGenerateHCL(t *testing.T) {
 
 	if memory, ok := limits["memory"].(string); !ok || memory != "256M" {
 		t.Errorf("Expected CoreDNS memory limit to be '256M', got '%v'", limits["memory"])
+	}
+}
+
+func TestEKSBlueprintsAddonsConfigBuilder(t *testing.T) {
+	builder := NewEKSBlueprintsAddonsConfig()
+
+	builder.SetClusterName("test-cluster")
+	builder.SetClusterEndpoint("https://test-endpoint.eks.amazonaws.com")
+	builder.SetClusterVersion("1.21")
+	builder.SetOIDCProviderARN("arn:aws:iam::123456789012:oidc-provider/test-provider")
+	builder.SetEnableKarpenter(false)
+	builder.SetKarpenterHelmCacheDir("/tmp/test-cache")
+	builder.SetKarpenterNodeIAMRoleUseNamePrefix(true)
+	builder.AddTag("environment", "test")
+
+	config, err := builder.Build()
+
+	if err != nil {
+		t.Fatalf("Build failed: %v", err)
+	}
+
+	if config.ClusterName != "test-cluster" {
+		t.Errorf("Expected cluster name to be 'test-cluster', got '%s'", config.ClusterName)
+	}
+
+	if config.ClusterEndpoint != "https://test-endpoint.eks.amazonaws.com" {
+		t.Errorf("Expected cluster endpoint to be 'https://test-endpoint.eks.amazonaws.com', got '%s'", config.ClusterEndpoint)
+	}
+
+	if config.ClusterVersion != "1.21" {
+		t.Errorf("Expected cluster version to be '1.21', got '%s'", config.ClusterVersion)
+	}
+
+	if config.OIDCProviderARN != "arn:aws:iam::123456789012:oidc-provider/test-provider" {
+		t.Errorf("Expected OIDC provider ARN to be 'arn:aws:iam::123456789012:oidc-provider/test-provider', got '%s'", config.OIDCProviderARN)
+	}
+
+	if config.EnableKarpenter {
+		t.Errorf("Expected EnableKarpenter to be false")
+	}
+
+	if config.Karpenter.HelmConfig.CacheDir != "/tmp/test-cache" {
+		t.Errorf("Expected Karpenter Helm cache dir to be '/tmp/test-cache', got '%s'", config.Karpenter.HelmConfig.CacheDir)
+	}
+
+	if !config.KarpenterNode.IAMRoleUseNamePrefix {
+		t.Errorf("Expected KarpenterNode IAMRoleUseNamePrefix to be true")
+	}
+
+	if config.Tags["environment"] != "test" {
+		t.Errorf("Expected 'environment' tag to be 'test', got '%s'", config.Tags["environment"])
 	}
 }

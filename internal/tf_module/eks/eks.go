@@ -6,37 +6,37 @@ import (
 
 // EKSConfig represents the configuration for an EKS cluster and its associated resources
 type EKSConfig struct {
-	ClusterName    string
-	ClusterVersion string
-	Region         string
-	VPC            VPCConfig
-	NodeGroups     []NodeGroupConfig
-	AddOns         []AddOnConfig
+	ClusterName    string            `hcl:"cluster_name"`
+	ClusterVersion string            `hcl:"cluster_version"`
+	Region         string            `hcl:"region"`
+	VPC            VPCConfig         `hcl:"vpc,block"`
+	NodeGroups     []NodeGroupConfig `hcl:"node_groups,block"`
+	AddOns         []AddOnConfig     `hcl:"cluster_addons,block"`
 }
 
 // VPCConfig represents the VPC configuration for the EKS cluster
 type VPCConfig struct {
-	CIDR             string
-	PrivateSubnets   []string
-	PublicSubnets    []string
-	EnableNATGateway bool
-	SingleNATGateway bool
+	CIDR             string   `hcl:"cidr"`
+	PrivateSubnets   []string `hcl:"private_subnets"`
+	PublicSubnets    []string `hcl:"public_subnets"`
+	EnableNATGateway bool     `hcl:"enable_nat_gateway"`
+	SingleNATGateway bool     `hcl:"single_nat_gateway"`
 }
 
 // NodeGroupConfig represents the configuration for an EKS node group
 type NodeGroupConfig struct {
-	Name         string
-	InstanceType string
-	DesiredSize  int
-	MinSize      int
-	MaxSize      int
-	DiskSize     int
+	Name         string `hcl:"name,label"`
+	InstanceType string `hcl:"instance_types"`
+	DesiredSize  int    `hcl:"desired_size"`
+	MinSize      int    `hcl:"min_size"`
+	MaxSize      int    `hcl:"max_size"`
+	DiskSize     int    `hcl:"disk_size"`
 }
 
 // AddOnConfig represents the configuration for an EKS add-on
 type AddOnConfig struct {
-	Name    string
-	Version string
+	Name    string `hcl:"name,label"`
+	Version string `hcl:"version"`
 }
 
 // EKSConfigBuilder is a builder for EKSConfig

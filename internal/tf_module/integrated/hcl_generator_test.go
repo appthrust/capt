@@ -51,8 +51,10 @@ func TestGenerateHCL(t *testing.T) {
 		},
 		AddonsConfig: &eks_blueprints_addons.EKSBlueprintsAddonsConfig{
 			ClusterName: "test-cluster",
-			EKSAddons: map[string]eks_blueprints_addons.EKSAddon{
-				"vpc-cni": {ConfigurationValues: "{}"},
+			EKSAddons: eks_blueprints_addons.EKSAddons{
+				VPCCni: &eks_blueprints_addons.EKSAddon{
+					ConfigurationValues: "{}",
+				},
 			},
 		},
 		DataSources: DataSources{

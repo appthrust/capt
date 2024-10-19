@@ -10,6 +10,8 @@ import (
 
 // VPCConfig represents the configuration for a VPC
 type VPCConfig struct {
+	Source            string            `hcl:"source"`
+	Version           string            `hcl:"version"`
 	Name              string            `hcl:"name"`
 	CIDR              string            `hcl:"cidr"`
 	AZs               []string          `hcl:"azs"`
@@ -31,9 +33,11 @@ type VPCConfigBuilder struct {
 func NewVPCConfig() *VPCConfigBuilder {
 	return &VPCConfigBuilder{
 		config: &VPCConfig{
+			Source:           "terraform-aws-modules/vpc/aws",
+			Version:          "5.0.0",
 			Name:             "eks-vpc",
 			CIDR:             "10.0.0.0/16",
-			AZs:              []string{"a", "b", "c"},
+			AZs:              []string{"us-west-2a", "us-west-2b", "us-west-2c"},
 			PrivateSubnets:   []string{"10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"},
 			EnableNATGateway: true,
 			SingleNATGateway: true,
@@ -46,6 +50,18 @@ func NewVPCConfig() *VPCConfigBuilder {
 			Tags: map[string]string{},
 		},
 	}
+}
+
+// SetSource sets the source of the VPC module
+func (b *VPCConfigBuilder) SetSource(source string) *VPCConfigBuilder {
+	b.config.Source = source
+	return b
+}
+
+// SetVersion sets the version of the VPC module
+func (b *VPCConfigBuilder) SetVersion(version string) *VPCConfigBuilder {
+	b.config.Version = version
+	return b
 }
 
 // SetName sets the name of the VPC
@@ -153,6 +169,12 @@ func (b *VPCConfigBuilder) Build() (*VPCConfig, error) {
 
 // Validate checks if the VPCConfig is valid
 func (c *VPCConfig) Validate() error {
+	if c.Source == "" {
+		return fmt.Errorf("VPC module source cannot be empty")
+	}
+	if c.Version == "" {
+		return fmt.Errorf("VPC module version cannot be empty")
+	}
 	if c.Name == "" {
 		return fmt.Errorf("VPC name cannot be empty")
 	}
@@ -189,6 +211,12 @@ func (c *VPCConfig) validateSubnets() error {
 
 func (c *VPCConfig) GenerateHCL() (string, error) {
 	f := hclwrite.NewEmptyFile()
-	gohcl.EncodeIntoBody(c, f.Body())
+	rootBody := f.Body()
+
+	moduleBlock := rootBody.AppendNewBlock("module", []string{"vpc"})
+	moduleBody := moduleBlock.Body()
+
+	gohcl.EncodeIntoBody(c, moduleBody)
+
 	return string(f.Bytes()), nil
 }

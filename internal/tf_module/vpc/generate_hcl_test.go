@@ -1,6 +1,7 @@
 package vpc
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -12,6 +13,7 @@ func TestGenerateHCL(t *testing.T) {
 	builder.SetPrivateSubnets([]string{"10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"})
 	builder.SetPublicSubnets([]string{"10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"})
 	builder.AddTag("Environment", "dev")
+	builder.AddTag("Terraform", "true")
 
 	config, err := builder.Build()
 	if err != nil {
@@ -33,18 +35,32 @@ func TestGenerateHCL(t *testing.T) {
 		t.Fatalf("Generated HCL is invalid: %v", diags)
 	}
 
+	// Read the expected HCL content
+	expectedHCL, err := os.ReadFile("testdata/expected_vpc.hcl")
+	if err != nil {
+		t.Fatalf("Failed to read expected HCL file: %v", err)
+	}
+
+	// Compare the generated HCL with the expected content
+	if !compareHCL(string(expectedHCL), hcl) {
+		t.Errorf("Generated HCL does not match expected HCL.\nExpected:\n%s\nGot:\n%s", string(expectedHCL), hcl)
+	}
+
 	// Check if the generated HCL contains expected keys and values
 	expectedContent := map[string][]string{
+		"module":              {"vpc"},
+		"source":              {"terraform-aws-modules/vpc/aws"},
+		"version":             {"5.0.0"},
 		"name":                {"eks-vpc"},
 		"cidr":                {"10.0.0.0/16"},
-		"azs":                 {"a", "b", "c"},
+		"azs":                 {"us-west-2a", "us-west-2b", "us-west-2c"},
 		"private_subnets":     {"10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"},
 		"public_subnets":      {"10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"},
 		"enable_nat_gateway":  {"true"},
 		"single_nat_gateway":  {"true"},
 		"public_subnet_tags":  {"kubernetes.io/role/elb", "1"},
 		"private_subnet_tags": {"kubernetes.io/role/internal-elb", "1"},
-		"tags":                {"Environment", "dev"},
+		"tags":                {"Environment", "dev", "Terraform", "true"},
 	}
 
 	for key, values := range expectedContent {
@@ -68,4 +84,12 @@ func TestGenerateHCL(t *testing.T) {
 			t.Errorf("Generated HCL contains unexpected content: %s", content)
 		}
 	}
+}
+
+// compareHCL compares two HCL strings, ignoring whitespace differences
+func compareHCL(expected, actual string) bool {
+	// Remove all whitespace and newlines
+	expected = strings.ReplaceAll(strings.ReplaceAll(expected, " ", ""), "\n", "")
+	actual = strings.ReplaceAll(strings.ReplaceAll(actual, " ", ""), "\n", "")
+	return expected == actual
 }

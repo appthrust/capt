@@ -16,7 +16,8 @@ type VPCConfig struct {
 	Version           string            `hcl:"version"`
 	Name              string            `hcl:"name"`
 	CIDR              string            `hcl:"cidr"`
-	AZs               hcl.Traversal     `hcl:"azs"`
+	AzExpression      hcl.Traversal     `hcl:"azs,optional"`
+	AZs               []string          `hcl:"azs,optional"`
 	PrivateSubnets    []string          `hcl:"private_subnets,optional"`
 	PublicSubnets     []string          `hcl:"public_subnets,optional"`
 	EnableNATGateway  bool              `hcl:"enable_nat_gateway"`
@@ -33,14 +34,13 @@ type VPCConfigBuilder struct {
 
 // NewVPCConfig creates a new VPCConfigBuilder with default values
 func NewVPCConfig() *VPCConfigBuilder {
-	azs, _ := hclsyntax.ParseTraversalAbs([]byte("local.azs"), "", hcl.Pos{Line: 1, Column: 1})
 	return &VPCConfigBuilder{
 		config: &VPCConfig{
 			Source:           "terraform-aws-modules/vpc/aws",
 			Version:          "5.0.0",
 			Name:             "eks-vpc",
 			CIDR:             "10.0.0.0/16",
-			AZs:              azs,
+			AZs:              []string{"us-west-2a", "us-west-2b", "us-west-2c"},
 			PrivateSubnets:   []string{"10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"},
 			EnableNATGateway: true,
 			SingleNATGateway: true,
@@ -81,8 +81,9 @@ func (b *VPCConfigBuilder) SetCIDR(cidr string) *VPCConfigBuilder {
 
 // SetAZs sets the availability zones for the VPC
 func (b *VPCConfigBuilder) SetAZs(azs []string) *VPCConfigBuilder {
-	azTraversal, _ := hclsyntax.ParseTraversalAbs([]byte("local.azs"), "", hcl.Pos{Line: 1, Column: 1})
-	b.config.AZs = azTraversal
+	b.config.AZs = azs
+	b.config.AzExpression = nil // Clear the expression when setting AZs directly
+
 	// Adjust private subnets to match the number of AZs
 	if len(b.config.PrivateSubnets) > 0 {
 		newPrivateSubnets := make([]string, len(azs))
@@ -109,6 +110,18 @@ func (b *VPCConfigBuilder) SetAZs(azs []string) *VPCConfigBuilder {
 		}
 		b.config.PublicSubnets = newPublicSubnets
 	}
+	return b
+}
+
+// SetAZsExpression sets the AZs as an HCL expression
+func (b *VPCConfigBuilder) SetAZsExpression(expr string) *VPCConfigBuilder {
+	azTraversal, diags := hclsyntax.ParseTraversalAbs([]byte(expr), "", hcl.Pos{Line: 1, Column: 1})
+	if diags.HasErrors() {
+		// Handle error (e.g., log it or return an error)
+		return b
+	}
+	b.config.AzExpression = azTraversal
+	b.config.AZs = nil // Clear the AZs when setting an expression
 	return b
 }
 
@@ -191,6 +204,9 @@ func (c *VPCConfig) Validate() error {
 	if len(c.PrivateSubnets) == 0 && len(c.PublicSubnets) == 0 {
 		return fmt.Errorf("at least one subnet (private or public) must be specified")
 	}
+	if c.AzExpression == nil && len(c.AZs) == 0 {
+		return fmt.Errorf("either AZs or AzExpression must be specified")
+	}
 	return c.validateSubnets()
 }
 
@@ -215,7 +231,13 @@ func (c *VPCConfig) GenerateHCL() (string, error) {
 	moduleBody.SetAttributeValue("version", cty.StringVal(c.Version))
 	moduleBody.SetAttributeValue("name", cty.StringVal(c.Name))
 	moduleBody.SetAttributeValue("cidr", cty.StringVal(c.CIDR))
-	moduleBody.SetAttributeTraversal("azs", c.AZs)
+
+	if c.AzExpression != nil {
+		moduleBody.SetAttributeTraversal("azs", c.AzExpression)
+	} else if len(c.AZs) > 0 {
+		moduleBody.SetAttributeValue("azs", cty.ListVal(stringsToValues(c.AZs)))
+	}
+
 	moduleBody.SetAttributeValue("private_subnets", cty.ListVal(stringsToValues(c.PrivateSubnets)))
 	moduleBody.SetAttributeValue("public_subnets", cty.ListVal(stringsToValues(c.PublicSubnets)))
 	moduleBody.SetAttributeValue("enable_nat_gateway", cty.BoolVal(c.EnableNATGateway))

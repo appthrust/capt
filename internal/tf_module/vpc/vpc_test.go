@@ -4,6 +4,9 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 )
 
 // テストヘルパー関数
@@ -24,7 +27,6 @@ func TestNewVPCConfig(t *testing.T) {
 	}{
 		{"VPC name", config.Name, "eks-vpc"},
 		{"CIDR", config.CIDR, "10.0.0.0/16"},
-		{"AZs count", len(config.AZs), 3},
 		{"EnableNATGateway", config.EnableNATGateway, true},
 		{"SingleNATGateway", config.SingleNATGateway, true},
 		{"PublicSubnetTags count", len(config.PublicSubnetTags), 1},
@@ -37,6 +39,12 @@ func TestNewVPCConfig(t *testing.T) {
 				t.Errorf("Expected %v, got %v", tt.expected, tt.got)
 			}
 		})
+	}
+
+	// Check AZs separately as it's now a hcl.Traversal
+	expectedAZs, _ := hclsyntax.ParseTraversalAbs([]byte("local.azs"), "", hcl.Pos{Line: 1, Column: 1})
+	if !reflect.DeepEqual(config.AZs, expectedAZs) {
+		t.Errorf("Expected AZs %v, got %v", expectedAZs, config.AZs)
 	}
 }
 
@@ -58,10 +66,6 @@ func TestVPCConfigValidate(t *testing.T) {
 			b.SetCIDR("")
 			b.SetPrivateSubnets([]string{"10.0.1.0/24"})
 		}, true},
-		{"No AZs", func(b *VPCConfigBuilder) {
-			b.SetAZs([]string{})
-			b.SetPrivateSubnets([]string{"10.0.1.0/24"})
-		}, true},
 		{"Invalid CIDR", func(b *VPCConfigBuilder) {
 			b.SetCIDR("invalid-cidr")
 			b.SetPrivateSubnets([]string{"10.0.1.0/24"})
@@ -69,10 +73,6 @@ func TestVPCConfigValidate(t *testing.T) {
 		{"Empty subnets", func(b *VPCConfigBuilder) {
 			b.SetPrivateSubnets([]string{})
 			b.SetPublicSubnets([]string{})
-		}, true},
-		{"Mismatched subnets and AZs", func(b *VPCConfigBuilder) {
-			b.SetAZs([]string{"us-west-2a", "us-west-2b"})
-			b.SetPrivateSubnets([]string{"10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"})
 		}, true},
 	}
 
@@ -112,7 +112,10 @@ func TestBuilderMethods(t *testing.T) {
 		{
 			"SetAZs",
 			func(b *VPCConfigBuilder) { b.SetAZs([]string{"us-west-2a", "us-west-2b"}) },
-			func(c *VPCConfig) bool { return reflect.DeepEqual(c.AZs, []string{"us-west-2a", "us-west-2b"}) },
+			func(c *VPCConfig) bool {
+				expectedAZs, _ := hclsyntax.ParseTraversalAbs([]byte("local.azs"), "", hcl.Pos{Line: 1, Column: 1})
+				return reflect.DeepEqual(c.AZs, expectedAZs)
+			},
 			true,
 		},
 		{
@@ -196,17 +199,24 @@ func TestChainMethods(t *testing.T) {
 		t.Fatalf("Unexpected error building VPCConfig: %v", err)
 	}
 
+	expectedAZs, _ := hclsyntax.ParseTraversalAbs([]byte("local.azs"), "", hcl.Pos{Line: 1, Column: 1})
 	expectedConfig := &VPCConfig{
-		Name:              "chain-vpc",
-		CIDR:              "192.168.0.0/16",
-		AZs:               []string{"us-east-1a", "us-east-1b"},
-		PrivateSubnets:    []string{"192.168.1.0/24", "192.168.2.0/24"},
-		PublicSubnets:     []string{"192.168.101.0/24", "192.168.102.0/24"},
-		EnableNATGateway:  true,
-		SingleNATGateway:  false,
-		PublicSubnetTags:  map[string]string{"public-key": "public-value", "kubernetes.io/role/elb": "1"},
-		PrivateSubnetTags: map[string]string{"private-key": "private-value", "kubernetes.io/role/internal-elb": "1"},
-		Tags:              map[string]string{"global-key": "global-value"},
+		Name:             "chain-vpc",
+		CIDR:             "192.168.0.0/16",
+		AZs:              expectedAZs,
+		PrivateSubnets:   []string{"192.168.1.0/24", "192.168.2.0/24"},
+		PublicSubnets:    []string{"192.168.101.0/24", "192.168.102.0/24"},
+		EnableNATGateway: true,
+		SingleNATGateway: false,
+		PublicSubnetTags: map[string]string{
+			"public-key":             "public-value",
+			"kubernetes.io/role/elb": "1",
+		},
+		PrivateSubnetTags: map[string]string{
+			"private-key":                     "private-value",
+			"kubernetes.io/role/internal-elb": "1",
+		},
+		Tags: map[string]string{"global-key": "global-value"},
 	}
 
 	if !reflect.DeepEqual(config, expectedConfig) {
@@ -227,14 +237,6 @@ func TestErrorCases(t *testing.T) {
 				b.SetPrivateSubnets([]string{"10.0.1.0/24"})
 			},
 			"invalid CIDR address",
-		},
-		{
-			"Mismatched subnets and AZs",
-			func(b *VPCConfigBuilder) {
-				b.SetAZs([]string{"us-west-2a", "us-west-2b"})
-				b.SetPrivateSubnets([]string{"10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"})
-			},
-			"number of private subnets must match the number of AZs",
 		},
 		{
 			"Empty name",

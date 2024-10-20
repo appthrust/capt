@@ -8,8 +8,20 @@ import (
 	"github.com/hashicorp/hcl/v2/hclparse"
 )
 
+func setupVPCConfigForHCLTest() *VPCConfigBuilder {
+	builder := NewVPCConfig()
+	builder.SetName("eks-vpc")
+	builder.SetCIDR("10.0.0.0/16")
+	builder.SetAZs([]string{"us-west-2a", "us-west-2b", "us-west-2c"})
+	builder.SetEnableNATGateway(true)
+	builder.SetSingleNATGateway(true)
+	builder.AddPublicSubnetTag("kubernetes.io/role/elb", "1")
+	builder.AddPrivateSubnetTag("kubernetes.io/role/internal-elb", "1")
+	return builder
+}
+
 func TestGenerateHCL(t *testing.T) {
-	builder := setupVPCConfig()
+	builder := setupVPCConfigForHCLTest()
 	builder.SetPrivateSubnets([]string{"10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"})
 	builder.SetPublicSubnets([]string{"10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"})
 	builder.AddTag("Environment", "dev")
@@ -53,7 +65,7 @@ func TestGenerateHCL(t *testing.T) {
 		"version":             {"5.0.0"},
 		"name":                {"eks-vpc"},
 		"cidr":                {"10.0.0.0/16"},
-		"azs":                 {"us-west-2a", "us-west-2b", "us-west-2c"},
+		"azs":                 {"local.azs"},
 		"private_subnets":     {"10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"},
 		"public_subnets":      {"10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"},
 		"enable_nat_gateway":  {"true"},

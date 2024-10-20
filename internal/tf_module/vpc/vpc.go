@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/hashicorp/hcl/v2/gohcl"
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/zclconf/go-cty/cty"
 )
 
 // VPCConfig represents the configuration for a VPC
@@ -14,7 +16,7 @@ type VPCConfig struct {
 	Version           string            `hcl:"version"`
 	Name              string            `hcl:"name"`
 	CIDR              string            `hcl:"cidr"`
-	AZs               []string          `hcl:"azs"`
+	AZs               hcl.Traversal     `hcl:"azs"`
 	PrivateSubnets    []string          `hcl:"private_subnets,optional"`
 	PublicSubnets     []string          `hcl:"public_subnets,optional"`
 	EnableNATGateway  bool              `hcl:"enable_nat_gateway"`
@@ -31,13 +33,14 @@ type VPCConfigBuilder struct {
 
 // NewVPCConfig creates a new VPCConfigBuilder with default values
 func NewVPCConfig() *VPCConfigBuilder {
+	azs, _ := hclsyntax.ParseTraversalAbs([]byte("local.azs"), "", hcl.Pos{Line: 1, Column: 1})
 	return &VPCConfigBuilder{
 		config: &VPCConfig{
 			Source:           "terraform-aws-modules/vpc/aws",
 			Version:          "5.0.0",
 			Name:             "eks-vpc",
 			CIDR:             "10.0.0.0/16",
-			AZs:              []string{"us-west-2a", "us-west-2b", "us-west-2c"},
+			AZs:              azs,
 			PrivateSubnets:   []string{"10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"},
 			EnableNATGateway: true,
 			SingleNATGateway: true,
@@ -78,7 +81,8 @@ func (b *VPCConfigBuilder) SetCIDR(cidr string) *VPCConfigBuilder {
 
 // SetAZs sets the availability zones for the VPC
 func (b *VPCConfigBuilder) SetAZs(azs []string) *VPCConfigBuilder {
-	b.config.AZs = azs
+	azTraversal, _ := hclsyntax.ParseTraversalAbs([]byte("local.azs"), "", hcl.Pos{Line: 1, Column: 1})
+	b.config.AZs = azTraversal
 	// Adjust private subnets to match the number of AZs
 	if len(b.config.PrivateSubnets) > 0 {
 		newPrivateSubnets := make([]string, len(azs))
@@ -184,17 +188,8 @@ func (c *VPCConfig) Validate() error {
 	if _, _, err := net.ParseCIDR(c.CIDR); err != nil {
 		return fmt.Errorf("invalid CIDR address: %v", err)
 	}
-	if len(c.AZs) == 0 {
-		return fmt.Errorf("at least one availability zone must be specified")
-	}
 	if len(c.PrivateSubnets) == 0 && len(c.PublicSubnets) == 0 {
 		return fmt.Errorf("at least one subnet (private or public) must be specified")
-	}
-	if len(c.PrivateSubnets) > 0 && len(c.PrivateSubnets) != len(c.AZs) {
-		return fmt.Errorf("number of private subnets must match the number of AZs")
-	}
-	if len(c.PublicSubnets) > 0 && len(c.PublicSubnets) != len(c.AZs) {
-		return fmt.Errorf("number of public subnets must match the number of AZs")
 	}
 	return c.validateSubnets()
 }
@@ -216,7 +211,41 @@ func (c *VPCConfig) GenerateHCL() (string, error) {
 	moduleBlock := rootBody.AppendNewBlock("module", []string{"vpc"})
 	moduleBody := moduleBlock.Body()
 
-	gohcl.EncodeIntoBody(c, moduleBody)
+	moduleBody.SetAttributeValue("source", cty.StringVal(c.Source))
+	moduleBody.SetAttributeValue("version", cty.StringVal(c.Version))
+	moduleBody.SetAttributeValue("name", cty.StringVal(c.Name))
+	moduleBody.SetAttributeValue("cidr", cty.StringVal(c.CIDR))
+	moduleBody.SetAttributeTraversal("azs", c.AZs)
+	moduleBody.SetAttributeValue("private_subnets", cty.ListVal(stringsToValues(c.PrivateSubnets)))
+	moduleBody.SetAttributeValue("public_subnets", cty.ListVal(stringsToValues(c.PublicSubnets)))
+	moduleBody.SetAttributeValue("enable_nat_gateway", cty.BoolVal(c.EnableNATGateway))
+	moduleBody.SetAttributeValue("single_nat_gateway", cty.BoolVal(c.SingleNATGateway))
+
+	if len(c.PublicSubnetTags) > 0 {
+		moduleBody.SetAttributeValue("public_subnet_tags", mapToCtyValue(c.PublicSubnetTags))
+	}
+	if len(c.PrivateSubnetTags) > 0 {
+		moduleBody.SetAttributeValue("private_subnet_tags", mapToCtyValue(c.PrivateSubnetTags))
+	}
+	if len(c.Tags) > 0 {
+		moduleBody.SetAttributeValue("tags", mapToCtyValue(c.Tags))
+	}
 
 	return string(f.Bytes()), nil
+}
+
+func stringsToValues(strs []string) []cty.Value {
+	values := make([]cty.Value, len(strs))
+	for i, s := range strs {
+		values[i] = cty.StringVal(s)
+	}
+	return values
+}
+
+func mapToCtyValue(m map[string]string) cty.Value {
+	ctyMap := make(map[string]cty.Value)
+	for k, v := range m {
+		ctyMap[k] = cty.StringVal(v)
+	}
+	return cty.ObjectVal(ctyMap)
 }

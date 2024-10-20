@@ -4,9 +4,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-
-	"github.com/hashicorp/hcl/v2"
-	"github.com/hashicorp/hcl/v2/hclsyntax"
 )
 
 // テストヘルパー関数
@@ -31,6 +28,7 @@ func TestNewVPCConfig(t *testing.T) {
 		{"SingleNATGateway", config.SingleNATGateway, true},
 		{"PublicSubnetTags count", len(config.PublicSubnetTags), 1},
 		{"PrivateSubnetTags count", len(config.PrivateSubnetTags), 1},
+		{"AZs", config.AZs, []string{"us-west-2a", "us-west-2b", "us-west-2c"}},
 	}
 
 	for _, tt := range tests {
@@ -39,12 +37,6 @@ func TestNewVPCConfig(t *testing.T) {
 				t.Errorf("Expected %v, got %v", tt.expected, tt.got)
 			}
 		})
-	}
-
-	// Check AZs separately as it's now a hcl.Traversal
-	expectedAZs, _ := hclsyntax.ParseTraversalAbs([]byte("local.azs"), "", hcl.Pos{Line: 1, Column: 1})
-	if !reflect.DeepEqual(config.AZs, expectedAZs) {
-		t.Errorf("Expected AZs %v, got %v", expectedAZs, config.AZs)
 	}
 }
 
@@ -113,8 +105,7 @@ func TestBuilderMethods(t *testing.T) {
 			"SetAZs",
 			func(b *VPCConfigBuilder) { b.SetAZs([]string{"us-west-2a", "us-west-2b"}) },
 			func(c *VPCConfig) bool {
-				expectedAZs, _ := hclsyntax.ParseTraversalAbs([]byte("local.azs"), "", hcl.Pos{Line: 1, Column: 1})
-				return reflect.DeepEqual(c.AZs, expectedAZs)
+				return reflect.DeepEqual(c.AZs, []string{"us-west-2a", "us-west-2b"})
 			},
 			true,
 		},
@@ -199,13 +190,12 @@ func TestChainMethods(t *testing.T) {
 		t.Fatalf("Unexpected error building VPCConfig: %v", err)
 	}
 
-	expectedAZs, _ := hclsyntax.ParseTraversalAbs([]byte("local.azs"), "", hcl.Pos{Line: 1, Column: 1})
 	expectedConfig := &VPCConfig{
 		Source:           "terraform-aws-modules/vpc/aws",
 		Version:          "5.0.0",
 		Name:             "chain-vpc",
 		CIDR:             "192.168.0.0/16",
-		AZs:              expectedAZs,
+		AZs:              []string{"us-east-1a", "us-east-1b"},
 		PrivateSubnets:   []string{"192.168.1.0/24", "192.168.2.0/24"},
 		PublicSubnets:    []string{"192.168.101.0/24", "192.168.102.0/24"},
 		EnableNATGateway: true,

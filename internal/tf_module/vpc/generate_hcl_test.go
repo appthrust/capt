@@ -12,7 +12,7 @@ func setupVPCConfigForHCLTest() *VPCConfigBuilder {
 	builder := NewVPCConfig()
 	builder.SetName("eks-vpc")
 	builder.SetCIDR("10.0.0.0/16")
-	builder.SetAZs([]string{"us-west-2a", "us-west-2b", "us-west-2c"})
+	builder.SetAZsExpression("local.azs")
 	builder.SetEnableNATGateway(true)
 	builder.SetSingleNATGateway(true)
 	builder.AddPublicSubnetTag("kubernetes.io/role/elb", "1")

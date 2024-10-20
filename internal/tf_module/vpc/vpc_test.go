@@ -201,6 +201,8 @@ func TestChainMethods(t *testing.T) {
 
 	expectedAZs, _ := hclsyntax.ParseTraversalAbs([]byte("local.azs"), "", hcl.Pos{Line: 1, Column: 1})
 	expectedConfig := &VPCConfig{
+		Source:           "terraform-aws-modules/vpc/aws",
+		Version:          "5.0.0",
 		Name:             "chain-vpc",
 		CIDR:             "192.168.0.0/16",
 		AZs:              expectedAZs,

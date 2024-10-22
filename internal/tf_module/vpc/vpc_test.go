@@ -28,7 +28,7 @@ func TestNewVPCConfig(t *testing.T) {
 		{"SingleNATGateway", config.SingleNATGateway, true},
 		{"PublicSubnetTags count", len(config.PublicSubnetTags), 1},
 		{"PrivateSubnetTags count", len(config.PrivateSubnetTags), 1},
-		{"AZs", config.AZs, []string{"us-west-2a", "us-west-2b", "us-west-2c"}},
+		{"AZs", config.AZs, AZsConfig{Type: AZsTypeStatic, Static: []string{"us-west-2a", "us-west-2b", "us-west-2c"}}},
 	}
 
 	for _, tt := range tests {
@@ -105,7 +105,15 @@ func TestBuilderMethods(t *testing.T) {
 			"SetAZs",
 			func(b *VPCConfigBuilder) { b.SetAZs([]string{"us-west-2a", "us-west-2b"}) },
 			func(c *VPCConfig) bool {
-				return reflect.DeepEqual(c.AZs, []string{"us-west-2a", "us-west-2b"})
+				return reflect.DeepEqual(c.AZs, AZsConfig{Type: AZsTypeStatic, Static: []string{"us-west-2a", "us-west-2b"}})
+			},
+			true,
+		},
+		{
+			"SetAZsExpression",
+			func(b *VPCConfigBuilder) { b.SetAZsExpression("data.aws_availability_zones.available.names") },
+			func(c *VPCConfig) bool {
+				return c.AZs.Type == AZsTypeDynamic && c.AZs.Dynamic == "data.aws_availability_zones.available.names"
 			},
 			true,
 		},
@@ -195,7 +203,7 @@ func TestChainMethods(t *testing.T) {
 		Version:          "5.0.0",
 		Name:             "chain-vpc",
 		CIDR:             "192.168.0.0/16",
-		AZs:              []string{"us-east-1a", "us-east-1b"},
+		AZs:              AZsConfig{Type: AZsTypeStatic, Static: []string{"us-east-1a", "us-east-1b"}},
 		PrivateSubnets:   []string{"192.168.1.0/24", "192.168.2.0/24"},
 		PublicSubnets:    []string{"192.168.101.0/24", "192.168.102.0/24"},
 		EnableNATGateway: true,

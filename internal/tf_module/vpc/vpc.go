@@ -277,13 +277,13 @@ func stringsToValues(strs []string) []cty.Value {
 	return values
 }
 
-func mapToCtyValue(m map[string]string) cty.Value {
-	ctyMap := make(map[string]cty.Value)
-	for k, v := range m {
-		ctyMap[k] = cty.StringVal(v)
-	}
-	return cty.ObjectVal(ctyMap)
-}
+// func mapToCtyValue(m map[string]string) cty.Value {
+// 	ctyMap := make(map[string]cty.Value)
+// 	for k, v := range m {
+// 		ctyMap[k] = cty.StringVal(v)
+// 	}
+// 	return cty.ObjectVal(ctyMap)
+// }
 
 // ConvertHCLSyntaxToHCLWrite converts hclsyntax.Tokens to hclwrite.Tokens
 func ConvertHCLSyntaxToHCLWrite(syntaxTokens hclsyntax.Tokens) hclwrite.Tokens {

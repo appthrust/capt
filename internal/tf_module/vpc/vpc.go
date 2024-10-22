@@ -5,6 +5,7 @@ import (
 	"net"
 
 	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/gohcl"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/zclconf/go-cty/cty"
@@ -30,7 +31,7 @@ type VPCConfig struct {
 	Version           string            `hcl:"version"`
 	Name              string            `hcl:"name"`
 	CIDR              string            `hcl:"cidr"`
-	AZs               AZsConfig         `hcl:"azs"`
+	AZs               *AZsConfig        `hcl:"azs,optional"`
 	PrivateSubnets    []string          `hcl:"private_subnets,optional"`
 	PublicSubnets     []string          `hcl:"public_subnets,optional"`
 	EnableNATGateway  bool              `hcl:"enable_nat_gateway"`
@@ -53,7 +54,7 @@ func NewVPCConfig() *VPCConfigBuilder {
 			Version:          "5.0.0",
 			Name:             "eks-vpc",
 			CIDR:             "10.0.0.0/16",
-			AZs:              AZsConfig{Type: AZsTypeStatic, Static: []string{"us-west-2a", "us-west-2b", "us-west-2c"}},
+			AZs:              &AZsConfig{Type: AZsTypeStatic, Static: []string{"us-west-2a", "us-west-2b", "us-west-2c"}},
 			PrivateSubnets:   []string{"10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"},
 			EnableNATGateway: true,
 			SingleNATGateway: true,
@@ -94,7 +95,7 @@ func (b *VPCConfigBuilder) SetCIDR(cidr string) *VPCConfigBuilder {
 
 // SetAZs sets the availability zones for the VPC
 func (b *VPCConfigBuilder) SetAZs(azs []string) *VPCConfigBuilder {
-	b.config.AZs = AZsConfig{
+	b.config.AZs = &AZsConfig{
 		Type:   AZsTypeStatic,
 		Static: azs,
 	}
@@ -130,7 +131,7 @@ func (b *VPCConfigBuilder) SetAZs(azs []string) *VPCConfigBuilder {
 
 // SetAZsExpression sets the AZs as an HCL expression
 func (b *VPCConfigBuilder) SetAZsExpression(expr string) *VPCConfigBuilder {
-	b.config.AZs = AZsConfig{
+	b.config.AZs = &AZsConfig{
 		Type:    AZsTypeDynamic,
 		Dynamic: expr,
 	}
@@ -216,6 +217,9 @@ func (c *VPCConfig) Validate() error {
 	if len(c.PrivateSubnets) == 0 && len(c.PublicSubnets) == 0 {
 		return fmt.Errorf("at least one subnet (private or public) must be specified")
 	}
+	if c.AZs == nil {
+		return fmt.Errorf("AZs configuration cannot be nil")
+	}
 	if c.AZs.Type == AZsTypeStatic && len(c.AZs.Static) == 0 {
 		return fmt.Errorf("static AZs must be specified when using AZsTypeStatic")
 	}
@@ -242,37 +246,27 @@ func (c *VPCConfig) GenerateHCL() (string, error) {
 	moduleBlock := rootBody.AppendNewBlock("module", []string{"vpc"})
 	moduleBody := moduleBlock.Body()
 
-	moduleBody.SetAttributeValue("source", cty.StringVal(c.Source))
-	moduleBody.SetAttributeValue("version", cty.StringVal(c.Version))
-	moduleBody.SetAttributeValue("name", cty.StringVal(c.Name))
-	moduleBody.SetAttributeValue("cidr", cty.StringVal(c.CIDR))
+	// Create a local copy of the config
+	configCopy := *c
+	azs := configCopy.AZs
+	configCopy.AZs = nil
 
-	if c.AZs.Type == AZsTypeDynamic {
-		tokens, diags := hclsyntax.LexExpression([]byte(c.AZs.Dynamic), "", hcl.Pos{Line: 1, Column: 1})
+	// Encode most fields using gohcl.EncodeIntoBody
+	gohcl.EncodeIntoBody(&configCopy, moduleBody)
+
+	// Handle AZs separately
+	if azs.Type == AZsTypeDynamic {
+		tokens, diags := hclsyntax.LexExpression([]byte(azs.Dynamic), "", hcl.Pos{Line: 1, Column: 1})
 		if diags.HasErrors() {
 			return "", fmt.Errorf("failed to lex dynamic AZs expression: %v", diags)
 		}
 		moduleBody.SetAttributeRaw("azs", ConvertHCLSyntaxToHCLWrite(tokens))
 	} else {
-		moduleBody.SetAttributeValue("azs", cty.ListVal(stringsToValues(c.AZs.Static)))
+		moduleBody.SetAttributeValue("azs", cty.ListVal(stringsToValues(azs.Static)))
 	}
 
-	moduleBody.SetAttributeValue("private_subnets", cty.ListVal(stringsToValues(c.PrivateSubnets)))
-	moduleBody.SetAttributeValue("public_subnets", cty.ListVal(stringsToValues(c.PublicSubnets)))
-	moduleBody.SetAttributeValue("enable_nat_gateway", cty.BoolVal(c.EnableNATGateway))
-	moduleBody.SetAttributeValue("single_nat_gateway", cty.BoolVal(c.SingleNATGateway))
-
-	if len(c.PublicSubnetTags) > 0 {
-		moduleBody.SetAttributeValue("public_subnet_tags", mapToCtyValue(c.PublicSubnetTags))
-	}
-	if len(c.PrivateSubnetTags) > 0 {
-		moduleBody.SetAttributeValue("private_subnet_tags", mapToCtyValue(c.PrivateSubnetTags))
-	}
-	if len(c.Tags) > 0 {
-		moduleBody.SetAttributeValue("tags", mapToCtyValue(c.Tags))
-	}
-
-	return string(f.Bytes()), nil
+	// Format the generated HCL
+	return string(hclwrite.Format(f.Bytes())), nil
 }
 
 func stringsToValues(strs []string) []cty.Value {

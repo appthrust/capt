@@ -15,7 +15,7 @@ func TestEKSBlueprintsAddonsConfig(t *testing.T) {
 	builder.SetClusterVersion("1.24")
 	builder.SetOIDCProviderARN("arn:aws:iam::123456789012:oidc-provider")
 	builder.SetEnableKarpenter(true)
-	builder.SetKarpenterHelmCacheDir("/custom/cache")
+	builder.SetKarpenterHelmCacheDir("/tmp/.helmcache")
 	builder.SetKarpenterUseNamePrefix(true)
 	builder.AddTag("environment", "test")
 
@@ -35,6 +35,7 @@ func TestEKSBlueprintsAddonsConfig(t *testing.T) {
 	moduleBlock := rootBody.AppendNewBlock("module", []string{"eks_blueprints_addons"})
 	moduleBody := moduleBlock.Body()
 
+	// 属性を生成されたHCLと同じ順序で設定
 	moduleBody.SetAttributeValue("source", cty.StringVal("aws-ia/eks-blueprints-addons/aws"))
 	moduleBody.SetAttributeValue("version", cty.StringVal("4.32.1"))
 	moduleBody.SetAttributeValue("cluster_name", cty.StringVal("test-cluster"))
@@ -42,7 +43,14 @@ func TestEKSBlueprintsAddonsConfig(t *testing.T) {
 	moduleBody.SetAttributeValue("cluster_version", cty.StringVal("1.24"))
 	moduleBody.SetAttributeValue("oidc_provider_arn", cty.StringVal("arn:aws:iam::123456789012:oidc-provider"))
 	moduleBody.SetAttributeValue("enable_karpenter", cty.BoolVal(true))
-	moduleBody.SetAttributeValue("karpenter_helm_cache_dir", cty.StringVal("/custom/cache"))
+
+	// Karpenterブロックを追加
+	karpenterBlock := moduleBody.AppendNewBlock("karpenter", nil)
+	karpenterBody := karpenterBlock.Body()
+	helmConfigBlock := karpenterBody.AppendNewBlock("helm_config", nil)
+	helmConfigBody := helmConfigBlock.Body()
+	helmConfigBody.SetAttributeValue("cacheDir", cty.StringVal("/tmp/.helmcache"))
+
 	moduleBody.SetAttributeValue("karpenter_use_name_prefix", cty.BoolVal(true))
 	moduleBody.SetAttributeValue("coredns_config_values", cty.StringVal(`{"computeType":"Fargate","resources":{"limits":{"cpu":"0.25","memory":"256M"},"requests":{"cpu":"0.25","memory":"256M"}}}`))
 

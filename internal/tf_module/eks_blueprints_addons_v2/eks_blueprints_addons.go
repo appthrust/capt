@@ -8,19 +8,19 @@ import (
 
 // EKSBlueprintsAddonsConfig represents the configuration for EKS Blueprints Addons
 type EKSBlueprintsAddonsConfig struct {
-	Source                 *hcl.HclField `hcl:"source"`
-	Version                *hcl.HclField `hcl:"version"`
-	ClusterName            *hcl.HclField `hcl:"cluster_name"`
-	ClusterEndpoint        *hcl.HclField `hcl:"cluster_endpoint"`
-	ClusterVersion         *hcl.HclField `hcl:"cluster_version"`
-	OIDCProviderARN        *hcl.HclField `hcl:"oidc_provider_arn"`
-	EnableKarpenter        *hcl.HclField `hcl:"enable_karpenter"`
-	KarpenterHelmCacheDir  *hcl.HclField `hcl:"karpenter_helm_cache_dir"`
-	KarpenterUseNamePrefix *hcl.HclField `hcl:"karpenter_use_name_prefix"`
-	CoreDNSConfigValues    *hcl.HclField `hcl:"coredns_config_values,optional"`
-	VPCCNIConfigValues     *hcl.HclField `hcl:"vpc_cni_config_values,optional"`
-	KubeProxyConfigValues  *hcl.HclField `hcl:"kube_proxy_config_values,optional"`
-	Tags                   *hcl.HclField `hcl:"tags,optional"`
+	Source                 *hcl.HclField          `hcl:"source"`
+	Version                *hcl.HclField          `hcl:"version"`
+	ClusterName            *hcl.HclField          `hcl:"cluster_name"`
+	ClusterEndpoint        *hcl.HclField          `hcl:"cluster_endpoint"`
+	ClusterVersion         *hcl.HclField          `hcl:"cluster_version"`
+	OIDCProviderARN        *hcl.HclField          `hcl:"oidc_provider_arn"`
+	EnableKarpenter        *hcl.HclField          `hcl:"enable_karpenter"`
+	Karpenter              map[string]interface{} `hcl:"karpenter,block"`
+	KarpenterUseNamePrefix *hcl.HclField          `hcl:"karpenter_use_name_prefix"`
+	CoreDNSConfigValues    *hcl.HclField          `hcl:"coredns_config_values,optional"`
+	VPCCNIConfigValues     *hcl.HclField          `hcl:"vpc_cni_config_values,optional"`
+	KubeProxyConfigValues  *hcl.HclField          `hcl:"kube_proxy_config_values,optional"`
+	Tags                   *hcl.HclField          `hcl:"tags,optional"`
 }
 
 // EKSBlueprintsAddonsConfigBuilder is a builder for EKSBlueprintsAddonsConfig
@@ -30,6 +30,12 @@ type EKSBlueprintsAddonsConfigBuilder struct {
 
 // NewEKSBlueprintsAddonsConfig creates a new EKSBlueprintsAddonsConfigBuilder with default values
 func NewEKSBlueprintsAddonsConfig() *EKSBlueprintsAddonsConfigBuilder {
+	karpenterBlock := map[string]interface{}{
+		"helm_config": map[string]interface{}{
+			"cacheDir": "/tmp/.helmcache",
+		},
+	}
+
 	return &EKSBlueprintsAddonsConfigBuilder{
 		config: &EKSBlueprintsAddonsConfig{
 			Source: &hcl.HclField{
@@ -67,11 +73,7 @@ func NewEKSBlueprintsAddonsConfig() *EKSBlueprintsAddonsConfigBuilder {
 				Static:    true,
 				ValueType: hcl.ValueTypeBool,
 			},
-			KarpenterHelmCacheDir: &hcl.HclField{
-				Type:      hcl.ConfigTypeStatic,
-				Static:    "/tmp/.helmcache",
-				ValueType: hcl.ValueTypeString,
-			},
+			Karpenter: karpenterBlock,
 			KarpenterUseNamePrefix: &hcl.HclField{
 				Type:      hcl.ConfigTypeStatic,
 				Static:    false,
@@ -162,10 +164,10 @@ func (b *EKSBlueprintsAddonsConfigBuilder) SetEnableKarpenter(enable bool) *EKSB
 
 // SetKarpenterHelmCacheDir sets the Karpenter Helm cache directory
 func (b *EKSBlueprintsAddonsConfigBuilder) SetKarpenterHelmCacheDir(cacheDir string) *EKSBlueprintsAddonsConfigBuilder {
-	b.config.KarpenterHelmCacheDir = &hcl.HclField{
-		Type:      hcl.ConfigTypeStatic,
-		Static:    cacheDir,
-		ValueType: hcl.ValueTypeString,
+	b.config.Karpenter = map[string]interface{}{
+		"helm_config": map[string]interface{}{
+			"cacheDir": cacheDir,
+		},
 	}
 	return b
 }

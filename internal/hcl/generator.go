@@ -48,24 +48,70 @@ func (g *HclGenerator) GenerateHCL(config interface{}) (string, error) {
 		}
 
 		// Split the hcl tag to get the field name (remove any options like ",optional")
-		fieldName := strings.Split(hclTag, ",")[0]
+		tagParts := strings.Split(hclTag, ",")
+		fieldName := tagParts[0]
+		isBlock := len(tagParts) > 1 && tagParts[1] == "block"
 
-		// Handle HclField type
-		if !field.IsNil() {
-			config := field.Interface().(*HclField)
-			if err := handleHclField(moduleBody, fieldName, config); err != nil {
+		if field.IsNil() {
+			continue
+		}
+
+		// Handle map type for blocks
+		if field.Type().Kind() == reflect.Map {
+			if err := handleMapField(moduleBody, fieldName, field.Interface()); err != nil {
 				return "", err
 			}
+			continue
+		}
+
+		// Handle HclField type
+		config := field.Interface().(*HclField)
+		if err := handleHclField(moduleBody, fieldName, config, isBlock); err != nil {
+			return "", err
 		}
 	}
 
 	return string(hclwrite.Format(f.Bytes())), nil
 }
 
+func handleMapField(body *hclwrite.Body, blockName string, value interface{}) error {
+	m, ok := value.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("expected map[string]interface{}, got %T", value)
+	}
+
+	block := body.AppendNewBlock(blockName, nil)
+	blockBody := block.Body()
+
+	for k, v := range m {
+		switch vt := v.(type) {
+		case map[string]interface{}:
+			if err := handleMapField(blockBody, k, vt); err != nil {
+				return err
+			}
+		case string:
+			blockBody.SetAttributeValue(k, cty.StringVal(vt))
+		case bool:
+			blockBody.SetAttributeValue(k, cty.BoolVal(vt))
+		case []string:
+			values := make([]cty.Value, len(vt))
+			for i, s := range vt {
+				values[i] = cty.StringVal(s)
+			}
+			blockBody.SetAttributeValue(k, cty.ListVal(values))
+		default:
+			return fmt.Errorf("unsupported type for key %s: %T", k, v)
+		}
+	}
+
+	return nil
+}
+
 func handleHclField(
 	moduleBody *hclwrite.Body,
 	attrName string,
 	config *HclField,
+	isBlock bool,
 ) error {
 	if config == nil {
 		return nil
@@ -78,11 +124,15 @@ func handleHclField(
 		}
 		moduleBody.SetAttributeRaw(attrName, ConvertHCLSyntaxToHCLWrite(tokens))
 	} else {
-		value, err := convertToAttributeValue(config.Static, config.ValueType)
-		if err != nil {
-			return err
+		if isBlock {
+			return handleMapField(moduleBody, attrName, config.Static)
+		} else {
+			value, err := convertToAttributeValue(config.Static, config.ValueType)
+			if err != nil {
+				return err
+			}
+			moduleBody.SetAttributeValue(attrName, value)
 		}
-		moduleBody.SetAttributeValue(attrName, value)
 	}
 	return nil
 }
@@ -99,6 +149,9 @@ func convertToAttributeValue(value interface{}, valueType ValueType) (cty.Value,
 	case ValueTypeStringList:
 		list := value.([]string)
 		return cty.ListVal(stringsToValues(list)), nil
+	case ValueTypeBlock:
+		// Blocks are handled separately by handleMapField
+		return cty.NilVal, nil
 	default:
 		return cty.NilVal, fmt.Errorf("unsupported value type: %s", valueType)
 	}

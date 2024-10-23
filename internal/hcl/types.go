@@ -16,6 +16,7 @@ const (
 	ValueTypeBool       ValueType = "bool"
 	ValueTypeStringMap  ValueType = "string_map"
 	ValueTypeStringList ValueType = "string_list"
+	ValueTypeBlock      ValueType = "block"
 )
 
 // HclField represents a field in HCL that can be either static or dynamic

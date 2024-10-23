@@ -3,6 +3,7 @@ package vpc
 import (
 	"testing"
 
+	"github.com/appthrust/capt/internal/hcl"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -24,16 +25,16 @@ func TestNewVPCConfig(t *testing.T) {
 	assert.Equal(t, "1", staticTags["kubernetes.io/role/internal-elb"])
 
 	// Check default AZs, private subnets, and public subnets
-	assert.Equal(t, ConfigTypeStatic, config.AZs.Type)
-	assert.Equal(t, ValueTypeStringList, config.AZs.ValueType)
+	assert.Equal(t, hcl.ConfigTypeStatic, config.AZs.Type)
+	assert.Equal(t, hcl.ValueTypeStringList, config.AZs.ValueType)
 	assert.Equal(t, []string{"us-west-2a", "us-west-2b", "us-west-2c"}, config.AZs.Static.([]string))
 
-	assert.Equal(t, ConfigTypeStatic, config.PrivateSubnets.Type)
-	assert.Equal(t, ValueTypeStringList, config.PrivateSubnets.ValueType)
+	assert.Equal(t, hcl.ConfigTypeStatic, config.PrivateSubnets.Type)
+	assert.Equal(t, hcl.ValueTypeStringList, config.PrivateSubnets.ValueType)
 	assert.Equal(t, []string{"10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"}, config.PrivateSubnets.Static.([]string))
 
-	assert.Equal(t, ConfigTypeStatic, config.PublicSubnets.Type)
-	assert.Equal(t, ValueTypeStringList, config.PublicSubnets.ValueType)
+	assert.Equal(t, hcl.ConfigTypeStatic, config.PublicSubnets.Type)
+	assert.Equal(t, hcl.ValueTypeStringList, config.PublicSubnets.ValueType)
 	assert.Equal(t, []string{"10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"}, config.PublicSubnets.Static.([]string))
 }
 
@@ -46,56 +47,56 @@ func TestVPCConfigValidate(t *testing.T) {
 		{
 			name: "valid config",
 			config: &VPCConfig{
-				Source:  &HclField{Type: ConfigTypeStatic, Static: "source", ValueType: ValueTypeString},
-				Version: &HclField{Type: ConfigTypeStatic, Static: "version", ValueType: ValueTypeString},
-				Name:    &HclField{Type: ConfigTypeStatic, Static: "name", ValueType: ValueTypeString},
-				CIDR:    &HclField{Type: ConfigTypeStatic, Static: "10.0.0.0/16", ValueType: ValueTypeString},
+				Source:  &hcl.HclField{Type: hcl.ConfigTypeStatic, Static: "source", ValueType: hcl.ValueTypeString},
+				Version: &hcl.HclField{Type: hcl.ConfigTypeStatic, Static: "version", ValueType: hcl.ValueTypeString},
+				Name:    &hcl.HclField{Type: hcl.ConfigTypeStatic, Static: "name", ValueType: hcl.ValueTypeString},
+				CIDR:    &hcl.HclField{Type: hcl.ConfigTypeStatic, Static: "10.0.0.0/16", ValueType: hcl.ValueTypeString},
 			},
 			wantErr: false,
 		},
 		{
 			name: "empty source",
 			config: &VPCConfig{
-				Version: &HclField{Type: ConfigTypeStatic, Static: "version", ValueType: ValueTypeString},
-				Name:    &HclField{Type: ConfigTypeStatic, Static: "name", ValueType: ValueTypeString},
-				CIDR:    &HclField{Type: ConfigTypeStatic, Static: "10.0.0.0/16", ValueType: ValueTypeString},
+				Version: &hcl.HclField{Type: hcl.ConfigTypeStatic, Static: "version", ValueType: hcl.ValueTypeString},
+				Name:    &hcl.HclField{Type: hcl.ConfigTypeStatic, Static: "name", ValueType: hcl.ValueTypeString},
+				CIDR:    &hcl.HclField{Type: hcl.ConfigTypeStatic, Static: "10.0.0.0/16", ValueType: hcl.ValueTypeString},
 			},
 			wantErr: true,
 		},
 		{
 			name: "empty version",
 			config: &VPCConfig{
-				Source: &HclField{Type: ConfigTypeStatic, Static: "source", ValueType: ValueTypeString},
-				Name:   &HclField{Type: ConfigTypeStatic, Static: "name", ValueType: ValueTypeString},
-				CIDR:   &HclField{Type: ConfigTypeStatic, Static: "10.0.0.0/16", ValueType: ValueTypeString},
+				Source: &hcl.HclField{Type: hcl.ConfigTypeStatic, Static: "source", ValueType: hcl.ValueTypeString},
+				Name:   &hcl.HclField{Type: hcl.ConfigTypeStatic, Static: "name", ValueType: hcl.ValueTypeString},
+				CIDR:   &hcl.HclField{Type: hcl.ConfigTypeStatic, Static: "10.0.0.0/16", ValueType: hcl.ValueTypeString},
 			},
 			wantErr: true,
 		},
 		{
 			name: "empty name",
 			config: &VPCConfig{
-				Source:  &HclField{Type: ConfigTypeStatic, Static: "source", ValueType: ValueTypeString},
-				Version: &HclField{Type: ConfigTypeStatic, Static: "version", ValueType: ValueTypeString},
-				CIDR:    &HclField{Type: ConfigTypeStatic, Static: "10.0.0.0/16", ValueType: ValueTypeString},
+				Source:  &hcl.HclField{Type: hcl.ConfigTypeStatic, Static: "source", ValueType: hcl.ValueTypeString},
+				Version: &hcl.HclField{Type: hcl.ConfigTypeStatic, Static: "version", ValueType: hcl.ValueTypeString},
+				CIDR:    &hcl.HclField{Type: hcl.ConfigTypeStatic, Static: "10.0.0.0/16", ValueType: hcl.ValueTypeString},
 			},
 			wantErr: true,
 		},
 		{
 			name: "empty CIDR",
 			config: &VPCConfig{
-				Source:  &HclField{Type: ConfigTypeStatic, Static: "source", ValueType: ValueTypeString},
-				Version: &HclField{Type: ConfigTypeStatic, Static: "version", ValueType: ValueTypeString},
-				Name:    &HclField{Type: ConfigTypeStatic, Static: "name", ValueType: ValueTypeString},
+				Source:  &hcl.HclField{Type: hcl.ConfigTypeStatic, Static: "source", ValueType: hcl.ValueTypeString},
+				Version: &hcl.HclField{Type: hcl.ConfigTypeStatic, Static: "version", ValueType: hcl.ValueTypeString},
+				Name:    &hcl.HclField{Type: hcl.ConfigTypeStatic, Static: "name", ValueType: hcl.ValueTypeString},
 			},
 			wantErr: true,
 		},
 		{
 			name: "invalid CIDR",
 			config: &VPCConfig{
-				Source:  &HclField{Type: ConfigTypeStatic, Static: "source", ValueType: ValueTypeString},
-				Version: &HclField{Type: ConfigTypeStatic, Static: "version", ValueType: ValueTypeString},
-				Name:    &HclField{Type: ConfigTypeStatic, Static: "name", ValueType: ValueTypeString},
-				CIDR:    &HclField{Type: ConfigTypeStatic, Static: "invalid", ValueType: ValueTypeString},
+				Source:  &hcl.HclField{Type: hcl.ConfigTypeStatic, Static: "source", ValueType: hcl.ValueTypeString},
+				Version: &hcl.HclField{Type: hcl.ConfigTypeStatic, Static: "version", ValueType: hcl.ValueTypeString},
+				Name:    &hcl.HclField{Type: hcl.ConfigTypeStatic, Static: "name", ValueType: hcl.ValueTypeString},
+				CIDR:    &hcl.HclField{Type: hcl.ConfigTypeStatic, Static: "invalid", ValueType: hcl.ValueTypeString},
 			},
 			wantErr: true,
 		},
@@ -119,57 +120,57 @@ func TestBuilderMethods(t *testing.T) {
 	// Test SetAZs
 	azs := []string{"us-east-1a", "us-east-1b"}
 	builder.SetAZs(azs)
-	assert.Equal(t, ConfigTypeStatic, builder.config.AZs.Type)
-	assert.Equal(t, ValueTypeStringList, builder.config.AZs.ValueType)
+	assert.Equal(t, hcl.ConfigTypeStatic, builder.config.AZs.Type)
+	assert.Equal(t, hcl.ValueTypeStringList, builder.config.AZs.ValueType)
 	assert.Equal(t, azs, builder.config.AZs.Static.([]string))
 
 	// Test SetAZsExpression
 	expr := "data.aws_availability_zones.available.names"
 	builder.SetAZsExpression(expr)
-	assert.Equal(t, ConfigTypeDynamic, builder.config.AZs.Type)
-	assert.Equal(t, ValueTypeStringList, builder.config.AZs.ValueType)
+	assert.Equal(t, hcl.ConfigTypeDynamic, builder.config.AZs.Type)
+	assert.Equal(t, hcl.ValueTypeStringList, builder.config.AZs.ValueType)
 	assert.Equal(t, expr, builder.config.AZs.Dynamic)
 
 	// Test SetPrivateSubnets
 	privateSubnets := []string{"10.0.1.0/24", "10.0.2.0/24"}
 	builder.SetPrivateSubnets(privateSubnets)
-	assert.Equal(t, ConfigTypeStatic, builder.config.PrivateSubnets.Type)
-	assert.Equal(t, ValueTypeStringList, builder.config.PrivateSubnets.ValueType)
+	assert.Equal(t, hcl.ConfigTypeStatic, builder.config.PrivateSubnets.Type)
+	assert.Equal(t, hcl.ValueTypeStringList, builder.config.PrivateSubnets.ValueType)
 	assert.Equal(t, privateSubnets, builder.config.PrivateSubnets.Static.([]string))
 
 	// Test SetPrivateSubnetsExpression
 	privateSubnetsExpr := "local.private_subnets"
 	builder.SetPrivateSubnetsExpression(privateSubnetsExpr)
-	assert.Equal(t, ConfigTypeDynamic, builder.config.PrivateSubnets.Type)
-	assert.Equal(t, ValueTypeStringList, builder.config.PrivateSubnets.ValueType)
+	assert.Equal(t, hcl.ConfigTypeDynamic, builder.config.PrivateSubnets.Type)
+	assert.Equal(t, hcl.ValueTypeStringList, builder.config.PrivateSubnets.ValueType)
 	assert.Equal(t, privateSubnetsExpr, builder.config.PrivateSubnets.Dynamic)
 
 	// Test SetPublicSubnets
 	publicSubnets := []string{"10.0.101.0/24", "10.0.102.0/24"}
 	builder.SetPublicSubnets(publicSubnets)
-	assert.Equal(t, ConfigTypeStatic, builder.config.PublicSubnets.Type)
-	assert.Equal(t, ValueTypeStringList, builder.config.PublicSubnets.ValueType)
+	assert.Equal(t, hcl.ConfigTypeStatic, builder.config.PublicSubnets.Type)
+	assert.Equal(t, hcl.ValueTypeStringList, builder.config.PublicSubnets.ValueType)
 	assert.Equal(t, publicSubnets, builder.config.PublicSubnets.Static.([]string))
 
 	// Test SetPublicSubnetsExpression
 	publicSubnetsExpr := "local.public_subnets"
 	builder.SetPublicSubnetsExpression(publicSubnetsExpr)
-	assert.Equal(t, ConfigTypeDynamic, builder.config.PublicSubnets.Type)
-	assert.Equal(t, ValueTypeStringList, builder.config.PublicSubnets.ValueType)
+	assert.Equal(t, hcl.ConfigTypeDynamic, builder.config.PublicSubnets.Type)
+	assert.Equal(t, hcl.ValueTypeStringList, builder.config.PublicSubnets.ValueType)
 	assert.Equal(t, publicSubnetsExpr, builder.config.PublicSubnets.Dynamic)
 
 	// Test SetPrivateSubnetTags
 	privateTags := map[string]string{"key": "value"}
 	builder.SetPrivateSubnetTags(privateTags)
-	assert.Equal(t, ConfigTypeStatic, builder.config.PrivateSubnetTags.Type)
-	assert.Equal(t, ValueTypeStringMap, builder.config.PrivateSubnetTags.ValueType)
+	assert.Equal(t, hcl.ConfigTypeStatic, builder.config.PrivateSubnetTags.Type)
+	assert.Equal(t, hcl.ValueTypeStringMap, builder.config.PrivateSubnetTags.ValueType)
 	assert.Equal(t, privateTags, builder.config.PrivateSubnetTags.Static.(map[string]string))
 
 	// Test SetPrivateSubnetTagsExpression
 	privateTagsExpr := "local.private_subnet_tags"
 	builder.SetPrivateSubnetTagsExpression(privateTagsExpr)
-	assert.Equal(t, ConfigTypeDynamic, builder.config.PrivateSubnetTags.Type)
-	assert.Equal(t, ValueTypeStringMap, builder.config.PrivateSubnetTags.ValueType)
+	assert.Equal(t, hcl.ConfigTypeDynamic, builder.config.PrivateSubnetTags.Type)
+	assert.Equal(t, hcl.ValueTypeStringMap, builder.config.PrivateSubnetTags.ValueType)
 	assert.Equal(t, privateTagsExpr, builder.config.PrivateSubnetTags.Dynamic)
 
 	// Test AddPublicSubnetTag
@@ -223,12 +224,12 @@ func TestErrorCases(t *testing.T) {
 	assert.Error(t, err)
 
 	// Test empty source
-	builder.config.Source = &HclField{Type: ConfigTypeStatic, Static: "", ValueType: ValueTypeString}
+	builder.config.Source = &hcl.HclField{Type: hcl.ConfigTypeStatic, Static: "", ValueType: hcl.ValueTypeString}
 	_, err = builder.Build()
 	assert.Error(t, err)
 
 	// Test empty version
-	builder.config.Version = &HclField{Type: ConfigTypeStatic, Static: "", ValueType: ValueTypeString}
+	builder.config.Version = &hcl.HclField{Type: hcl.ConfigTypeStatic, Static: "", ValueType: hcl.ValueTypeString}
 	_, err = builder.Build()
 	assert.Error(t, err)
 }

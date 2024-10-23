@@ -2,11 +2,14 @@ package vpc
 
 import (
 	"fmt"
+	"reflect"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/zclconf/go-cty/cty"
+
+	"strings"
 )
 
 func (c *VPCConfig) GenerateHCL() (string, error) {
@@ -15,77 +18,73 @@ func (c *VPCConfig) GenerateHCL() (string, error) {
 	moduleBlock := rootBody.AppendNewBlock("module", []string{"vpc"})
 	moduleBody := moduleBlock.Body()
 
-	moduleBody.SetAttributeValue("source", cty.StringVal(c.Source))
-	moduleBody.SetAttributeValue("version", cty.StringVal(c.Version))
-	moduleBody.SetAttributeValue("name", cty.StringVal(c.Name))
-	moduleBody.SetAttributeValue("cidr", cty.StringVal(c.CIDR))
+	// Use reflection to iterate over struct fields
+	val := reflect.ValueOf(c).Elem()
+	typ := val.Type()
 
-	// Handle AZs
-	if err := handleDynamicStaticAttribute(moduleBody, "azs", c.AZs, func(v interface{}) cty.Value {
-		return cty.ListVal(stringsToValues(v.([]string)))
-	}); err != nil {
-		return "", err
+	for i := 0; i < val.NumField(); i++ {
+		field := val.Field(i)
+		fieldType := typ.Field(i)
+		hclTag := fieldType.Tag.Get("hcl")
+		if hclTag == "" {
+			continue
+		}
+
+		// Split the hcl tag to get the field name (remove any options like ",optional")
+		fieldName := strings.Split(hclTag, ",")[0]
+
+		// All fields are now DynamicStaticConfig
+		if !field.IsNil() {
+			config := field.Interface().(*DynamicStaticConfig)
+			if err := handleDynamicStaticAttribute(moduleBody, fieldName, config); err != nil {
+				return "", err
+			}
+		}
 	}
 
-	// Handle PrivateSubnets
-	if err := handleDynamicStaticAttribute(moduleBody, "private_subnets", c.PrivateSubnets, func(v interface{}) cty.Value {
-		return cty.ListVal(stringsToValues(v.([]string)))
-	}); err != nil {
-		return "", err
-	}
-
-	// Handle PublicSubnets
-	if err := handleDynamicStaticAttribute(moduleBody, "public_subnets", c.PublicSubnets, func(v interface{}) cty.Value {
-		return cty.ListVal(stringsToValues(v.([]string)))
-	}); err != nil {
-		return "", err
-	}
-
-	// Handle PrivateSubnetTags
-	if err := handleDynamicStaticAttribute(moduleBody, "private_subnet_tags", c.PrivateSubnetTags, func(v interface{}) cty.Value {
-		return cty.MapVal(stringMapToValues(v.(map[string]string)))
-	}); err != nil {
-		return "", err
-	}
-
-	moduleBody.SetAttributeValue("enable_nat_gateway", cty.BoolVal(c.EnableNATGateway))
-	moduleBody.SetAttributeValue("single_nat_gateway", cty.BoolVal(c.SingleNATGateway))
-	moduleBody.SetAttributeValue("enable_dns_hostnames", cty.BoolVal(true))
-	moduleBody.SetAttributeValue("enable_dns_support", cty.BoolVal(true))
-
-	if len(c.PublicSubnetTags) > 0 {
-		moduleBody.SetAttributeValue("public_subnet_tags", cty.MapVal(stringMapToValues(c.PublicSubnetTags)))
-	}
-
-	if len(c.Tags) > 0 {
-		moduleBody.SetAttributeValue("tags", cty.MapVal(stringMapToValues(c.Tags)))
-	}
-
-	var formattedhcl = hclwrite.Format(f.Bytes())
-
-	return string(formattedhcl), nil
+	return string(hclwrite.Format(f.Bytes())), nil
 }
 
-func handleDynamicStaticAttribute[T DynamicStaticType](
+func handleDynamicStaticAttribute(
 	moduleBody *hclwrite.Body,
 	attrName string,
-	config *DynamicStaticConfig[T],
-	staticConverter func(interface{}) cty.Value,
+	config *DynamicStaticConfig,
 ) error {
 	if config == nil {
 		return nil
 	}
 
-	if config.Type.String() == "dynamic" {
+	if config.Type == ConfigTypeDynamic {
 		tokens, diags := hclsyntax.LexExpression([]byte(config.Dynamic), "", hcl.Pos{Line: 1, Column: 1})
 		if diags.HasErrors() {
 			return fmt.Errorf("failed to lex dynamic %s expression: %v", attrName, diags)
 		}
 		moduleBody.SetAttributeRaw(attrName, ConvertHCLSyntaxToHCLWrite(tokens))
 	} else {
-		moduleBody.SetAttributeValue(attrName, staticConverter(config.Static))
+		value, err := convertToAttributeValue(config.Static, config.ValueType)
+		if err != nil {
+			return err
+		}
+		moduleBody.SetAttributeValue(attrName, value)
 	}
 	return nil
+}
+
+func convertToAttributeValue(value interface{}, valueType ValueType) (cty.Value, error) {
+	switch valueType {
+	case ValueTypeString:
+		return cty.StringVal(value.(string)), nil
+	case ValueTypeBool:
+		return cty.BoolVal(value.(bool)), nil
+	case ValueTypeStringMap:
+		m := value.(map[string]string)
+		return cty.MapVal(stringMapToValues(m)), nil
+	case ValueTypeStringList:
+		list := value.([]string)
+		return cty.ListVal(stringsToValues(list)), nil
+	default:
+		return cty.NilVal, fmt.Errorf("unsupported value type: %s", valueType)
+	}
 }
 
 func stringsToValues(strs []string) []cty.Value {

@@ -5,82 +5,88 @@ import (
 	"net"
 
 	"github.com/hashicorp/hcl/v2"
-	"github.com/hashicorp/hcl/v2/gohcl"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/zclconf/go-cty/cty"
 )
 
-// AZsConfig represents either a static list of AZs or a dynamic expression
-type AZsConfig struct {
-	Type    AZsType  `hcl:"type" json:"type"`
-	Static  []string `hcl:"static,optional" json:"static,omitempty"`
-	Dynamic string   `hcl:"dynamic,optional" json:"dynamic,omitempty"`
+type DynamicStaticType interface {
+	AZsType | PrivateSubnetsType | PublicSubnetsType | PrivateSubnetTagsType
+	String() string
 }
 
+// AZsType represents the type of AZs configuration
 type AZsType string
+
+func (t AZsType) String() string { return string(t) }
 
 const (
 	AZsTypeStatic  AZsType = "static"
 	AZsTypeDynamic AZsType = "dynamic"
 )
 
-// PrivateSubnetsConfig represents either a static list of subnets or a dynamic expression
-type PrivateSubnetsConfig struct {
-	Type    PrivateSubnetsType `hcl:"type" json:"type"`
-	Static  []string           `hcl:"static,optional" json:"static,omitempty"`
-	Dynamic string             `hcl:"dynamic,optional" json:"dynamic,omitempty"`
-}
-
+// PrivateSubnetsType represents the type of private subnets configuration
 type PrivateSubnetsType string
+
+func (t PrivateSubnetsType) String() string { return string(t) }
 
 const (
 	PrivateSubnetsTypeStatic  PrivateSubnetsType = "static"
 	PrivateSubnetsTypeDynamic PrivateSubnetsType = "dynamic"
 )
 
-// PublicSubnetsConfig represents either a static list of subnets or a dynamic expression
-type PublicSubnetsConfig struct {
-	Type    PublicSubnetsType `hcl:"type" json:"type"`
-	Static  []string          `hcl:"static,optional" json:"static,omitempty"`
-	Dynamic string            `hcl:"dynamic,optional" json:"dynamic,omitempty"`
-}
-
+// PublicSubnetsType represents the type of public subnets configuration
 type PublicSubnetsType string
+
+func (t PublicSubnetsType) String() string { return string(t) }
 
 const (
 	PublicSubnetsTypeStatic  PublicSubnetsType = "static"
 	PublicSubnetsTypeDynamic PublicSubnetsType = "dynamic"
 )
 
-// PrivateSubnetTagsConfig represents either a static map of tags or a dynamic expression
-type PrivateSubnetTagsConfig struct {
-	Type    PrivateSubnetTagsType `hcl:"type" json:"type"`
-	Static  map[string]string     `hcl:"static,optional" json:"static,omitempty"`
-	Dynamic string                `hcl:"dynamic,optional" json:"dynamic,omitempty"`
-}
-
+// PrivateSubnetTagsType represents the type of private subnet tags configuration
 type PrivateSubnetTagsType string
+
+func (t PrivateSubnetTagsType) String() string { return string(t) }
 
 const (
 	PrivateSubnetTagsTypeStatic  PrivateSubnetTagsType = "static"
 	PrivateSubnetTagsTypeDynamic PrivateSubnetTagsType = "dynamic"
 )
 
+type DynamicStaticConfig[T DynamicStaticType] struct {
+	Type    T           `hcl:"type" json:"type"`
+	Static  interface{} `hcl:"static,optional" json:"static,omitempty"`
+	Dynamic string      `hcl:"dynamic,optional" json:"dynamic,omitempty"`
+}
+
+// AZs represents the configuration for availability zones
+type AZs = DynamicStaticConfig[AZsType]
+
+// PrivateSubnets represents the configuration for private subnets
+type PrivateSubnets = DynamicStaticConfig[PrivateSubnetsType]
+
+// PublicSubnets represents the configuration for public subnets
+type PublicSubnets = DynamicStaticConfig[PublicSubnetsType]
+
+// PrivateSubnetTags represents the configuration for private subnet tags
+type PrivateSubnetTags = DynamicStaticConfig[PrivateSubnetTagsType]
+
 // VPCConfig represents the configuration for a VPC
 type VPCConfig struct {
-	Source            string                   `hcl:"source"`
-	Version           string                   `hcl:"version"`
-	Name              string                   `hcl:"name"`
-	CIDR              string                   `hcl:"cidr"`
-	AZs               *AZsConfig               `hcl:"azs,optional"`
-	PrivateSubnets    *PrivateSubnetsConfig    `hcl:"private_subnets,optional"`
-	PublicSubnets     *PublicSubnetsConfig     `hcl:"public_subnets,optional"`
-	EnableNATGateway  bool                     `hcl:"enable_nat_gateway"`
-	SingleNATGateway  bool                     `hcl:"single_nat_gateway"`
-	PublicSubnetTags  map[string]string        `hcl:"public_subnet_tags,optional"`
-	PrivateSubnetTags *PrivateSubnetTagsConfig `hcl:"private_subnet_tags,optional"`
-	Tags              map[string]string        `hcl:"tags,optional"`
+	Source            string             `hcl:"source"`
+	Version           string             `hcl:"version"`
+	Name              string             `hcl:"name"`
+	CIDR              string             `hcl:"cidr"`
+	AZs               *AZs               `hcl:"azs,optional"`
+	PrivateSubnets    *PrivateSubnets    `hcl:"private_subnets,optional"`
+	PublicSubnets     *PublicSubnets     `hcl:"public_subnets,optional"`
+	EnableNATGateway  bool               `hcl:"enable_nat_gateway"`
+	SingleNATGateway  bool               `hcl:"single_nat_gateway"`
+	PublicSubnetTags  map[string]string  `hcl:"public_subnet_tags,optional"`
+	PrivateSubnetTags *PrivateSubnetTags `hcl:"private_subnet_tags,optional"`
+	Tags              map[string]string  `hcl:"tags,optional"`
 }
 
 // VPCConfigBuilder is a builder for VPCConfig
@@ -100,15 +106,15 @@ func NewVPCConfig() *VPCConfigBuilder {
 			Version:          "5.0.0",
 			Name:             "eks-vpc",
 			CIDR:             "10.0.0.0/16",
-			AZs:              &AZsConfig{Type: AZsTypeStatic, Static: []string{"us-west-2a", "us-west-2b", "us-west-2c"}},
-			PrivateSubnets:   &PrivateSubnetsConfig{Type: PrivateSubnetsTypeStatic, Static: []string{"10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"}},
-			PublicSubnets:    &PublicSubnetsConfig{Type: PublicSubnetsTypeStatic, Static: []string{"10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"}},
+			AZs:              &AZs{Type: AZsTypeStatic, Static: []string{"us-west-2a", "us-west-2b", "us-west-2c"}},
+			PrivateSubnets:   &PrivateSubnets{Type: PrivateSubnetsTypeStatic, Static: []string{"10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"}},
+			PublicSubnets:    &PublicSubnets{Type: PublicSubnetsTypeStatic, Static: []string{"10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"}},
 			EnableNATGateway: true,
 			SingleNATGateway: true,
 			PublicSubnetTags: map[string]string{
 				"kubernetes.io/role/elb": "1",
 			},
-			PrivateSubnetTags: &PrivateSubnetTagsConfig{
+			PrivateSubnetTags: &PrivateSubnetTags{
 				Type:   PrivateSubnetTagsTypeStatic,
 				Static: defaultPrivateSubnetTags,
 			},
@@ -117,259 +123,24 @@ func NewVPCConfig() *VPCConfigBuilder {
 	}
 }
 
-// SetSource sets the source of the VPC module
-func (b *VPCConfigBuilder) SetSource(source string) *VPCConfigBuilder {
-	b.config.Source = source
-	return b
-}
-
-// SetVersion sets the version of the VPC module
-func (b *VPCConfigBuilder) SetVersion(version string) *VPCConfigBuilder {
-	b.config.Version = version
-	return b
-}
-
-// SetName sets the name of the VPC
-func (b *VPCConfigBuilder) SetName(name string) *VPCConfigBuilder {
-	b.config.Name = name
-	return b
-}
-
-// SetCIDR sets the CIDR block for the VPC
-func (b *VPCConfigBuilder) SetCIDR(cidr string) *VPCConfigBuilder {
-	b.config.CIDR = cidr
-	return b
-}
-
-// SetAZs sets the availability zones for the VPC
-func (b *VPCConfigBuilder) SetAZs(azs []string) *VPCConfigBuilder {
-	b.config.AZs = &AZsConfig{
-		Type:   AZsTypeStatic,
-		Static: azs,
+func handleDynamicStaticAttribute[T DynamicStaticType](
+	moduleBody *hclwrite.Body,
+	attrName string,
+	config *DynamicStaticConfig[T],
+	staticConverter func(interface{}) cty.Value,
+) error {
+	if config == nil {
+		return nil
 	}
 
-	// Adjust private subnets to match the number of AZs
-	if b.config.PrivateSubnets != nil && b.config.PrivateSubnets.Type == PrivateSubnetsTypeStatic {
-		newPrivateSubnets := make([]string, len(azs))
-		for i := range azs {
-			if i < len(b.config.PrivateSubnets.Static) {
-				newPrivateSubnets[i] = b.config.PrivateSubnets.Static[i]
-			} else {
-				// Generate a new subnet CIDR if needed
-				newPrivateSubnets[i] = fmt.Sprintf("10.0.%d.0/24", i+1)
-			}
+	if config.Type.String() == "dynamic" {
+		tokens, diags := hclsyntax.LexExpression([]byte(config.Dynamic), "", hcl.Pos{Line: 1, Column: 1})
+		if diags.HasErrors() {
+			return fmt.Errorf("failed to lex dynamic %s expression: %v", attrName, diags)
 		}
-		b.config.PrivateSubnets.Static = newPrivateSubnets
-	}
-	// Adjust public subnets to match the number of AZs if they exist
-	if b.config.PublicSubnets != nil && b.config.PublicSubnets.Type == PublicSubnetsTypeStatic {
-		newPublicSubnets := make([]string, len(azs))
-		for i := range azs {
-			if i < len(b.config.PublicSubnets.Static) {
-				newPublicSubnets[i] = b.config.PublicSubnets.Static[i]
-			} else {
-				// Generate a new subnet CIDR if needed
-				newPublicSubnets[i] = fmt.Sprintf("10.0.%d.0/24", 101+i)
-			}
-		}
-		b.config.PublicSubnets.Static = newPublicSubnets
-	}
-	return b
-}
-
-// SetAZsExpression sets the AZs as an HCL expression
-func (b *VPCConfigBuilder) SetAZsExpression(expr string) *VPCConfigBuilder {
-	b.config.AZs = &AZsConfig{
-		Type:    AZsTypeDynamic,
-		Dynamic: expr,
-	}
-	return b
-}
-
-// SetPrivateSubnets sets the private subnets for the VPC
-func (b *VPCConfigBuilder) SetPrivateSubnets(subnets []string) *VPCConfigBuilder {
-	b.config.PrivateSubnets = &PrivateSubnetsConfig{
-		Type:   PrivateSubnetsTypeStatic,
-		Static: subnets,
-	}
-	return b
-}
-
-// SetPrivateSubnetsExpression sets the private subnets as an HCL expression
-func (b *VPCConfigBuilder) SetPrivateSubnetsExpression(expr string) *VPCConfigBuilder {
-	b.config.PrivateSubnets = &PrivateSubnetsConfig{
-		Type:    PrivateSubnetsTypeDynamic,
-		Dynamic: expr,
-	}
-	return b
-}
-
-// SetPublicSubnets sets the public subnets for the VPC
-func (b *VPCConfigBuilder) SetPublicSubnets(subnets []string) *VPCConfigBuilder {
-	b.config.PublicSubnets = &PublicSubnetsConfig{
-		Type:   PublicSubnetsTypeStatic,
-		Static: subnets,
-	}
-	return b
-}
-
-// SetPublicSubnetsExpression sets the public subnets as an HCL expression
-func (b *VPCConfigBuilder) SetPublicSubnetsExpression(expr string) *VPCConfigBuilder {
-	b.config.PublicSubnets = &PublicSubnetsConfig{
-		Type:    PublicSubnetsTypeDynamic,
-		Dynamic: expr,
-	}
-	return b
-}
-
-// SetPrivateSubnetTags sets the private subnet tags for the VPC
-func (b *VPCConfigBuilder) SetPrivateSubnetTags(tags map[string]string) *VPCConfigBuilder {
-	b.config.PrivateSubnetTags = &PrivateSubnetTagsConfig{
-		Type:   PrivateSubnetTagsTypeStatic,
-		Static: tags,
-	}
-	return b
-}
-
-// SetPrivateSubnetTagsExpression sets the private subnet tags as an HCL expression
-func (b *VPCConfigBuilder) SetPrivateSubnetTagsExpression(expr string) *VPCConfigBuilder {
-	b.config.PrivateSubnetTags = &PrivateSubnetTagsConfig{
-		Type:    PrivateSubnetTagsTypeDynamic,
-		Dynamic: expr,
-	}
-	return b
-}
-
-// AddPrivateSubnetTag adds a tag to the private subnets
-func (b *VPCConfigBuilder) AddPrivateSubnetTag(key, value string) *VPCConfigBuilder {
-	if b.config.PrivateSubnetTags == nil || b.config.PrivateSubnetTags.Type != PrivateSubnetTagsTypeStatic {
-		b.config.PrivateSubnetTags = &PrivateSubnetTagsConfig{
-			Type:   PrivateSubnetTagsTypeStatic,
-			Static: make(map[string]string),
-		}
-	}
-	b.config.PrivateSubnetTags.Static[key] = value
-	return b
-}
-
-// SetEnableNATGateway sets whether to enable NAT Gateway
-func (b *VPCConfigBuilder) SetEnableNATGateway(enable bool) *VPCConfigBuilder {
-	b.config.EnableNATGateway = enable
-	return b
-}
-
-// SetSingleNATGateway sets whether to use a single NAT Gateway
-func (b *VPCConfigBuilder) SetSingleNATGateway(single bool) *VPCConfigBuilder {
-	b.config.SingleNATGateway = single
-	return b
-}
-
-// AddPublicSubnetTag adds a tag to the public subnets
-func (b *VPCConfigBuilder) AddPublicSubnetTag(key, value string) *VPCConfigBuilder {
-	if b.config.PublicSubnetTags == nil {
-		b.config.PublicSubnetTags = make(map[string]string)
-	}
-	b.config.PublicSubnetTags[key] = value
-	return b
-}
-
-// AddTag adds a tag to the VPC
-func (b *VPCConfigBuilder) AddTag(key, value string) *VPCConfigBuilder {
-	if b.config.Tags == nil {
-		b.config.Tags = make(map[string]string)
-	}
-	b.config.Tags[key] = value
-	return b
-}
-
-// Build creates the final VPCConfig
-func (b *VPCConfigBuilder) Build() (*VPCConfig, error) {
-	if err := b.config.Validate(); err != nil {
-		return nil, err
-	}
-	return b.config, nil
-}
-
-// Validate checks if the VPCConfig is valid
-func (c *VPCConfig) Validate() error {
-	if c.Source == "" {
-		return fmt.Errorf("VPC module source cannot be empty")
-	}
-	if c.Version == "" {
-		return fmt.Errorf("VPC module version cannot be empty")
-	}
-	if c.Name == "" {
-		return fmt.Errorf("VPC name cannot be empty")
-	}
-	if c.CIDR == "" {
-		return fmt.Errorf("VPC CIDR cannot be empty")
-	}
-	if _, _, err := net.ParseCIDR(c.CIDR); err != nil {
-		return fmt.Errorf("invalid CIDR address: %v", err)
-	}
-	if c.PrivateSubnets == nil && c.PublicSubnets == nil {
-		return fmt.Errorf("at least one subnet (private or public) must be specified")
-	}
-	if c.AZs == nil {
-		return fmt.Errorf("AZs configuration cannot be nil")
-	}
-	if c.AZs.Type == AZsTypeStatic && len(c.AZs.Static) == 0 {
-		return fmt.Errorf("static AZs must be specified when using AZsTypeStatic")
-	}
-	if c.AZs.Type == AZsTypeDynamic && c.AZs.Dynamic == "" {
-		return fmt.Errorf("dynamic AZs expression must be specified when using AZsTypeDynamic")
-	}
-	return c.validateSubnets()
-}
-
-func (c *VPCConfig) validateSubnets() error {
-	// Check if at least one subnet type has valid configuration
-	hasValidSubnets := false
-
-	if c.PrivateSubnets != nil {
-		if c.PrivateSubnets.Type == PrivateSubnetsTypeStatic {
-			if len(c.PrivateSubnets.Static) == 0 {
-				return fmt.Errorf("static private subnets must not be empty when using PrivateSubnetsTypeStatic")
-			}
-			hasValidSubnets = true
-		} else if c.PrivateSubnets.Type == PrivateSubnetsTypeDynamic {
-			if c.PrivateSubnets.Dynamic == "" {
-				return fmt.Errorf("dynamic private subnets expression must not be empty when using PrivateSubnetsTypeDynamic")
-			}
-			hasValidSubnets = true
-		}
-	}
-
-	if c.PublicSubnets != nil {
-		if c.PublicSubnets.Type == PublicSubnetsTypeStatic {
-			if len(c.PublicSubnets.Static) == 0 {
-				return fmt.Errorf("static public subnets must not be empty when using PublicSubnetsTypeStatic")
-			}
-			hasValidSubnets = true
-		} else if c.PublicSubnets.Type == PublicSubnetsTypeDynamic {
-			if c.PublicSubnets.Dynamic == "" {
-				return fmt.Errorf("dynamic public subnets expression must not be empty when using PublicSubnetsTypeDynamic")
-			}
-			hasValidSubnets = true
-		}
-	}
-
-	if !hasValidSubnets {
-		return fmt.Errorf("at least one subnet type (private or public) must have valid configuration")
-	}
-
-	// Validate CIDR format for static subnets
-	var allSubnets []string
-	if c.PrivateSubnets != nil && c.PrivateSubnets.Type == PrivateSubnetsTypeStatic {
-		allSubnets = append(allSubnets, c.PrivateSubnets.Static...)
-	}
-	if c.PublicSubnets != nil && c.PublicSubnets.Type == PublicSubnetsTypeStatic {
-		allSubnets = append(allSubnets, c.PublicSubnets.Static...)
-	}
-	for _, subnet := range allSubnets {
-		if _, _, err := net.ParseCIDR(subnet); err != nil {
-			return fmt.Errorf("invalid subnet CIDR address: %v", err)
-		}
+		moduleBody.SetAttributeRaw(attrName, ConvertHCLSyntaxToHCLWrite(tokens))
+	} else {
+		moduleBody.SetAttributeValue(attrName, staticConverter(config.Static))
 	}
 	return nil
 }
@@ -377,76 +148,58 @@ func (c *VPCConfig) validateSubnets() error {
 func (c *VPCConfig) GenerateHCL() (string, error) {
 	f := hclwrite.NewEmptyFile()
 	rootBody := f.Body()
-
 	moduleBlock := rootBody.AppendNewBlock("module", []string{"vpc"})
 	moduleBody := moduleBlock.Body()
 
-	// Create a local copy of the config
-	configCopy := *c
-	azs := configCopy.AZs
-	privateSubnets := configCopy.PrivateSubnets
-	publicSubnets := configCopy.PublicSubnets
-	privateSubnetTags := configCopy.PrivateSubnetTags
-	configCopy.AZs = nil
-	configCopy.PrivateSubnets = nil
-	configCopy.PublicSubnets = nil
-	configCopy.PrivateSubnetTags = nil
+	moduleBody.SetAttributeValue("source", cty.StringVal(c.Source))
+	moduleBody.SetAttributeValue("version", cty.StringVal(c.Version))
+	moduleBody.SetAttributeValue("name", cty.StringVal(c.Name))
+	moduleBody.SetAttributeValue("cidr", cty.StringVal(c.CIDR))
 
-	// Encode most fields using gohcl.EncodeIntoBody
-	gohcl.EncodeIntoBody(&configCopy, moduleBody)
-
-	// Handle AZs separately
-	if azs.Type == AZsTypeDynamic {
-		tokens, diags := hclsyntax.LexExpression([]byte(azs.Dynamic), "", hcl.Pos{Line: 1, Column: 1})
-		if diags.HasErrors() {
-			return "", fmt.Errorf("failed to lex dynamic AZs expression: %v", diags)
-		}
-		moduleBody.SetAttributeRaw("azs", ConvertHCLSyntaxToHCLWrite(tokens))
-	} else {
-		moduleBody.SetAttributeValue("azs", cty.ListVal(stringsToValues(azs.Static)))
+	// Handle AZs
+	if err := handleDynamicStaticAttribute(moduleBody, "azs", c.AZs, func(v interface{}) cty.Value {
+		return cty.ListVal(stringsToValues(v.([]string)))
+	}); err != nil {
+		return "", err
 	}
 
-	// Handle PrivateSubnets separately
-	if privateSubnets != nil {
-		if privateSubnets.Type == PrivateSubnetsTypeDynamic {
-			tokens, diags := hclsyntax.LexExpression([]byte(privateSubnets.Dynamic), "", hcl.Pos{Line: 1, Column: 1})
-			if diags.HasErrors() {
-				return "", fmt.Errorf("failed to lex dynamic private subnets expression: %v", diags)
-			}
-			moduleBody.SetAttributeRaw("private_subnets", ConvertHCLSyntaxToHCLWrite(tokens))
-		} else {
-			moduleBody.SetAttributeValue("private_subnets", cty.ListVal(stringsToValues(privateSubnets.Static)))
-		}
+	// Handle PrivateSubnets
+	if err := handleDynamicStaticAttribute(moduleBody, "private_subnets", c.PrivateSubnets, func(v interface{}) cty.Value {
+		return cty.ListVal(stringsToValues(v.([]string)))
+	}); err != nil {
+		return "", err
 	}
 
-	// Handle PublicSubnets separately
-	if publicSubnets != nil {
-		if publicSubnets.Type == PublicSubnetsTypeDynamic {
-			tokens, diags := hclsyntax.LexExpression([]byte(publicSubnets.Dynamic), "", hcl.Pos{Line: 1, Column: 1})
-			if diags.HasErrors() {
-				return "", fmt.Errorf("failed to lex dynamic public subnets expression: %v", diags)
-			}
-			moduleBody.SetAttributeRaw("public_subnets", ConvertHCLSyntaxToHCLWrite(tokens))
-		} else {
-			moduleBody.SetAttributeValue("public_subnets", cty.ListVal(stringsToValues(publicSubnets.Static)))
-		}
+	// Handle PublicSubnets
+	if err := handleDynamicStaticAttribute(moduleBody, "public_subnets", c.PublicSubnets, func(v interface{}) cty.Value {
+		return cty.ListVal(stringsToValues(v.([]string)))
+	}); err != nil {
+		return "", err
 	}
 
-	// Handle PrivateSubnetTags separately
-	if privateSubnetTags != nil {
-		if privateSubnetTags.Type == PrivateSubnetTagsTypeDynamic {
-			tokens, diags := hclsyntax.LexExpression([]byte(privateSubnetTags.Dynamic), "", hcl.Pos{Line: 1, Column: 1})
-			if diags.HasErrors() {
-				return "", fmt.Errorf("failed to lex dynamic private subnet tags expression: %v", diags)
-			}
-			moduleBody.SetAttributeRaw("private_subnet_tags", ConvertHCLSyntaxToHCLWrite(tokens))
-		} else {
-			moduleBody.SetAttributeValue("private_subnet_tags", cty.MapVal(stringMapToValues(privateSubnetTags.Static)))
-		}
+	// Handle PrivateSubnetTags
+	if err := handleDynamicStaticAttribute(moduleBody, "private_subnet_tags", c.PrivateSubnetTags, func(v interface{}) cty.Value {
+		return cty.MapVal(stringMapToValues(v.(map[string]string)))
+	}); err != nil {
+		return "", err
 	}
 
-	// Format the generated HCL
-	return string(hclwrite.Format(f.Bytes())), nil
+	moduleBody.SetAttributeValue("enable_nat_gateway", cty.BoolVal(c.EnableNATGateway))
+	moduleBody.SetAttributeValue("single_nat_gateway", cty.BoolVal(c.SingleNATGateway))
+	moduleBody.SetAttributeValue("enable_dns_hostnames", cty.BoolVal(true))
+	moduleBody.SetAttributeValue("enable_dns_support", cty.BoolVal(true))
+
+	if len(c.PublicSubnetTags) > 0 {
+		moduleBody.SetAttributeValue("public_subnet_tags", cty.MapVal(stringMapToValues(c.PublicSubnetTags)))
+	}
+
+	if len(c.Tags) > 0 {
+		moduleBody.SetAttributeValue("tags", cty.MapVal(stringMapToValues(c.Tags)))
+	}
+
+	var formattedhcl = hclwrite.Format(f.Bytes())
+
+	return string(formattedhcl), nil
 }
 
 func stringsToValues(strs []string) []cty.Value {
@@ -465,7 +218,6 @@ func stringMapToValues(m map[string]string) map[string]cty.Value {
 	return values
 }
 
-// ConvertHCLSyntaxToHCLWrite converts hclsyntax.Tokens to hclwrite.Tokens
 func ConvertHCLSyntaxToHCLWrite(syntaxTokens hclsyntax.Tokens) hclwrite.Tokens {
 	writeTokens := make(hclwrite.Tokens, len(syntaxTokens))
 	for i, token := range syntaxTokens {
@@ -476,4 +228,141 @@ func ConvertHCLSyntaxToHCLWrite(syntaxTokens hclsyntax.Tokens) hclwrite.Tokens {
 		}
 	}
 	return writeTokens
+}
+
+// Builder methods
+func (b *VPCConfigBuilder) SetSource(source string) *VPCConfigBuilder {
+	b.config.Source = source
+	return b
+}
+
+func (b *VPCConfigBuilder) SetVersion(version string) *VPCConfigBuilder {
+	b.config.Version = version
+	return b
+}
+
+func (b *VPCConfigBuilder) SetName(name string) *VPCConfigBuilder {
+	b.config.Name = name
+	return b
+}
+
+func (b *VPCConfigBuilder) SetCIDR(cidr string) *VPCConfigBuilder {
+	b.config.CIDR = cidr
+	return b
+}
+
+func (b *VPCConfigBuilder) SetAZs(azs []string) *VPCConfigBuilder {
+	b.config.AZs = &AZs{
+		Type:   AZsTypeStatic,
+		Static: azs,
+	}
+	return b
+}
+
+func (b *VPCConfigBuilder) SetAZsExpression(expr string) *VPCConfigBuilder {
+	b.config.AZs = &AZs{
+		Type:    AZsTypeDynamic,
+		Dynamic: expr,
+	}
+	return b
+}
+
+func (b *VPCConfigBuilder) SetPrivateSubnets(subnets []string) *VPCConfigBuilder {
+	b.config.PrivateSubnets = &PrivateSubnets{
+		Type:   PrivateSubnetsTypeStatic,
+		Static: subnets,
+	}
+	return b
+}
+
+func (b *VPCConfigBuilder) SetPrivateSubnetsExpression(expr string) *VPCConfigBuilder {
+	b.config.PrivateSubnets = &PrivateSubnets{
+		Type:    PrivateSubnetsTypeDynamic,
+		Dynamic: expr,
+	}
+	return b
+}
+
+func (b *VPCConfigBuilder) SetPublicSubnets(subnets []string) *VPCConfigBuilder {
+	b.config.PublicSubnets = &PublicSubnets{
+		Type:   PublicSubnetsTypeStatic,
+		Static: subnets,
+	}
+	return b
+}
+
+func (b *VPCConfigBuilder) SetPublicSubnetsExpression(expr string) *VPCConfigBuilder {
+	b.config.PublicSubnets = &PublicSubnets{
+		Type:    PublicSubnetsTypeDynamic,
+		Dynamic: expr,
+	}
+	return b
+}
+
+func (b *VPCConfigBuilder) SetPrivateSubnetTags(tags map[string]string) *VPCConfigBuilder {
+	b.config.PrivateSubnetTags = &PrivateSubnetTags{
+		Type:   PrivateSubnetTagsTypeStatic,
+		Static: tags,
+	}
+	return b
+}
+
+func (b *VPCConfigBuilder) SetPrivateSubnetTagsExpression(expr string) *VPCConfigBuilder {
+	b.config.PrivateSubnetTags = &PrivateSubnetTags{
+		Type:    PrivateSubnetTagsTypeDynamic,
+		Dynamic: expr,
+	}
+	return b
+}
+
+func (b *VPCConfigBuilder) SetEnableNATGateway(enable bool) *VPCConfigBuilder {
+	b.config.EnableNATGateway = enable
+	return b
+}
+
+func (b *VPCConfigBuilder) SetSingleNATGateway(single bool) *VPCConfigBuilder {
+	b.config.SingleNATGateway = single
+	return b
+}
+
+func (b *VPCConfigBuilder) AddPublicSubnetTag(key, value string) *VPCConfigBuilder {
+	if b.config.PublicSubnetTags == nil {
+		b.config.PublicSubnetTags = make(map[string]string)
+	}
+	b.config.PublicSubnetTags[key] = value
+	return b
+}
+
+func (b *VPCConfigBuilder) AddTag(key, value string) *VPCConfigBuilder {
+	if b.config.Tags == nil {
+		b.config.Tags = make(map[string]string)
+	}
+	b.config.Tags[key] = value
+	return b
+}
+
+func (b *VPCConfigBuilder) Build() (*VPCConfig, error) {
+	if err := b.config.Validate(); err != nil {
+		return nil, err
+	}
+	return b.config, nil
+}
+
+func (c *VPCConfig) Validate() error {
+	if c.Source == "" {
+		return fmt.Errorf("VPC module source cannot be empty")
+	}
+	if c.Version == "" {
+		return fmt.Errorf("VPC module version cannot be empty")
+	}
+	if c.Name == "" {
+		return fmt.Errorf("VPC name cannot be empty")
+	}
+	if c.CIDR == "" {
+		return fmt.Errorf("VPC CIDR cannot be empty")
+	}
+	if _, _, err := net.ParseCIDR(c.CIDR); err != nil {
+		return fmt.Errorf("invalid CIDR address: %v", err)
+	}
+	return nil
 }

@@ -11,13 +11,10 @@ module "vpc" {
   public_subnet_tags = {
     "kubernetes.io/role/elb" = "1"
   }
-  private_subnet_tags = merge(
-    {
-      "kubernetes.io/role/internal-elb" = "1"
-      "karpenter.sh/discovery"          = local.name
-    },
-    var.private_subnet_tags
-  )
+  private_subnet_tags = {
+    "kubernetes.io/role/internal-elb" = "1"
+    "karpenter.sh/discovery"          = local.name
+  }
   tags = {
     Environment = "dev"
     Terraform   = "true"

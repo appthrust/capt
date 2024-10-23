@@ -29,6 +29,8 @@ func TestNewVPCConfig(t *testing.T) {
 		{"PublicSubnetTags count", len(config.PublicSubnetTags), 1},
 		{"PrivateSubnetTags count", len(config.PrivateSubnetTags), 1},
 		{"AZs", config.AZs, &AZsConfig{Type: AZsTypeStatic, Static: []string{"us-west-2a", "us-west-2b", "us-west-2c"}}},
+		{"PrivateSubnets", config.PrivateSubnets, &PrivateSubnetsConfig{Type: PrivateSubnetsTypeStatic, Static: []string{"10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"}}},
+		{"PublicSubnets", config.PublicSubnets, &PublicSubnetsConfig{Type: PublicSubnetsTypeStatic, Static: []string{"10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"}}},
 	}
 
 	for _, tt := range tests {
@@ -121,7 +123,17 @@ func TestBuilderMethods(t *testing.T) {
 			"SetPrivateSubnets",
 			func(b *VPCConfigBuilder) { b.SetPrivateSubnets([]string{"172.16.1.0/24", "172.16.2.0/24"}) },
 			func(c *VPCConfig) bool {
-				return reflect.DeepEqual(c.PrivateSubnets, []string{"172.16.1.0/24", "172.16.2.0/24"})
+				return reflect.DeepEqual(c.PrivateSubnets, &PrivateSubnetsConfig{Type: PrivateSubnetsTypeStatic, Static: []string{"172.16.1.0/24", "172.16.2.0/24"}})
+			},
+			true,
+		},
+		{
+			"SetPrivateSubnetsExpression",
+			func(b *VPCConfigBuilder) {
+				b.SetPrivateSubnetsExpression("[for k, v in local.azs : cidrsubnet(var.vpc_cidr, 4, k)]")
+			},
+			func(c *VPCConfig) bool {
+				return c.PrivateSubnets.Type == PrivateSubnetsTypeDynamic && c.PrivateSubnets.Dynamic == "[for k, v in local.azs : cidrsubnet(var.vpc_cidr, 4, k)]"
 			},
 			true,
 		},
@@ -129,7 +141,17 @@ func TestBuilderMethods(t *testing.T) {
 			"SetPublicSubnets",
 			func(b *VPCConfigBuilder) { b.SetPublicSubnets([]string{"172.16.101.0/24", "172.16.102.0/24"}) },
 			func(c *VPCConfig) bool {
-				return reflect.DeepEqual(c.PublicSubnets, []string{"172.16.101.0/24", "172.16.102.0/24"})
+				return reflect.DeepEqual(c.PublicSubnets, &PublicSubnetsConfig{Type: PublicSubnetsTypeStatic, Static: []string{"172.16.101.0/24", "172.16.102.0/24"}})
+			},
+			true,
+		},
+		{
+			"SetPublicSubnetsExpression",
+			func(b *VPCConfigBuilder) {
+				b.SetPublicSubnetsExpression("[for k, v in local.azs : cidrsubnet(var.vpc_cidr, 8, k + 48)]")
+			},
+			func(c *VPCConfig) bool {
+				return c.PublicSubnets.Type == PublicSubnetsTypeDynamic && c.PublicSubnets.Dynamic == "[for k, v in local.azs : cidrsubnet(var.vpc_cidr, 8, k + 48)]"
 			},
 			true,
 		},
@@ -204,8 +226,8 @@ func TestChainMethods(t *testing.T) {
 		Name:             "chain-vpc",
 		CIDR:             "192.168.0.0/16",
 		AZs:              &AZsConfig{Type: AZsTypeStatic, Static: []string{"us-east-1a", "us-east-1b"}},
-		PrivateSubnets:   []string{"192.168.1.0/24", "192.168.2.0/24"},
-		PublicSubnets:    []string{"192.168.101.0/24", "192.168.102.0/24"},
+		PrivateSubnets:   &PrivateSubnetsConfig{Type: PrivateSubnetsTypeStatic, Static: []string{"192.168.1.0/24", "192.168.2.0/24"}},
+		PublicSubnets:    &PublicSubnetsConfig{Type: PublicSubnetsTypeStatic, Static: []string{"192.168.101.0/24", "192.168.102.0/24"}},
 		EnableNATGateway: true,
 		SingleNATGateway: false,
 		PublicSubnetTags: map[string]string{

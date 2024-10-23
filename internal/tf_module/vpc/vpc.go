@@ -25,28 +25,28 @@ const (
 	ConfigTypeDynamic ConfigType = "dynamic"
 )
 
-// DynamicStaticConfig represents a configuration that can be either static or dynamic
-type DynamicStaticConfig struct {
-	Type      ConfigType
-	Static    interface{}
-	Dynamic   string
-	ValueType ValueType
+// HclField represents a field in HCL that can be either static or dynamic
+type HclField struct {
+	Type      ConfigType  `hcl:"type" json:"type"`
+	Static    interface{} `hcl:"static,optional" json:"static,omitempty"`
+	Dynamic   string      `hcl:"dynamic,optional" json:"dynamic,omitempty"`
+	ValueType ValueType   `hcl:"value_type" json:"value_type"`
 }
 
 // VPCConfig represents the configuration for a VPC
 type VPCConfig struct {
-	Source            *DynamicStaticConfig
-	Version           *DynamicStaticConfig
-	Name              *DynamicStaticConfig
-	CIDR              *DynamicStaticConfig
-	AZs               *DynamicStaticConfig
-	PrivateSubnets    *DynamicStaticConfig
-	PublicSubnets     *DynamicStaticConfig
-	EnableNATGateway  *DynamicStaticConfig
-	SingleNATGateway  *DynamicStaticConfig
-	PublicSubnetTags  *DynamicStaticConfig
-	PrivateSubnetTags *DynamicStaticConfig
-	Tags              *DynamicStaticConfig
+	Source            *HclField `hcl:"source"`
+	Version           *HclField `hcl:"version"`
+	Name              *HclField `hcl:"name"`
+	CIDR              *HclField `hcl:"cidr"`
+	AZs               *HclField `hcl:"azs,optional"`
+	PrivateSubnets    *HclField `hcl:"private_subnets,optional"`
+	PublicSubnets     *HclField `hcl:"public_subnets,optional"`
+	EnableNATGateway  *HclField `hcl:"enable_nat_gateway"`
+	SingleNATGateway  *HclField `hcl:"single_nat_gateway"`
+	PublicSubnetTags  *HclField `hcl:"public_subnet_tags,optional"`
+	PrivateSubnetTags *HclField `hcl:"private_subnet_tags,optional"`
+	Tags              *HclField `hcl:"tags,optional"`
 }
 
 // VPCConfigBuilder is a builder for VPCConfig
@@ -62,29 +62,29 @@ func NewVPCConfig() *VPCConfigBuilder {
 
 	return &VPCConfigBuilder{
 		config: &VPCConfig{
-			Source:           &DynamicStaticConfig{Type: ConfigTypeStatic, Static: "terraform-aws-modules/vpc/aws", ValueType: ValueTypeString},
-			Version:          &DynamicStaticConfig{Type: ConfigTypeStatic, Static: "5.0.0", ValueType: ValueTypeString},
-			Name:             &DynamicStaticConfig{Type: ConfigTypeStatic, Static: "eks-vpc", ValueType: ValueTypeString},
-			CIDR:             &DynamicStaticConfig{Type: ConfigTypeStatic, Static: "10.0.0.0/16", ValueType: ValueTypeString},
-			AZs:              &DynamicStaticConfig{Type: ConfigTypeStatic, Static: []string{"us-west-2a", "us-west-2b", "us-west-2c"}, ValueType: ValueTypeStringList},
-			PrivateSubnets:   &DynamicStaticConfig{Type: ConfigTypeStatic, Static: []string{"10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"}, ValueType: ValueTypeStringList},
-			PublicSubnets:    &DynamicStaticConfig{Type: ConfigTypeStatic, Static: []string{"10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"}, ValueType: ValueTypeStringList},
-			EnableNATGateway: &DynamicStaticConfig{Type: ConfigTypeStatic, Static: true, ValueType: ValueTypeBool},
-			SingleNATGateway: &DynamicStaticConfig{Type: ConfigTypeStatic, Static: true, ValueType: ValueTypeBool},
-			PublicSubnetTags: &DynamicStaticConfig{Type: ConfigTypeStatic, Static: map[string]string{"kubernetes.io/role/elb": "1"}, ValueType: ValueTypeStringMap},
-			PrivateSubnetTags: &DynamicStaticConfig{
+			Source:           &HclField{Type: ConfigTypeStatic, Static: "terraform-aws-modules/vpc/aws", ValueType: ValueTypeString},
+			Version:          &HclField{Type: ConfigTypeStatic, Static: "5.0.0", ValueType: ValueTypeString},
+			Name:             &HclField{Type: ConfigTypeStatic, Static: "eks-vpc", ValueType: ValueTypeString},
+			CIDR:             &HclField{Type: ConfigTypeStatic, Static: "10.0.0.0/16", ValueType: ValueTypeString},
+			AZs:              &HclField{Type: ConfigTypeStatic, Static: []string{"us-west-2a", "us-west-2b", "us-west-2c"}, ValueType: ValueTypeStringList},
+			PrivateSubnets:   &HclField{Type: ConfigTypeStatic, Static: []string{"10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"}, ValueType: ValueTypeStringList},
+			PublicSubnets:    &HclField{Type: ConfigTypeStatic, Static: []string{"10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"}, ValueType: ValueTypeStringList},
+			EnableNATGateway: &HclField{Type: ConfigTypeStatic, Static: true, ValueType: ValueTypeBool},
+			SingleNATGateway: &HclField{Type: ConfigTypeStatic, Static: true, ValueType: ValueTypeBool},
+			PublicSubnetTags: &HclField{Type: ConfigTypeStatic, Static: map[string]string{"kubernetes.io/role/elb": "1"}, ValueType: ValueTypeStringMap},
+			PrivateSubnetTags: &HclField{
 				Type:      ConfigTypeStatic,
 				Static:    defaultPrivateSubnetTags,
 				ValueType: ValueTypeStringMap,
 			},
-			Tags: &DynamicStaticConfig{Type: ConfigTypeStatic, Static: map[string]string{}, ValueType: ValueTypeStringMap},
+			Tags: &HclField{Type: ConfigTypeStatic, Static: map[string]string{}, ValueType: ValueTypeStringMap},
 		},
 	}
 }
 
 // Builder methods
 func (b *VPCConfigBuilder) SetSource(source string) *VPCConfigBuilder {
-	b.config.Source = &DynamicStaticConfig{
+	b.config.Source = &HclField{
 		Type:      ConfigTypeStatic,
 		Static:    source,
 		ValueType: ValueTypeString,
@@ -93,7 +93,7 @@ func (b *VPCConfigBuilder) SetSource(source string) *VPCConfigBuilder {
 }
 
 func (b *VPCConfigBuilder) SetVersion(version string) *VPCConfigBuilder {
-	b.config.Version = &DynamicStaticConfig{
+	b.config.Version = &HclField{
 		Type:      ConfigTypeStatic,
 		Static:    version,
 		ValueType: ValueTypeString,
@@ -102,7 +102,7 @@ func (b *VPCConfigBuilder) SetVersion(version string) *VPCConfigBuilder {
 }
 
 func (b *VPCConfigBuilder) SetName(name string) *VPCConfigBuilder {
-	b.config.Name = &DynamicStaticConfig{
+	b.config.Name = &HclField{
 		Type:      ConfigTypeStatic,
 		Static:    name,
 		ValueType: ValueTypeString,
@@ -111,7 +111,7 @@ func (b *VPCConfigBuilder) SetName(name string) *VPCConfigBuilder {
 }
 
 func (b *VPCConfigBuilder) SetCIDR(cidr string) *VPCConfigBuilder {
-	b.config.CIDR = &DynamicStaticConfig{
+	b.config.CIDR = &HclField{
 		Type:      ConfigTypeStatic,
 		Static:    cidr,
 		ValueType: ValueTypeString,
@@ -120,7 +120,7 @@ func (b *VPCConfigBuilder) SetCIDR(cidr string) *VPCConfigBuilder {
 }
 
 func (b *VPCConfigBuilder) SetAZs(azs []string) *VPCConfigBuilder {
-	b.config.AZs = &DynamicStaticConfig{
+	b.config.AZs = &HclField{
 		Type:      ConfigTypeStatic,
 		Static:    azs,
 		ValueType: ValueTypeStringList,
@@ -129,7 +129,7 @@ func (b *VPCConfigBuilder) SetAZs(azs []string) *VPCConfigBuilder {
 }
 
 func (b *VPCConfigBuilder) SetAZsExpression(expr string) *VPCConfigBuilder {
-	b.config.AZs = &DynamicStaticConfig{
+	b.config.AZs = &HclField{
 		Type:      ConfigTypeDynamic,
 		Dynamic:   expr,
 		ValueType: ValueTypeStringList,
@@ -138,7 +138,7 @@ func (b *VPCConfigBuilder) SetAZsExpression(expr string) *VPCConfigBuilder {
 }
 
 func (b *VPCConfigBuilder) SetPrivateSubnets(subnets []string) *VPCConfigBuilder {
-	b.config.PrivateSubnets = &DynamicStaticConfig{
+	b.config.PrivateSubnets = &HclField{
 		Type:      ConfigTypeStatic,
 		Static:    subnets,
 		ValueType: ValueTypeStringList,
@@ -147,7 +147,7 @@ func (b *VPCConfigBuilder) SetPrivateSubnets(subnets []string) *VPCConfigBuilder
 }
 
 func (b *VPCConfigBuilder) SetPrivateSubnetsExpression(expr string) *VPCConfigBuilder {
-	b.config.PrivateSubnets = &DynamicStaticConfig{
+	b.config.PrivateSubnets = &HclField{
 		Type:      ConfigTypeDynamic,
 		Dynamic:   expr,
 		ValueType: ValueTypeStringList,
@@ -156,7 +156,7 @@ func (b *VPCConfigBuilder) SetPrivateSubnetsExpression(expr string) *VPCConfigBu
 }
 
 func (b *VPCConfigBuilder) SetPublicSubnets(subnets []string) *VPCConfigBuilder {
-	b.config.PublicSubnets = &DynamicStaticConfig{
+	b.config.PublicSubnets = &HclField{
 		Type:      ConfigTypeStatic,
 		Static:    subnets,
 		ValueType: ValueTypeStringList,
@@ -165,7 +165,7 @@ func (b *VPCConfigBuilder) SetPublicSubnets(subnets []string) *VPCConfigBuilder 
 }
 
 func (b *VPCConfigBuilder) SetPublicSubnetsExpression(expr string) *VPCConfigBuilder {
-	b.config.PublicSubnets = &DynamicStaticConfig{
+	b.config.PublicSubnets = &HclField{
 		Type:      ConfigTypeDynamic,
 		Dynamic:   expr,
 		ValueType: ValueTypeStringList,
@@ -174,7 +174,7 @@ func (b *VPCConfigBuilder) SetPublicSubnetsExpression(expr string) *VPCConfigBui
 }
 
 func (b *VPCConfigBuilder) SetPrivateSubnetTags(tags map[string]string) *VPCConfigBuilder {
-	b.config.PrivateSubnetTags = &DynamicStaticConfig{
+	b.config.PrivateSubnetTags = &HclField{
 		Type:      ConfigTypeStatic,
 		Static:    tags,
 		ValueType: ValueTypeStringMap,
@@ -183,7 +183,7 @@ func (b *VPCConfigBuilder) SetPrivateSubnetTags(tags map[string]string) *VPCConf
 }
 
 func (b *VPCConfigBuilder) SetPrivateSubnetTagsExpression(expr string) *VPCConfigBuilder {
-	b.config.PrivateSubnetTags = &DynamicStaticConfig{
+	b.config.PrivateSubnetTags = &HclField{
 		Type:      ConfigTypeDynamic,
 		Dynamic:   expr,
 		ValueType: ValueTypeStringMap,
@@ -192,7 +192,7 @@ func (b *VPCConfigBuilder) SetPrivateSubnetTagsExpression(expr string) *VPCConfi
 }
 
 func (b *VPCConfigBuilder) SetEnableNATGateway(enable bool) *VPCConfigBuilder {
-	b.config.EnableNATGateway = &DynamicStaticConfig{
+	b.config.EnableNATGateway = &HclField{
 		Type:      ConfigTypeStatic,
 		Static:    enable,
 		ValueType: ValueTypeBool,
@@ -201,7 +201,7 @@ func (b *VPCConfigBuilder) SetEnableNATGateway(enable bool) *VPCConfigBuilder {
 }
 
 func (b *VPCConfigBuilder) SetSingleNATGateway(single bool) *VPCConfigBuilder {
-	b.config.SingleNATGateway = &DynamicStaticConfig{
+	b.config.SingleNATGateway = &HclField{
 		Type:      ConfigTypeStatic,
 		Static:    single,
 		ValueType: ValueTypeBool,
@@ -215,7 +215,7 @@ func (b *VPCConfigBuilder) AddPublicSubnetTag(key, value string) *VPCConfigBuild
 		tags = b.config.PublicSubnetTags.Static.(map[string]string)
 	}
 	tags[key] = value
-	b.config.PublicSubnetTags = &DynamicStaticConfig{
+	b.config.PublicSubnetTags = &HclField{
 		Type:      ConfigTypeStatic,
 		Static:    tags,
 		ValueType: ValueTypeStringMap,
@@ -229,7 +229,7 @@ func (b *VPCConfigBuilder) AddTag(key, value string) *VPCConfigBuilder {
 		tags = b.config.Tags.Static.(map[string]string)
 	}
 	tags[key] = value
-	b.config.Tags = &DynamicStaticConfig{
+	b.config.Tags = &HclField{
 		Type:      ConfigTypeStatic,
 		Static:    tags,
 		ValueType: ValueTypeStringMap,

@@ -3,13 +3,12 @@ package vpc
 import (
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/zclconf/go-cty/cty"
-
-	"strings"
 )
 
 func (c *VPCConfig) GenerateHCL() (string, error) {
@@ -33,10 +32,10 @@ func (c *VPCConfig) GenerateHCL() (string, error) {
 		// Split the hcl tag to get the field name (remove any options like ",optional")
 		fieldName := strings.Split(hclTag, ",")[0]
 
-		// All fields are now DynamicStaticConfig
+		// All fields are now HclField
 		if !field.IsNil() {
-			config := field.Interface().(*DynamicStaticConfig)
-			if err := handleDynamicStaticAttribute(moduleBody, fieldName, config); err != nil {
+			config := field.Interface().(*HclField)
+			if err := handleHclField(moduleBody, fieldName, config); err != nil {
 				return "", err
 			}
 		}
@@ -45,10 +44,10 @@ func (c *VPCConfig) GenerateHCL() (string, error) {
 	return string(hclwrite.Format(f.Bytes())), nil
 }
 
-func handleDynamicStaticAttribute(
+func handleHclField(
 	moduleBody *hclwrite.Body,
 	attrName string,
-	config *DynamicStaticConfig,
+	config *HclField,
 ) error {
 	if config == nil {
 		return nil

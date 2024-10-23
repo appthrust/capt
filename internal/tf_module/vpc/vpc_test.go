@@ -46,56 +46,56 @@ func TestVPCConfigValidate(t *testing.T) {
 		{
 			name: "valid config",
 			config: &VPCConfig{
-				Source:  &DynamicStaticConfig{Type: ConfigTypeStatic, Static: "source", ValueType: ValueTypeString},
-				Version: &DynamicStaticConfig{Type: ConfigTypeStatic, Static: "version", ValueType: ValueTypeString},
-				Name:    &DynamicStaticConfig{Type: ConfigTypeStatic, Static: "name", ValueType: ValueTypeString},
-				CIDR:    &DynamicStaticConfig{Type: ConfigTypeStatic, Static: "10.0.0.0/16", ValueType: ValueTypeString},
+				Source:  &HclField{Type: ConfigTypeStatic, Static: "source", ValueType: ValueTypeString},
+				Version: &HclField{Type: ConfigTypeStatic, Static: "version", ValueType: ValueTypeString},
+				Name:    &HclField{Type: ConfigTypeStatic, Static: "name", ValueType: ValueTypeString},
+				CIDR:    &HclField{Type: ConfigTypeStatic, Static: "10.0.0.0/16", ValueType: ValueTypeString},
 			},
 			wantErr: false,
 		},
 		{
 			name: "empty source",
 			config: &VPCConfig{
-				Version: &DynamicStaticConfig{Type: ConfigTypeStatic, Static: "version", ValueType: ValueTypeString},
-				Name:    &DynamicStaticConfig{Type: ConfigTypeStatic, Static: "name", ValueType: ValueTypeString},
-				CIDR:    &DynamicStaticConfig{Type: ConfigTypeStatic, Static: "10.0.0.0/16", ValueType: ValueTypeString},
+				Version: &HclField{Type: ConfigTypeStatic, Static: "version", ValueType: ValueTypeString},
+				Name:    &HclField{Type: ConfigTypeStatic, Static: "name", ValueType: ValueTypeString},
+				CIDR:    &HclField{Type: ConfigTypeStatic, Static: "10.0.0.0/16", ValueType: ValueTypeString},
 			},
 			wantErr: true,
 		},
 		{
 			name: "empty version",
 			config: &VPCConfig{
-				Source: &DynamicStaticConfig{Type: ConfigTypeStatic, Static: "source", ValueType: ValueTypeString},
-				Name:   &DynamicStaticConfig{Type: ConfigTypeStatic, Static: "name", ValueType: ValueTypeString},
-				CIDR:   &DynamicStaticConfig{Type: ConfigTypeStatic, Static: "10.0.0.0/16", ValueType: ValueTypeString},
+				Source: &HclField{Type: ConfigTypeStatic, Static: "source", ValueType: ValueTypeString},
+				Name:   &HclField{Type: ConfigTypeStatic, Static: "name", ValueType: ValueTypeString},
+				CIDR:   &HclField{Type: ConfigTypeStatic, Static: "10.0.0.0/16", ValueType: ValueTypeString},
 			},
 			wantErr: true,
 		},
 		{
 			name: "empty name",
 			config: &VPCConfig{
-				Source:  &DynamicStaticConfig{Type: ConfigTypeStatic, Static: "source", ValueType: ValueTypeString},
-				Version: &DynamicStaticConfig{Type: ConfigTypeStatic, Static: "version", ValueType: ValueTypeString},
-				CIDR:    &DynamicStaticConfig{Type: ConfigTypeStatic, Static: "10.0.0.0/16", ValueType: ValueTypeString},
+				Source:  &HclField{Type: ConfigTypeStatic, Static: "source", ValueType: ValueTypeString},
+				Version: &HclField{Type: ConfigTypeStatic, Static: "version", ValueType: ValueTypeString},
+				CIDR:    &HclField{Type: ConfigTypeStatic, Static: "10.0.0.0/16", ValueType: ValueTypeString},
 			},
 			wantErr: true,
 		},
 		{
 			name: "empty CIDR",
 			config: &VPCConfig{
-				Source:  &DynamicStaticConfig{Type: ConfigTypeStatic, Static: "source", ValueType: ValueTypeString},
-				Version: &DynamicStaticConfig{Type: ConfigTypeStatic, Static: "version", ValueType: ValueTypeString},
-				Name:    &DynamicStaticConfig{Type: ConfigTypeStatic, Static: "name", ValueType: ValueTypeString},
+				Source:  &HclField{Type: ConfigTypeStatic, Static: "source", ValueType: ValueTypeString},
+				Version: &HclField{Type: ConfigTypeStatic, Static: "version", ValueType: ValueTypeString},
+				Name:    &HclField{Type: ConfigTypeStatic, Static: "name", ValueType: ValueTypeString},
 			},
 			wantErr: true,
 		},
 		{
 			name: "invalid CIDR",
 			config: &VPCConfig{
-				Source:  &DynamicStaticConfig{Type: ConfigTypeStatic, Static: "source", ValueType: ValueTypeString},
-				Version: &DynamicStaticConfig{Type: ConfigTypeStatic, Static: "version", ValueType: ValueTypeString},
-				Name:    &DynamicStaticConfig{Type: ConfigTypeStatic, Static: "name", ValueType: ValueTypeString},
-				CIDR:    &DynamicStaticConfig{Type: ConfigTypeStatic, Static: "invalid", ValueType: ValueTypeString},
+				Source:  &HclField{Type: ConfigTypeStatic, Static: "source", ValueType: ValueTypeString},
+				Version: &HclField{Type: ConfigTypeStatic, Static: "version", ValueType: ValueTypeString},
+				Name:    &HclField{Type: ConfigTypeStatic, Static: "name", ValueType: ValueTypeString},
+				CIDR:    &HclField{Type: ConfigTypeStatic, Static: "invalid", ValueType: ValueTypeString},
 			},
 			wantErr: true,
 		},
@@ -223,12 +223,12 @@ func TestErrorCases(t *testing.T) {
 	assert.Error(t, err)
 
 	// Test empty source
-	builder.config.Source = &DynamicStaticConfig{Type: ConfigTypeStatic, Static: "", ValueType: ValueTypeString}
+	builder.config.Source = &HclField{Type: ConfigTypeStatic, Static: "", ValueType: ValueTypeString}
 	_, err = builder.Build()
 	assert.Error(t, err)
 
 	// Test empty version
-	builder.config.Version = &DynamicStaticConfig{Type: ConfigTypeStatic, Static: "", ValueType: ValueTypeString}
+	builder.config.Version = &HclField{Type: ConfigTypeStatic, Static: "", ValueType: ValueTypeString}
 	_, err = builder.Build()
 	assert.Error(t, err)
 }

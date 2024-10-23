@@ -53,20 +53,34 @@ const (
 	PublicSubnetsTypeDynamic PublicSubnetsType = "dynamic"
 )
 
+// PrivateSubnetTagsConfig represents either a static map of tags or a dynamic expression
+type PrivateSubnetTagsConfig struct {
+	Type    PrivateSubnetTagsType `hcl:"type" json:"type"`
+	Static  map[string]string     `hcl:"static,optional" json:"static,omitempty"`
+	Dynamic string                `hcl:"dynamic,optional" json:"dynamic,omitempty"`
+}
+
+type PrivateSubnetTagsType string
+
+const (
+	PrivateSubnetTagsTypeStatic  PrivateSubnetTagsType = "static"
+	PrivateSubnetTagsTypeDynamic PrivateSubnetTagsType = "dynamic"
+)
+
 // VPCConfig represents the configuration for a VPC
 type VPCConfig struct {
-	Source            string                `hcl:"source"`
-	Version           string                `hcl:"version"`
-	Name              string                `hcl:"name"`
-	CIDR              string                `hcl:"cidr"`
-	AZs               *AZsConfig            `hcl:"azs,optional"`
-	PrivateSubnets    *PrivateSubnetsConfig `hcl:"private_subnets,optional"`
-	PublicSubnets     *PublicSubnetsConfig  `hcl:"public_subnets,optional"`
-	EnableNATGateway  bool                  `hcl:"enable_nat_gateway"`
-	SingleNATGateway  bool                  `hcl:"single_nat_gateway"`
-	PublicSubnetTags  map[string]string     `hcl:"public_subnet_tags,optional"`
-	PrivateSubnetTags map[string]string     `hcl:"private_subnet_tags,optional"`
-	Tags              map[string]string     `hcl:"tags,optional"`
+	Source            string                   `hcl:"source"`
+	Version           string                   `hcl:"version"`
+	Name              string                   `hcl:"name"`
+	CIDR              string                   `hcl:"cidr"`
+	AZs               *AZsConfig               `hcl:"azs,optional"`
+	PrivateSubnets    *PrivateSubnetsConfig    `hcl:"private_subnets,optional"`
+	PublicSubnets     *PublicSubnetsConfig     `hcl:"public_subnets,optional"`
+	EnableNATGateway  bool                     `hcl:"enable_nat_gateway"`
+	SingleNATGateway  bool                     `hcl:"single_nat_gateway"`
+	PublicSubnetTags  map[string]string        `hcl:"public_subnet_tags,optional"`
+	PrivateSubnetTags *PrivateSubnetTagsConfig `hcl:"private_subnet_tags,optional"`
+	Tags              map[string]string        `hcl:"tags,optional"`
 }
 
 // VPCConfigBuilder is a builder for VPCConfig
@@ -76,6 +90,10 @@ type VPCConfigBuilder struct {
 
 // NewVPCConfig creates a new VPCConfigBuilder with default values
 func NewVPCConfig() *VPCConfigBuilder {
+	defaultPrivateSubnetTags := map[string]string{
+		"kubernetes.io/role/internal-elb": "1",
+	}
+
 	return &VPCConfigBuilder{
 		config: &VPCConfig{
 			Source:           "terraform-aws-modules/vpc/aws",
@@ -90,8 +108,9 @@ func NewVPCConfig() *VPCConfigBuilder {
 			PublicSubnetTags: map[string]string{
 				"kubernetes.io/role/elb": "1",
 			},
-			PrivateSubnetTags: map[string]string{
-				"kubernetes.io/role/internal-elb": "1",
+			PrivateSubnetTags: &PrivateSubnetTagsConfig{
+				Type:   PrivateSubnetTagsTypeStatic,
+				Static: defaultPrivateSubnetTags,
 			},
 			Tags: map[string]string{},
 		},
@@ -203,6 +222,36 @@ func (b *VPCConfigBuilder) SetPublicSubnetsExpression(expr string) *VPCConfigBui
 	return b
 }
 
+// SetPrivateSubnetTags sets the private subnet tags for the VPC
+func (b *VPCConfigBuilder) SetPrivateSubnetTags(tags map[string]string) *VPCConfigBuilder {
+	b.config.PrivateSubnetTags = &PrivateSubnetTagsConfig{
+		Type:   PrivateSubnetTagsTypeStatic,
+		Static: tags,
+	}
+	return b
+}
+
+// SetPrivateSubnetTagsExpression sets the private subnet tags as an HCL expression
+func (b *VPCConfigBuilder) SetPrivateSubnetTagsExpression(expr string) *VPCConfigBuilder {
+	b.config.PrivateSubnetTags = &PrivateSubnetTagsConfig{
+		Type:    PrivateSubnetTagsTypeDynamic,
+		Dynamic: expr,
+	}
+	return b
+}
+
+// AddPrivateSubnetTag adds a tag to the private subnets
+func (b *VPCConfigBuilder) AddPrivateSubnetTag(key, value string) *VPCConfigBuilder {
+	if b.config.PrivateSubnetTags == nil || b.config.PrivateSubnetTags.Type != PrivateSubnetTagsTypeStatic {
+		b.config.PrivateSubnetTags = &PrivateSubnetTagsConfig{
+			Type:   PrivateSubnetTagsTypeStatic,
+			Static: make(map[string]string),
+		}
+	}
+	b.config.PrivateSubnetTags.Static[key] = value
+	return b
+}
+
 // SetEnableNATGateway sets whether to enable NAT Gateway
 func (b *VPCConfigBuilder) SetEnableNATGateway(enable bool) *VPCConfigBuilder {
 	b.config.EnableNATGateway = enable
@@ -221,15 +270,6 @@ func (b *VPCConfigBuilder) AddPublicSubnetTag(key, value string) *VPCConfigBuild
 		b.config.PublicSubnetTags = make(map[string]string)
 	}
 	b.config.PublicSubnetTags[key] = value
-	return b
-}
-
-// AddPrivateSubnetTag adds a tag to the private subnets
-func (b *VPCConfigBuilder) AddPrivateSubnetTag(key, value string) *VPCConfigBuilder {
-	if b.config.PrivateSubnetTags == nil {
-		b.config.PrivateSubnetTags = make(map[string]string)
-	}
-	b.config.PrivateSubnetTags[key] = value
 	return b
 }
 
@@ -346,9 +386,11 @@ func (c *VPCConfig) GenerateHCL() (string, error) {
 	azs := configCopy.AZs
 	privateSubnets := configCopy.PrivateSubnets
 	publicSubnets := configCopy.PublicSubnets
+	privateSubnetTags := configCopy.PrivateSubnetTags
 	configCopy.AZs = nil
 	configCopy.PrivateSubnets = nil
 	configCopy.PublicSubnets = nil
+	configCopy.PrivateSubnetTags = nil
 
 	// Encode most fields using gohcl.EncodeIntoBody
 	gohcl.EncodeIntoBody(&configCopy, moduleBody)
@@ -390,6 +432,19 @@ func (c *VPCConfig) GenerateHCL() (string, error) {
 		}
 	}
 
+	// Handle PrivateSubnetTags separately
+	if privateSubnetTags != nil {
+		if privateSubnetTags.Type == PrivateSubnetTagsTypeDynamic {
+			tokens, diags := hclsyntax.LexExpression([]byte(privateSubnetTags.Dynamic), "", hcl.Pos{Line: 1, Column: 1})
+			if diags.HasErrors() {
+				return "", fmt.Errorf("failed to lex dynamic private subnet tags expression: %v", diags)
+			}
+			moduleBody.SetAttributeRaw("private_subnet_tags", ConvertHCLSyntaxToHCLWrite(tokens))
+		} else {
+			moduleBody.SetAttributeValue("private_subnet_tags", cty.MapVal(stringMapToValues(privateSubnetTags.Static)))
+		}
+	}
+
 	// Format the generated HCL
 	return string(hclwrite.Format(f.Bytes())), nil
 }
@@ -398,6 +453,14 @@ func stringsToValues(strs []string) []cty.Value {
 	values := make([]cty.Value, len(strs))
 	for i, s := range strs {
 		values[i] = cty.StringVal(s)
+	}
+	return values
+}
+
+func stringMapToValues(m map[string]string) map[string]cty.Value {
+	values := make(map[string]cty.Value, len(m))
+	for k, v := range m {
+		values[k] = cty.StringVal(v)
 	}
 	return values
 }

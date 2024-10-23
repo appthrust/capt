@@ -12,11 +12,7 @@ module "vpc" {
   public_subnet_tags = {
     "kubernetes.io/role/elb" = "1"
   }
-
-  private_subnet_tags = {
-    "kubernetes.io/role/internal-elb" = "1"
-  }
-
+  
   tags = {
     Environment = "dev"
     Terraform   = "true"
@@ -24,4 +20,11 @@ module "vpc" {
   azs             = local.azs
   private_subnets = [for k, v in local.azs : cidrsubnet(var.vpc_cidr, 4, k)]
   public_subnets  = [for k, v in local.azs : cidrsubnet(var.vpc_cidr, 8, k + 48)]
+  private_subnet_tags = merge(
+    {
+      "kubernetes.io/role/internal-elb" = "1"
+      "karpenter.sh/discovery" = local.name
+    },
+    var.private_subnet_tags
+  )
 }

@@ -15,10 +15,16 @@ func setupVPCConfigForHCLTest() *VPCConfigBuilder {
 	builder.SetAZsExpression("local.azs")
 	builder.SetPrivateSubnetsExpression("[for k, v in local.azs : cidrsubnet(var.vpc_cidr, 4, k)]")
 	builder.SetPublicSubnetsExpression("[for k, v in local.azs : cidrsubnet(var.vpc_cidr, 8, k + 48)]")
+	builder.SetPrivateSubnetTagsExpression(`merge(
+		{
+			"kubernetes.io/role/internal-elb" = "1"
+			"karpenter.sh/discovery" = local.name
+		},
+		var.private_subnet_tags
+	)`)
 	builder.SetEnableNATGateway(true)
 	builder.SetSingleNATGateway(true)
 	builder.AddPublicSubnetTag("kubernetes.io/role/elb", "1")
-	builder.AddPrivateSubnetTag("kubernetes.io/role/internal-elb", "1")
 	return builder
 }
 
@@ -68,10 +74,10 @@ func TestGenerateHCL(t *testing.T) {
 		"azs":                 {"local.azs"},
 		"private_subnets":     {"[for k, v in local.azs : cidrsubnet(var.vpc_cidr, 4, k)]"},
 		"public_subnets":      {"[for k, v in local.azs : cidrsubnet(var.vpc_cidr, 8, k + 48)]"},
+		"private_subnet_tags": {"merge", "kubernetes.io/role/internal-elb", "karpenter.sh/discovery", "local.name"},
 		"enable_nat_gateway":  {"true"},
 		"single_nat_gateway":  {"true"},
 		"public_subnet_tags":  {"kubernetes.io/role/elb", "1"},
-		"private_subnet_tags": {"kubernetes.io/role/internal-elb", "1"},
 		"tags":                {"Environment", "dev", "Terraform", "true"},
 	}
 

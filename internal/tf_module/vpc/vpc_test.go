@@ -27,7 +27,7 @@ func TestNewVPCConfig(t *testing.T) {
 		{"EnableNATGateway", config.EnableNATGateway, true},
 		{"SingleNATGateway", config.SingleNATGateway, true},
 		{"PublicSubnetTags count", len(config.PublicSubnetTags), 1},
-		{"PrivateSubnetTags count", len(config.PrivateSubnetTags), 1},
+		{"PrivateSubnetTags count", len(config.PrivateSubnetTags.Static), 1},
 		{"AZs", config.AZs, &AZsConfig{Type: AZsTypeStatic, Static: []string{"us-west-2a", "us-west-2b", "us-west-2c"}}},
 		{"PrivateSubnets", config.PrivateSubnets, &PrivateSubnetsConfig{Type: PrivateSubnetsTypeStatic, Static: []string{"10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"}}},
 		{"PublicSubnets", config.PublicSubnets, &PublicSubnetsConfig{Type: PublicSubnetsTypeStatic, Static: []string{"10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"}}},
@@ -156,6 +156,32 @@ func TestBuilderMethods(t *testing.T) {
 			true,
 		},
 		{
+			"SetPrivateSubnetTags",
+			func(b *VPCConfigBuilder) {
+				b.SetPrivateSubnetTags(map[string]string{"test-key": "test-value"})
+			},
+			func(c *VPCConfig) bool {
+				return c.PrivateSubnetTags.Type == PrivateSubnetTagsTypeStatic && c.PrivateSubnetTags.Static["test-key"] == "test-value"
+			},
+			true,
+		},
+		{
+			"SetPrivateSubnetTagsExpression",
+			func(b *VPCConfigBuilder) {
+				b.SetPrivateSubnetTagsExpression(`merge(
+					{
+						"kubernetes.io/role/internal-elb" = "1"
+						"karpenter.sh/discovery" = local.name
+					},
+					var.private_subnet_tags
+				)`)
+			},
+			func(c *VPCConfig) bool {
+				return c.PrivateSubnetTags.Type == PrivateSubnetTagsTypeDynamic && strings.Contains(c.PrivateSubnetTags.Dynamic, "local.name")
+			},
+			true,
+		},
+		{
 			"SetEnableNATGateway",
 			func(b *VPCConfigBuilder) { b.SetEnableNATGateway(false) },
 			func(c *VPCConfig) bool { return c.EnableNATGateway == false },
@@ -176,7 +202,7 @@ func TestBuilderMethods(t *testing.T) {
 		{
 			"AddPrivateSubnetTag",
 			func(b *VPCConfigBuilder) { b.AddPrivateSubnetTag("test-key", "test-value") },
-			func(c *VPCConfig) bool { return c.PrivateSubnetTags["test-key"] == "test-value" },
+			func(c *VPCConfig) bool { return c.PrivateSubnetTags.Static["test-key"] == "test-value" },
 			true,
 		},
 		{
@@ -234,9 +260,12 @@ func TestChainMethods(t *testing.T) {
 			"public-key":             "public-value",
 			"kubernetes.io/role/elb": "1",
 		},
-		PrivateSubnetTags: map[string]string{
-			"private-key":                     "private-value",
-			"kubernetes.io/role/internal-elb": "1",
+		PrivateSubnetTags: &PrivateSubnetTagsConfig{
+			Type: PrivateSubnetTagsTypeStatic,
+			Static: map[string]string{
+				"private-key":                     "private-value",
+				"kubernetes.io/role/internal-elb": "1",
+			},
 		},
 		Tags: map[string]string{"global-key": "global-value"},
 	}

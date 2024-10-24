@@ -56,14 +56,6 @@ func (g *HclGenerator) GenerateHCL(config interface{}) (string, error) {
 			continue
 		}
 
-		// Handle map type for blocks
-		if field.Type().Kind() == reflect.Map {
-			if err := handleMapField(moduleBody, fieldName, field.Interface()); err != nil {
-				return "", err
-			}
-			continue
-		}
-
 		// Handle HclField type
 		config := field.Interface().(*HclField)
 		if err := handleHclField(moduleBody, fieldName, config, isBlock); err != nil {
@@ -72,6 +64,45 @@ func (g *HclGenerator) GenerateHCL(config interface{}) (string, error) {
 	}
 
 	return string(hclwrite.Format(f.Bytes())), nil
+}
+
+func handleHclField(
+	moduleBody *hclwrite.Body,
+	attrName string,
+	config *HclField,
+	isBlock bool,
+) error {
+	if config == nil {
+		return nil
+	}
+
+	if config.Type == ConfigTypeDynamic {
+		tokens, diags := hclsyntax.LexExpression([]byte(config.Dynamic), "", hcl.Pos{Line: 1, Column: 1})
+		if diags.HasErrors() {
+			return fmt.Errorf("failed to lex dynamic %s expression: %v", attrName, diags)
+		}
+		if config.ValueType == ValueTypeBlock || isBlock {
+			block := moduleBody.AppendNewBlock(attrName, nil)
+			if attrName == "lifecycle" {
+				block.Body().SetAttributeRaw("ignore_changes", ConvertHCLSyntaxToHCLWrite(tokens))
+			} else {
+				block.Body().SetAttributeRaw(attrName, ConvertHCLSyntaxToHCLWrite(tokens))
+			}
+		} else {
+			moduleBody.SetAttributeRaw(attrName, ConvertHCLSyntaxToHCLWrite(tokens))
+		}
+	} else {
+		if isBlock {
+			return handleMapField(moduleBody, attrName, config.Static)
+		} else {
+			value, err := convertToAttributeValue(config.Static, config.ValueType)
+			if err != nil {
+				return err
+			}
+			moduleBody.SetAttributeValue(attrName, value)
+		}
+	}
+	return nil
 }
 
 func handleMapField(body *hclwrite.Body, blockName string, value interface{}) error {
@@ -107,36 +138,6 @@ func handleMapField(body *hclwrite.Body, blockName string, value interface{}) er
 	return nil
 }
 
-func handleHclField(
-	moduleBody *hclwrite.Body,
-	attrName string,
-	config *HclField,
-	isBlock bool,
-) error {
-	if config == nil {
-		return nil
-	}
-
-	if config.Type == ConfigTypeDynamic {
-		tokens, diags := hclsyntax.LexExpression([]byte(config.Dynamic), "", hcl.Pos{Line: 1, Column: 1})
-		if diags.HasErrors() {
-			return fmt.Errorf("failed to lex dynamic %s expression: %v", attrName, diags)
-		}
-		moduleBody.SetAttributeRaw(attrName, ConvertHCLSyntaxToHCLWrite(tokens))
-	} else {
-		if isBlock {
-			return handleMapField(moduleBody, attrName, config.Static)
-		} else {
-			value, err := convertToAttributeValue(config.Static, config.ValueType)
-			if err != nil {
-				return err
-			}
-			moduleBody.SetAttributeValue(attrName, value)
-		}
-	}
-	return nil
-}
-
 func convertToAttributeValue(value interface{}, valueType ValueType) (cty.Value, error) {
 	switch valueType {
 	case ValueTypeString:
@@ -150,7 +151,7 @@ func convertToAttributeValue(value interface{}, valueType ValueType) (cty.Value,
 		list := value.([]string)
 		return cty.ListVal(stringsToValues(list)), nil
 	case ValueTypeBlock:
-		// Blocks are handled separately by handleMapField
+		// Blocks are handled separately
 		return cty.NilVal, nil
 	default:
 		return cty.NilVal, fmt.Errorf("unsupported value type: %s", valueType)

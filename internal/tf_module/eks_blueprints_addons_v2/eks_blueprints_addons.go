@@ -8,19 +8,18 @@ import (
 
 // EKSBlueprintsAddonsConfig represents the configuration for EKS Blueprints Addons
 type EKSBlueprintsAddonsConfig struct {
-	Source                 *hcl.HclField          `hcl:"source"`
-	Version                *hcl.HclField          `hcl:"version"`
-	ClusterName            *hcl.HclField          `hcl:"cluster_name"`
-	ClusterEndpoint        *hcl.HclField          `hcl:"cluster_endpoint"`
-	ClusterVersion         *hcl.HclField          `hcl:"cluster_version"`
-	OIDCProviderARN        *hcl.HclField          `hcl:"oidc_provider_arn"`
-	EnableKarpenter        *hcl.HclField          `hcl:"enable_karpenter"`
-	Karpenter              map[string]interface{} `hcl:"karpenter,block"`
-	KarpenterUseNamePrefix *hcl.HclField          `hcl:"karpenter_use_name_prefix"`
-	CoreDNSConfigValues    *hcl.HclField          `hcl:"coredns_config_values,optional"`
-	VPCCNIConfigValues     *hcl.HclField          `hcl:"vpc_cni_config_values,optional"`
-	KubeProxyConfigValues  *hcl.HclField          `hcl:"kube_proxy_config_values,optional"`
-	Tags                   *hcl.HclField          `hcl:"tags,optional"`
+	Source                  *hcl.HclField          `hcl:"source"`
+	Version                 *hcl.HclField          `hcl:"version"`
+	ClusterName             *hcl.HclField          `hcl:"cluster_name"`
+	ClusterEndpoint         *hcl.HclField          `hcl:"cluster_endpoint"`
+	ClusterVersion          *hcl.HclField          `hcl:"cluster_version"`
+	OIDCProviderARN         *hcl.HclField          `hcl:"oidc_provider_arn"`
+	CreateDelayDependencies *hcl.HclField          `hcl:"create_delay_dependencies"`
+	EKSAddons               map[string]interface{} `hcl:"eks_addons,block"`
+	EnableKarpenter         *hcl.HclField          `hcl:"enable_karpenter"`
+	Karpenter               map[string]interface{} `hcl:"karpenter,block"`
+	KarpenterNode           map[string]interface{} `hcl:"karpenter_node,block"`
+	Tags                    *hcl.HclField          `hcl:"tags"`
 }
 
 // EKSBlueprintsAddonsConfigBuilder is a builder for EKSBlueprintsAddonsConfig
@@ -36,6 +35,18 @@ func NewEKSBlueprintsAddonsConfig() *EKSBlueprintsAddonsConfigBuilder {
 		},
 	}
 
+	karpenterNodeBlock := map[string]interface{}{
+		"iam_role_use_name_prefix": false,
+	}
+
+	eksAddonsBlock := map[string]interface{}{
+		"coredns": map[string]interface{}{
+			"configuration_values": getDefaultCoreDNSConfig(),
+		},
+		"vpc-cni":    map[string]interface{}{},
+		"kube-proxy": map[string]interface{}{},
+	}
+
 	return &EKSBlueprintsAddonsConfigBuilder{
 		config: &EKSBlueprintsAddonsConfig{
 			Source: &hcl.HclField{
@@ -45,7 +56,7 @@ func NewEKSBlueprintsAddonsConfig() *EKSBlueprintsAddonsConfigBuilder {
 			},
 			Version: &hcl.HclField{
 				Type:      hcl.ConfigTypeStatic,
-				Static:    "4.32.1",
+				Static:    "~> 1.16",
 				ValueType: hcl.ValueTypeString,
 			},
 			ClusterName: &hcl.HclField{
@@ -68,26 +79,23 @@ func NewEKSBlueprintsAddonsConfig() *EKSBlueprintsAddonsConfigBuilder {
 				Dynamic:   "module.eks.oidc_provider_arn",
 				ValueType: hcl.ValueTypeString,
 			},
+			CreateDelayDependencies: &hcl.HclField{
+				Type:      hcl.ConfigTypeDynamic,
+				Dynamic:   "[for prof in module.eks.fargate_profiles : prof.fargate_profile_arn]",
+				ValueType: hcl.ValueTypeString,
+			},
+			EKSAddons: eksAddonsBlock,
 			EnableKarpenter: &hcl.HclField{
 				Type:      hcl.ConfigTypeStatic,
 				Static:    true,
 				ValueType: hcl.ValueTypeBool,
 			},
-			Karpenter: karpenterBlock,
-			KarpenterUseNamePrefix: &hcl.HclField{
-				Type:      hcl.ConfigTypeStatic,
-				Static:    false,
-				ValueType: hcl.ValueTypeBool,
-			},
-			CoreDNSConfigValues: &hcl.HclField{
-				Type:      hcl.ConfigTypeStatic,
-				Static:    getDefaultCoreDNSConfig(),
-				ValueType: hcl.ValueTypeString,
-			},
+			Karpenter:     karpenterBlock,
+			KarpenterNode: karpenterNodeBlock,
 			Tags: &hcl.HclField{
-				Type:      hcl.ConfigTypeStatic,
-				Static:    map[string]string{},
-				ValueType: hcl.ValueTypeStringMap,
+				Type:      hcl.ConfigTypeDynamic,
+				Dynamic:   "local.tags",
+				ValueType: hcl.ValueTypeString,
 			},
 		},
 	}
@@ -108,15 +116,16 @@ func getDefaultCoreDNSConfig() string {
 			},
 		},
 	}
-	jsonConfig, _ := json.Marshal(config)
-	return string(jsonConfig)
+
+	jsonBytes, _ := json.MarshalIndent(config, "", "  ")
+	return string(jsonBytes)
 }
 
 // SetClusterName sets the cluster name
 func (b *EKSBlueprintsAddonsConfigBuilder) SetClusterName(name string) *EKSBlueprintsAddonsConfigBuilder {
 	b.config.ClusterName = &hcl.HclField{
-		Type:      hcl.ConfigTypeStatic,
-		Static:    name,
+		Type:      hcl.ConfigTypeDynamic,
+		Dynamic:   name,
 		ValueType: hcl.ValueTypeString,
 	}
 	return b
@@ -125,8 +134,8 @@ func (b *EKSBlueprintsAddonsConfigBuilder) SetClusterName(name string) *EKSBluep
 // SetClusterEndpoint sets the cluster endpoint
 func (b *EKSBlueprintsAddonsConfigBuilder) SetClusterEndpoint(endpoint string) *EKSBlueprintsAddonsConfigBuilder {
 	b.config.ClusterEndpoint = &hcl.HclField{
-		Type:      hcl.ConfigTypeStatic,
-		Static:    endpoint,
+		Type:      hcl.ConfigTypeDynamic,
+		Dynamic:   endpoint,
 		ValueType: hcl.ValueTypeString,
 	}
 	return b
@@ -135,8 +144,8 @@ func (b *EKSBlueprintsAddonsConfigBuilder) SetClusterEndpoint(endpoint string) *
 // SetClusterVersion sets the cluster version
 func (b *EKSBlueprintsAddonsConfigBuilder) SetClusterVersion(version string) *EKSBlueprintsAddonsConfigBuilder {
 	b.config.ClusterVersion = &hcl.HclField{
-		Type:      hcl.ConfigTypeStatic,
-		Static:    version,
+		Type:      hcl.ConfigTypeDynamic,
+		Dynamic:   version,
 		ValueType: hcl.ValueTypeString,
 	}
 	return b
@@ -145,8 +154,8 @@ func (b *EKSBlueprintsAddonsConfigBuilder) SetClusterVersion(version string) *EK
 // SetOIDCProviderARN sets the OIDC provider ARN
 func (b *EKSBlueprintsAddonsConfigBuilder) SetOIDCProviderARN(arn string) *EKSBlueprintsAddonsConfigBuilder {
 	b.config.OIDCProviderARN = &hcl.HclField{
-		Type:      hcl.ConfigTypeStatic,
-		Static:    arn,
+		Type:      hcl.ConfigTypeDynamic,
+		Dynamic:   arn,
 		ValueType: hcl.ValueTypeString,
 	}
 	return b
@@ -172,58 +181,24 @@ func (b *EKSBlueprintsAddonsConfigBuilder) SetKarpenterHelmCacheDir(cacheDir str
 	return b
 }
 
-// SetKarpenterUseNamePrefix sets whether to use name prefix for Karpenter
-func (b *EKSBlueprintsAddonsConfigBuilder) SetKarpenterUseNamePrefix(useNamePrefix bool) *EKSBlueprintsAddonsConfigBuilder {
-	b.config.KarpenterUseNamePrefix = &hcl.HclField{
-		Type:      hcl.ConfigTypeStatic,
-		Static:    useNamePrefix,
-		ValueType: hcl.ValueTypeBool,
+// SetKarpenterNodeConfig sets the Karpenter node configuration
+func (b *EKSBlueprintsAddonsConfigBuilder) SetKarpenterNodeConfig(useNamePrefix bool) *EKSBlueprintsAddonsConfigBuilder {
+	b.config.KarpenterNode = map[string]interface{}{
+		"iam_role_use_name_prefix": useNamePrefix,
 	}
 	return b
 }
 
-// SetCoreDNSConfigValues sets the CoreDNS configuration values
-func (b *EKSBlueprintsAddonsConfigBuilder) SetCoreDNSConfigValues(configValues string) *EKSBlueprintsAddonsConfigBuilder {
-	b.config.CoreDNSConfigValues = &hcl.HclField{
-		Type:      hcl.ConfigTypeStatic,
-		Static:    configValues,
-		ValueType: hcl.ValueTypeString,
+// SetCoreDNSConfig sets the CoreDNS configuration
+func (b *EKSBlueprintsAddonsConfigBuilder) SetCoreDNSConfig(configValues string) *EKSBlueprintsAddonsConfigBuilder {
+	eksAddons := b.config.EKSAddons
+	if eksAddons == nil {
+		eksAddons = make(map[string]interface{})
 	}
-	return b
-}
-
-// SetVPCCNIConfigValues sets the VPC CNI configuration values
-func (b *EKSBlueprintsAddonsConfigBuilder) SetVPCCNIConfigValues(configValues string) *EKSBlueprintsAddonsConfigBuilder {
-	b.config.VPCCNIConfigValues = &hcl.HclField{
-		Type:      hcl.ConfigTypeStatic,
-		Static:    configValues,
-		ValueType: hcl.ValueTypeString,
+	eksAddons["coredns"] = map[string]interface{}{
+		"configuration_values": configValues,
 	}
-	return b
-}
-
-// SetKubeProxyConfigValues sets the Kube Proxy configuration values
-func (b *EKSBlueprintsAddonsConfigBuilder) SetKubeProxyConfigValues(configValues string) *EKSBlueprintsAddonsConfigBuilder {
-	b.config.KubeProxyConfigValues = &hcl.HclField{
-		Type:      hcl.ConfigTypeStatic,
-		Static:    configValues,
-		ValueType: hcl.ValueTypeString,
-	}
-	return b
-}
-
-// AddTag adds a tag to the configuration
-func (b *EKSBlueprintsAddonsConfigBuilder) AddTag(key, value string) *EKSBlueprintsAddonsConfigBuilder {
-	tags := make(map[string]string)
-	if b.config.Tags != nil && b.config.Tags.Type == hcl.ConfigTypeStatic {
-		tags = b.config.Tags.Static.(map[string]string)
-	}
-	tags[key] = value
-	b.config.Tags = &hcl.HclField{
-		Type:      hcl.ConfigTypeStatic,
-		Static:    tags,
-		ValueType: hcl.ValueTypeStringMap,
-	}
+	b.config.EKSAddons = eksAddons
 	return b
 }
 

@@ -12,7 +12,7 @@ type AccessEntryConfig struct {
 	PrincipalARN     *hcl.HclField `hcl:"principal_arn"`
 	KubernetesGroups *hcl.HclField `hcl:"kubernetes_groups"`
 	Type             *hcl.HclField `hcl:"type"`
-	Lifecycle        *hcl.HclField `hcl:"lifecycle"`
+	Lifecycle        *hcl.HclField `hcl:"lifecycle,block"`
 }
 
 // AccessEntryConfigBuilder is a builder for AccessEntryConfig
@@ -46,8 +46,8 @@ func NewAccessEntryConfig() *AccessEntryConfigBuilder {
 			},
 			Lifecycle: &hcl.HclField{
 				Type:      hcl.ConfigTypeDynamic,
-				Dynamic:   "{\n    ignore_changes = [\n      kubernetes_groups\n    ]\n  }",
-				ValueType: hcl.ValueTypeString,
+				Dynamic:   "[kubernetes_groups]",
+				ValueType: hcl.ValueTypeBlock,
 			},
 		},
 	}

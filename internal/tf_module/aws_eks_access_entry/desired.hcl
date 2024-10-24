@@ -4,8 +4,6 @@ resource "aws_eks_access_entry" "karpenter_node_access_entry" {
   kubernetes_groups = []
   type              = "EC2_LINUX"
   lifecycle {
-    ignore_changes = [
-      kubernetes_groups
-    ]
+    ignore_changes = [kubernetes_groups]
   }
 }

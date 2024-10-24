@@ -1,115 +1,73 @@
-package eks
+package eks_v2
 
 import (
-	"fmt"
-	"strings"
+	"os"
 	"testing"
+
+	"github.com/hashicorp/hcl/v2/hclwrite"
 )
 
-func TestNewEKSConfigBuilder(t *testing.T) {
-	builder := NewEKSConfigBuilder().SetDefault()
+func TestEKSConfig(t *testing.T) {
+	// Read desired HCL
+	desired, err := os.ReadFile("desired.hcl")
+	if err != nil {
+		t.Fatalf("Failed to read desired.hcl: %v", err)
+	}
+
+	// Format desired HCL
+	formattedDesired := string(hclwrite.Format(desired))
+
+	// Generate HCL
+	builder := NewEKSConfig()
 	config, err := builder.Build()
 	if err != nil {
-		t.Fatalf("Failed to build EKSConfig: %v", err)
-	}
-
-	if config.ClusterName != "eks-cluster" {
-		t.Errorf("Expected cluster name to be 'eks-cluster', got '%s'", config.ClusterName)
-	}
-
-	if config.ClusterVersion != "1.31" {
-		t.Errorf("Expected cluster version to be '1.31', got '%s'", config.ClusterVersion)
-	}
-
-	if config.Region != "us-west-2" {
-		t.Errorf("Expected region to be 'us-west-2', got '%s'", config.Region)
-	}
-
-	if len(config.NodeGroups) != 1 {
-		t.Errorf("Expected 1 node group, got %d", len(config.NodeGroups))
-	}
-
-	if len(config.AddOns) != 3 {
-		t.Errorf("Expected 3 add-ons, got %d", len(config.AddOns))
-	}
-}
-
-func TestEKSConfigValidate(t *testing.T) {
-	builder := NewEKSConfigBuilder().SetDefault()
-	config, err := builder.Build()
-	if err != nil {
-		t.Fatalf("Failed to build valid EKSConfig: %v", err)
-	}
-
-	if err := config.Validate(); err != nil {
-		t.Errorf("Validation failed for valid config: %v", err)
-	}
-
-	// Test invalid configurations
-	invalidConfigs := []struct {
-		name string
-		mod  func(*EKSConfigBuilder)
-	}{
-		{"Empty cluster name", func(b *EKSConfigBuilder) { b.SetClusterName("") }},
-		{"Empty cluster version", func(b *EKSConfigBuilder) { b.SetClusterVersion("") }},
-		{"Empty region", func(b *EKSConfigBuilder) { b.SetRegion("") }},
-		{"Empty VPC CIDR", func(b *EKSConfigBuilder) {
-			b.SetVPCConfig(VPCConfig{CIDR: "", PrivateSubnets: []string{"10.0.1.0/24"}, PublicSubnets: []string{"10.0.4.0/24"}})
-		}},
-		{"No private subnets", func(b *EKSConfigBuilder) {
-			b.SetVPCConfig(VPCConfig{CIDR: "10.0.0.0/16", PrivateSubnets: []string{}, PublicSubnets: []string{"10.0.4.0/24"}})
-		}},
-		{"No public subnets", func(b *EKSConfigBuilder) {
-			b.SetVPCConfig(VPCConfig{CIDR: "10.0.0.0/16", PrivateSubnets: []string{"10.0.1.0/24"}, PublicSubnets: []string{}})
-		}},
-	}
-
-	for _, ic := range invalidConfigs {
-		t.Run(ic.name, func(t *testing.T) {
-			invalidBuilder := NewEKSConfigBuilder().SetDefault()
-			ic.mod(invalidBuilder)
-			_, err := invalidBuilder.Build()
-			if err == nil {
-				t.Errorf("Expected validation to fail for %s", ic.name)
-			}
-		})
-	}
-}
-
-func TestGenerateHCL(t *testing.T) {
-	builder := NewEKSConfigBuilder().SetDefault()
-	config, err := builder.Build()
-	if err != nil {
-		t.Fatalf("Failed to build EKSConfig: %v", err)
+		t.Fatalf("Failed to build EKS config: %v", err)
 	}
 
 	hcl, err := config.GenerateHCL()
 	if err != nil {
-		t.Fatalf("GenerateHCL failed: %v", err)
+		t.Fatalf("Failed to generate HCL: %v", err)
 	}
 
-	// Print the generated HCL for debugging
-	fmt.Printf("Generated HCL:\n%s\n", hcl)
+	// Format generated HCL
+	formattedGenerated := string(hclwrite.Format([]byte(hcl)))
 
-	expectedContent := []string{
-		"provider aws",
-		"region = us-west-2",
-		"module eks",
-		"source = terraform-aws-modules/eks/aws",
-		"cluster_name = eks-cluster",
-		"cluster_version = 1.31",
-		"module vpc",
-		"cidr = 10.0.0.0/16",
-		"node_groups",
-		"cluster_addons",
+	if formattedGenerated != formattedDesired {
+		t.Errorf("Generated HCL does not match desired HCL:\nGenerated:\n%s\nDesired:\n%s", formattedGenerated, formattedDesired)
+	}
+}
+
+func TestEKSConfigValidation(t *testing.T) {
+	tests := []struct {
+		name          string
+		modifyBuilder func(*EKSConfigBuilder)
+		expectError   bool
+	}{
+		{
+			name:          "valid config",
+			modifyBuilder: func(b *EKSConfigBuilder) {},
+			expectError:   false,
+		},
+		{
+			name: "empty cluster version",
+			modifyBuilder: func(b *EKSConfigBuilder) {
+				b.SetClusterVersion("")
+			},
+			expectError: true,
+		},
 	}
 
-	normalizedHCL := strings.ReplaceAll(strings.ReplaceAll(hcl, "\"", ""), " ", "")
-
-	for _, expected := range expectedContent {
-		normalizedExpected := strings.ReplaceAll(strings.ReplaceAll(expected, "\"", ""), " ", "")
-		if !strings.Contains(normalizedHCL, normalizedExpected) {
-			t.Errorf("Generated HCL does not contain expected string: %s", expected)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			builder := NewEKSConfig()
+			tt.modifyBuilder(builder)
+			_, err := builder.Build()
+			if tt.expectError && err == nil {
+				t.Error("Expected error but got none")
+			}
+			if !tt.expectError && err != nil {
+				t.Errorf("Expected no error but got: %v", err)
+			}
+		})
 	}
 }

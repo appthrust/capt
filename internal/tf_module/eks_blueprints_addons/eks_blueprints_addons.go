@@ -1,7 +1,7 @@
 package eks_blueprints_addons_v2
 
 import (
-	"github.com/appthrust/capt/internal/hcl"
+	"github.com/appthrust/capt/internal/tf_module/hcl"
 )
 
 // EKSBlueprintsAddonsConfig represents the configuration for EKS Blueprints Addons

@@ -3,7 +3,7 @@ package aws_eks_access_entry
 import (
 	"fmt"
 
-	"github.com/appthrust/capt/internal/hcl"
+	"github.com/appthrust/capt/internal/tf_module/hcl"
 )
 
 // AccessEntryConfig represents the configuration for an AWS EKS access entry

@@ -3,7 +3,7 @@ package eks_v2
 import (
 	"fmt"
 
-	"github.com/appthrust/capt/internal/hcl"
+	"github.com/appthrust/capt/internal/tf_module/hcl"
 )
 
 // EKSConfig represents the configuration for an EKS cluster

@@ -3,7 +3,7 @@ package vpc
 import (
 	"testing"
 
-	"github.com/appthrust/capt/internal/hcl"
+	"github.com/appthrust/capt/internal/tf_module/hcl"
 	"github.com/stretchr/testify/assert"
 )
 

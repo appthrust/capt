@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/appthrust/capt/internal/hcl"
+	"github.com/appthrust/capt/internal/tf_module/hcl"
 )
 
 // VPCConfig represents the configuration for a VPC

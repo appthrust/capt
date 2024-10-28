@@ -21,6 +21,7 @@ limitations under the License.
 package v1beta1
 
 import (
+	commonv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 	"k8s.io/api/core/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
@@ -381,6 +382,11 @@ func (in *CAPTVPCTemplateSpec) DeepCopyInto(out *CAPTVPCTemplateSpec) {
 		for key, val := range *in {
 			(*out)[key] = val
 		}
+	}
+	if in.WriteConnectionSecretToRef != nil {
+		in, out := &in.WriteConnectionSecretToRef, &out.WriteConnectionSecretToRef
+		*out = new(commonv1.SecretReference)
+		**out = **in
 	}
 }
 

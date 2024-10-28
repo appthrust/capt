@@ -17,6 +17,7 @@ limitations under the License.
 package v1beta1
 
 import (
+	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -39,6 +40,13 @@ type CAPTVPCTemplateSpec struct {
 
 	// Tags are the tags to apply to the VPC and all its resources
 	Tags map[string]string `json:"tags,omitempty"`
+
+	// WriteConnectionSecretToRef specifies the namespace and name of a
+	// Secret to which any connection details for this managed resource should
+	// be written. Connection details frequently include the endpoint, username,
+	// and password required to connect to the managed resource.
+	// +optional
+	WriteConnectionSecretToRef *xpv1.SecretReference `json:"writeConnectionSecretToRef,omitempty"`
 }
 
 // CAPTVPCTemplateStatus defines the observed state of CAPTVPCTemplate

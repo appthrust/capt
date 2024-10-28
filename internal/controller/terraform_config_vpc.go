@@ -11,6 +11,9 @@ func generateVPCWorkspaceModule(vpcTemplate *infrastructurev1beta1.CAPTVPCTempla
 	// Create VPC config builder with default values
 	vpcConfigBuilder := vpc.NewVPCConfig()
 
+	// Set VPC module version to latest
+	vpcConfigBuilder.SetVersion("~> 5.0")
+
 	// Configure VPC settings from template
 	vpcConfigBuilder.
 		SetName(vpcTemplate.Name).
@@ -36,7 +39,17 @@ func generateVPCWorkspaceModule(vpcTemplate *infrastructurev1beta1.CAPTVPCTempla
 		}
 	}
 	if vpcTemplate.Spec.PrivateSubnetTags != nil {
-		vpcConfigBuilder.SetPrivateSubnetTags(vpcTemplate.Spec.PrivateSubnetTags)
+		// Create a new map to avoid modifying the original
+		privateTags := make(map[string]string)
+		for k, v := range vpcTemplate.Spec.PrivateSubnetTags {
+			// Handle special case for CLUSTER_NAME variable
+			if v == "${CLUSTER_NAME}" {
+				privateTags[k] = "${local.name}"
+			} else {
+				privateTags[k] = v
+			}
+		}
+		vpcConfigBuilder.SetPrivateSubnetTags(privateTags)
 	}
 
 	// Set VPC tags

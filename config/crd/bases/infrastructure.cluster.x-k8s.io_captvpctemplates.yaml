@@ -60,6 +60,11 @@ spec:
                 description: SingleNatGateway determines if a single NAT Gateway should
                   be used for all AZs
                 type: boolean
+              tags:
+                additionalProperties:
+                  type: string
+                description: Tags are the tags to apply to the VPC and all its resources
+                type: object
             required:
             - cidr
             - enableNatGateway
@@ -67,6 +72,17 @@ spec:
             type: object
           status:
             description: CAPTVPCTemplateStatus defines the observed state of CAPTVPCTemplate
+            properties:
+              vpcId:
+                description: VPCID is the ID of the created VPC
+                type: string
+              vpcStatus:
+                description: VPCStatus represents the current status of the VPC
+                type: string
+              workspaceName:
+                description: WorkspaceName is the name of the associated Terraform
+                  Workspace
+                type: string
             type: object
         type: object
     served: true

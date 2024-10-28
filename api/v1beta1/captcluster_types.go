@@ -17,6 +17,7 @@ limitations under the License.
 package v1beta1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -24,6 +25,9 @@ import (
 type CAPTClusterSpec struct {
 	// Region is the AWS region where the EKS cluster will be created
 	Region string `json:"region"`
+
+	// NetworkRef is a reference to a CAPTVPCTemplate resource
+	NetworkRef *corev1.ObjectReference `json:"networkRef,omitempty"`
 
 	// VPC configuration
 	VPC VPCConfig `json:"vpc"`
@@ -126,6 +130,9 @@ type CAPTClusterStatus struct {
 
 	// ClusterStatus represents the current status of the EKS cluster
 	ClusterStatus string `json:"clusterStatus,omitempty"`
+
+	// NetworkWorkspaceName is the name of the associated Network Terraform Workspace
+	NetworkWorkspaceName string `json:"networkWorkspaceName,omitempty"`
 }
 
 // +kubebuilder:object:root=true

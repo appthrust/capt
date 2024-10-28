@@ -18,13 +18,19 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
+	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	tfv1beta1 "github.com/upbound/provider-terraform/apis/v1beta1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // CAPTVPCTemplateReconciler reconciles a CAPTVPCTemplate object
@@ -33,25 +39,121 @@ type CAPTVPCTemplateReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=captvpctemplates,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=captvpctemplates/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=captvpctemplates/finalizers,verbs=update
+//+kubebuilder:rbac:groups=infrastructure.capt.labthrust.io,resources=captvpctemplates,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=infrastructure.capt.labthrust.io,resources=captvpctemplates/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=infrastructure.capt.labthrust.io,resources=captvpctemplates/finalizers,verbs=update
+//+kubebuilder:rbac:groups=tf.upbound.io,resources=workspaces,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the CAPTVPCTemplate object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.0/pkg/reconcile
 func (r *CAPTVPCTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	log := log.FromContext(ctx)
 
-	// TODO(user): your logic here
+	// Fetch the CAPTVPCTemplate instance
+	vpcTemplate := &infrastructurev1beta1.CAPTVPCTemplate{}
+	if err := r.Get(ctx, req.NamespacedName, vpcTemplate); err != nil {
+		if apierrors.IsNotFound(err) {
+			return ctrl.Result{}, nil
+		}
+		log.Error(err, "Unable to fetch CAPTVPCTemplate")
+		return ctrl.Result{}, err
+	}
+
+	// Generate workspace name
+	workspaceName := types.NamespacedName{
+		Name:      fmt.Sprintf("%s-vpc-workspace", vpcTemplate.Name),
+		Namespace: vpcTemplate.Namespace,
+	}
+
+	// Check if workspace exists
+	workspace := &tfv1beta1.Workspace{}
+	if err := r.Get(ctx, workspaceName, workspace); err != nil {
+		if apierrors.IsNotFound(err) {
+			// Create new workspace
+			if err := r.createWorkspace(ctx, vpcTemplate, workspaceName); err != nil {
+				log.Error(err, "Failed to create workspace")
+				return ctrl.Result{}, err
+			}
+			log.Info("Created new workspace", "workspace", workspaceName)
+		} else {
+			log.Error(err, "Failed to get workspace")
+			return ctrl.Result{}, err
+		}
+	} else {
+		// Update existing workspace
+		if err := r.updateWorkspace(ctx, vpcTemplate, workspace); err != nil {
+			log.Error(err, "Failed to update workspace")
+			return ctrl.Result{}, err
+		}
+		log.Info("Updated workspace", "workspace", workspaceName)
+	}
+
+	// Update status
+	vpcTemplate.Status.WorkspaceName = workspaceName.Name
+	if err := r.Status().Update(ctx, vpcTemplate); err != nil {
+		log.Error(err, "Failed to update CAPTVPCTemplate status")
+		return ctrl.Result{}, err
+	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *CAPTVPCTemplateReconciler) createWorkspace(ctx context.Context, vpcTemplate *infrastructurev1beta1.CAPTVPCTemplate, name types.NamespacedName) error {
+	hclCode, err := generateVPCWorkspaceModule(vpcTemplate)
+	if err != nil {
+		return fmt.Errorf("failed to generate VPC Terraform code: %w", err)
+	}
+
+	workspace := &tfv1beta1.Workspace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name.Name,
+			Namespace: name.Namespace,
+		},
+		Spec: tfv1beta1.WorkspaceSpec{
+			ResourceSpec: xpv1.ResourceSpec{
+				ProviderConfigReference: &xpv1.Reference{
+					Name: "aws-provider",
+				},
+			},
+			ForProvider: tfv1beta1.WorkspaceParameters{
+				Module:                    hclCode,
+				Source:                    tfv1beta1.ModuleSourceInline,
+				EnableTerraformCLILogging: true,
+				Vars: []tfv1beta1.Var{
+					{
+						Key:   "name",
+						Value: vpcTemplate.Name,
+					},
+				},
+			},
+		},
+	}
+
+	return r.Create(ctx, workspace)
+}
+
+func (r *CAPTVPCTemplateReconciler) updateWorkspace(ctx context.Context, vpcTemplate *infrastructurev1beta1.CAPTVPCTemplate, workspace *tfv1beta1.Workspace) error {
+	hclCode, err := generateVPCWorkspaceModule(vpcTemplate)
+	if err != nil {
+		return fmt.Errorf("failed to generate VPC Terraform code: %w", err)
+	}
+
+	workspace.Spec.ForProvider.Module = hclCode
+	workspace.Spec.ForProvider.Vars = []tfv1beta1.Var{
+		{
+			Key:   "name",
+			Value: vpcTemplate.Name,
+		},
+	}
+
+	// Ensure ProviderConfigReference is set
+	if workspace.Spec.ProviderConfigReference == nil {
+		workspace.Spec.ProviderConfigReference = &xpv1.Reference{
+			Name: "aws-provider",
+		}
+	}
+
+	return r.Update(ctx, workspace)
 }
 
 // SetupWithManager sets up the controller with the Manager.

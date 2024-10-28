@@ -36,12 +36,21 @@ type CAPTVPCTemplateSpec struct {
 
 	// PrivateSubnetTags are the tags to apply to private subnets
 	PrivateSubnetTags map[string]string `json:"privateSubnetTags,omitempty"`
+
+	// Tags are the tags to apply to the VPC and all its resources
+	Tags map[string]string `json:"tags,omitempty"`
 }
 
 // CAPTVPCTemplateStatus defines the observed state of CAPTVPCTemplate
 type CAPTVPCTemplateStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// WorkspaceName is the name of the associated Terraform Workspace
+	WorkspaceName string `json:"workspaceName,omitempty"`
+
+	// VPCID is the ID of the created VPC
+	VPCID string `json:"vpcId,omitempty"`
+
+	// VPCStatus represents the current status of the VPC
+	VPCStatus string `json:"vpcStatus,omitempty"`
 }
 
 // +kubebuilder:object:root=true

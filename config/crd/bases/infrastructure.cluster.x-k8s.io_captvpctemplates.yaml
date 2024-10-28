@@ -65,6 +65,23 @@ spec:
                   type: string
                 description: Tags are the tags to apply to the VPC and all its resources
                 type: object
+              writeConnectionSecretToRef:
+                description: |-
+                  WriteConnectionSecretToRef specifies the namespace and name of a
+                  Secret to which any connection details for this managed resource should
+                  be written. Connection details frequently include the endpoint, username,
+                  and password required to connect to the managed resource.
+                properties:
+                  name:
+                    description: Name of the secret.
+                    type: string
+                  namespace:
+                    description: Namespace of the secret.
+                    type: string
+                required:
+                - name
+                - namespace
+                type: object
             required:
             - cidr
             - enableNatGateway

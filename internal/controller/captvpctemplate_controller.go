@@ -129,6 +129,16 @@ func (r *CAPTVPCTemplateReconciler) createWorkspace(ctx context.Context, vpcTemp
 		},
 	}
 
+	// Set WriteConnectionSecretToRef if specified
+	if vpcTemplate.Spec.WriteConnectionSecretToRef != nil {
+		workspace.Spec.WriteConnectionSecretToReference = vpcTemplate.Spec.WriteConnectionSecretToRef
+	}
+
+	// Set owner reference
+	if err := ctrl.SetControllerReference(vpcTemplate, workspace, r.Scheme); err != nil {
+		return fmt.Errorf("failed to set owner reference: %w", err)
+	}
+
 	return r.Create(ctx, workspace)
 }
 
@@ -144,6 +154,11 @@ func (r *CAPTVPCTemplateReconciler) updateWorkspace(ctx context.Context, vpcTemp
 			Key:   "name",
 			Value: vpcTemplate.Name,
 		},
+	}
+
+	// Update WriteConnectionSecretToRef if specified
+	if vpcTemplate.Spec.WriteConnectionSecretToRef != nil {
+		workspace.Spec.WriteConnectionSecretToReference = vpcTemplate.Spec.WriteConnectionSecretToRef
 	}
 
 	// Ensure ProviderConfigReference is set

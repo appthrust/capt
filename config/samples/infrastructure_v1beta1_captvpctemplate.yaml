@@ -15,3 +15,6 @@ spec:
   tags:
     Environment: "dev"
     Terraform: "true"
+  writeConnectionSecretToRef:
+    namespace: default
+    name: captvpctemplate-sample-vpc-connection

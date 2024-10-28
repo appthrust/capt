@@ -2,7 +2,6 @@ package controller
 
 import (
 	"fmt"
-	"strings"
 
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
 	"github.com/appthrust/capt/internal/tf_module/vpc"
@@ -100,12 +99,41 @@ variable "name" {
 }
 `
 
+	// Add outputs for connection details
+	outputs := `
+output "vpc_id" {
+  description = "The ID of the VPC"
+  value       = module.vpc.vpc_id
+}
+
+output "private_subnets" {
+  description = "List of IDs of private subnets"
+  value       = module.vpc.private_subnets
+}
+
+output "public_subnets" {
+  description = "List of IDs of public subnets"
+  value       = module.vpc.public_subnets
+}
+
+output "vpc_cidr_block" {
+  description = "The CIDR block of the VPC"
+  value       = module.vpc.vpc_cidr_block
+}
+
+output "nat_public_ips" {
+  description = "List of public Elastic IPs created for AWS NAT Gateway"
+  value       = module.vpc.nat_public_ips
+}
+
+output "azs" {
+  description = "A list of availability zones specified as argument to this module"
+  value       = module.vpc.azs
+}
+`
+
 	// Combine and clean up the HCL code
-	combinedHCL := dataSources + "\n" + hcl
-	// Remove any double dollar signs that might appear in variable references
-	combinedHCL = strings.ReplaceAll(combinedHCL, "$$", "$")
-	// Remove any empty lines at the start of the file
-	combinedHCL = strings.TrimSpace(combinedHCL)
+	combinedHCL := dataSources + "\n" + hcl + "\n" + outputs
 
 	return combinedHCL, nil
 }

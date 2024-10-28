@@ -75,6 +75,58 @@ spec:
                 - kubeProxy
                 - vpcCni
                 type: object
+              eks:
+                description: EKS configuration
+                properties:
+                  nodeGroups:
+                    description: NodeGroups defines the node groups for the EKS cluster
+                    items:
+                      description: NodeGroupConfig defines the configuration for an
+                        EKS node group
+                      properties:
+                        desiredSize:
+                          description: DesiredSize is the desired number of nodes
+                            in the node group
+                          type: integer
+                        instanceType:
+                          description: InstanceType is the EC2 instance type to use
+                            for the node group
+                          type: string
+                        maxSize:
+                          description: MaxSize is the maximum number of nodes in the
+                            node group
+                          type: integer
+                        minSize:
+                          description: MinSize is the minimum number of nodes in the
+                            node group
+                          type: integer
+                        name:
+                          description: Name of the node group
+                          type: string
+                      required:
+                      - desiredSize
+                      - instanceType
+                      - maxSize
+                      - minSize
+                      - name
+                      type: object
+                    type: array
+                  privateAccess:
+                    description: PrivateAccess determines if the EKS cluster has private
+                      access enabled
+                    type: boolean
+                  publicAccess:
+                    description: PublicAccess determines if the EKS cluster has public
+                      access enabled
+                    type: boolean
+                  version:
+                    description: Version is the Kubernetes version for the EKS cluster
+                    type: string
+                required:
+                - privateAccess
+                - publicAccess
+                - version
+                type: object
               karpenter:
                 description: Karpenter specifies the Karpenter configuration
                 properties:
@@ -84,30 +136,112 @@ spec:
                 required:
                 - enabled
                 type: object
-              publicAccess:
-                description: PublicAccess determines if the EKS cluster has public
-                  access enabled
-                type: boolean
+              networkRef:
+                description: NetworkRef is a reference to a CAPTVPCTemplate resource
+                properties:
+                  apiVersion:
+                    description: API version of the referent.
+                    type: string
+                  fieldPath:
+                    description: |-
+                      If referring to a piece of an object instead of an entire object, this string
+                      should contain a valid JSON/Go field access statement, such as desiredState.manifest.containers[2].
+                      For example, if the object reference is to a container within a pod, this would take on a value like:
+                      "spec.containers{name}" (where "name" refers to the name of the container that triggered
+                      the event) or if no container name is specified "spec.containers[2]" (container with
+                      index 2 in this pod). This syntax is chosen only to have some well-defined way of
+                      referencing a part of an object.
+                    type: string
+                  kind:
+                    description: |-
+                      Kind of the referent.
+                      More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+                    type: string
+                  name:
+                    description: |-
+                      Name of the referent.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                    type: string
+                  namespace:
+                    description: |-
+                      Namespace of the referent.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/
+                    type: string
+                  resourceVersion:
+                    description: |-
+                      Specific resourceVersion to which this reference is made, if any.
+                      More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency
+                    type: string
+                  uid:
+                    description: |-
+                      UID of the referent.
+                      More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids
+                    type: string
+                type: object
+                x-kubernetes-map-type: atomic
               region:
                 description: Region is the AWS region where the EKS cluster will be
                   created
                 type: string
-              version:
-                description: Version is the Kubernetes version for the EKS cluster
-                type: string
-              vpcCIDR:
-                description: VpcCIDR is the CIDR block for the VPC
-                type: string
+              vpc:
+                description: VPC configuration
+                properties:
+                  cidr:
+                    description: CIDR is the CIDR block for the VPC
+                    type: string
+                  enableNatGateway:
+                    description: EnableNatGateway determines if NAT Gateway should
+                      be created
+                    type: boolean
+                  privateSubnetTags:
+                    additionalProperties:
+                      type: string
+                    description: PrivateSubnetTags are the tags to apply to private
+                      subnets
+                    type: object
+                  publicSubnetTags:
+                    additionalProperties:
+                      type: string
+                    description: PublicSubnetTags are the tags to apply to public
+                      subnets
+                    type: object
+                  singleNatGateway:
+                    description: SingleNatGateway determines if a single NAT Gateway
+                      should be used for all AZs
+                    type: boolean
+                required:
+                - cidr
+                - enableNatGateway
+                - singleNatGateway
+                type: object
             required:
             - addons
+            - eks
             - karpenter
-            - publicAccess
             - region
-            - version
-            - vpcCIDR
+            - vpc
             type: object
           status:
             description: CAPTClusterStatus defines the observed state of CAPTCluster
+            properties:
+              clusterEndpoint:
+                description: ClusterEndpoint is the endpoint of the created EKS cluster
+                type: string
+              clusterName:
+                description: ClusterName is the name of the created EKS cluster
+                type: string
+              clusterStatus:
+                description: ClusterStatus represents the current status of the EKS
+                  cluster
+                type: string
+              networkWorkspaceName:
+                description: NetworkWorkspaceName is the name of the associated Network
+                  Terraform Workspace
+                type: string
+              workspaceName:
+                description: WorkspaceName is the name of the associated Terraform
+                  Workspace
+                type: string
             type: object
         type: object
     served: true

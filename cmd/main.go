@@ -39,6 +39,7 @@ import (
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
 	"github.com/appthrust/capt/internal/controller"
 	controlplanecontroller "github.com/appthrust/capt/internal/controller/controlplane"
+	"github.com/upbound/provider-terraform/apis/v1beta1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -52,6 +53,7 @@ func init() {
 
 	utilruntime.Must(infrastructurev1beta1.AddToScheme(scheme))
 	utilruntime.Must(controlplanev1beta1.AddToScheme(scheme))
+	utilruntime.Must(v1beta1.SchemeBuilder.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 

@@ -75,18 +75,18 @@ func (r *CAPTVPCTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 				return ctrl.Result{}, err
 			}
 			log.Info("Created new workspace", "workspace", workspaceName)
-		} else {
-			log.Error(err, "Failed to get workspace")
-			return ctrl.Result{}, err
+			return ctrl.Result{}, nil
 		}
-	} else {
-		// Update existing workspace
-		if err := r.updateWorkspace(ctx, vpcTemplate, workspace); err != nil {
-			log.Error(err, "Failed to update workspace")
-			return ctrl.Result{}, err
-		}
-		log.Info("Updated workspace", "workspace", workspaceName)
+		log.Error(err, "Failed to get workspace")
+		return ctrl.Result{}, err
 	}
+
+	// Update existing workspace
+	if err := r.updateWorkspace(ctx, vpcTemplate, workspace); err != nil {
+		log.Error(err, "Failed to update workspace")
+		return ctrl.Result{}, err
+	}
+	log.Info("Updated workspace", "workspace", workspaceName)
 
 	// Update status
 	vpcTemplate.Status.WorkspaceName = workspaceName.Name
@@ -112,7 +112,7 @@ func (r *CAPTVPCTemplateReconciler) createWorkspace(ctx context.Context, vpcTemp
 		Spec: tfv1beta1.WorkspaceSpec{
 			ResourceSpec: xpv1.ResourceSpec{
 				ProviderConfigReference: &xpv1.Reference{
-					Name: "aws-provider",
+					Name: "aws-provider-for-eks",
 				},
 			},
 			ForProvider: tfv1beta1.WorkspaceParameters{
@@ -149,7 +149,7 @@ func (r *CAPTVPCTemplateReconciler) updateWorkspace(ctx context.Context, vpcTemp
 	// Ensure ProviderConfigReference is set
 	if workspace.Spec.ProviderConfigReference == nil {
 		workspace.Spec.ProviderConfigReference = &xpv1.Reference{
-			Name: "aws-provider",
+			Name: "aws-provider-for-eks",
 		}
 	}
 

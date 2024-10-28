@@ -31,11 +31,36 @@ rules:
   - patch
   - update
 - apiGroups:
+  - infrastructure.capt.labthrust.io
+  resources:
+  - captvpctemplates
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - infrastructure.capt.labthrust.io
+  resources:
+  - captvpctemplates/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - infrastructure.capt.labthrust.io
+  resources:
+  - captvpctemplates/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
   - infrastructure.cluster.x-k8s.io
   resources:
   - captclusters
   - captmachinetemplates
-  - captvpctemplates
   verbs:
   - create
   - delete
@@ -49,7 +74,6 @@ rules:
   resources:
   - captclusters/finalizers
   - captmachinetemplates/finalizers
-  - captvpctemplates/finalizers
   verbs:
   - update
 - apiGroups:
@@ -57,8 +81,19 @@ rules:
   resources:
   - captclusters/status
   - captmachinetemplates/status
-  - captvpctemplates/status
   verbs:
   - get
   - patch
   - update
+- apiGroups:
+  - tf.upbound.io
+  resources:
+  - workspaces
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch

@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"strings"
 
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
 	"github.com/appthrust/capt/internal/tf_module/vpc"
@@ -77,8 +78,7 @@ func generateVPCWorkspaceModule(vpcTemplate *infrastructurev1beta1.CAPTVPCTempla
 	}
 
 	// Add required data sources and locals
-	dataSources := `
-data "aws_availability_zones" "available" {
+	dataSources := `data "aws_availability_zones" "available" {
   filter {
     name   = "opt-in-status"
     values = ["opt-in-not-required"]
@@ -100,5 +100,12 @@ variable "name" {
 }
 `
 
-	return dataSources + hcl, nil
+	// Combine and clean up the HCL code
+	combinedHCL := dataSources + "\n" + hcl
+	// Remove any double dollar signs that might appear in variable references
+	combinedHCL = strings.ReplaceAll(combinedHCL, "$$", "$")
+	// Remove any empty lines at the start of the file
+	combinedHCL = strings.TrimSpace(combinedHCL)
+
+	return combinedHCL, nil
 }

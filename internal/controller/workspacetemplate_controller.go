@@ -28,6 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
+	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 	tfv1beta1 "github.com/upbound/provider-terraform/apis/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -235,12 +236,28 @@ func (r *WorkspaceTemplateReconciler) createWorkspace(ctx context.Context, works
 			Namespace: name.Namespace,
 		},
 		Spec: tfv1beta1.WorkspaceSpec{
+			ResourceSpec: xpv1.ResourceSpec{
+				ProviderConfigReference: &xpv1.Reference{
+					Name: workspaceTemplate.Spec.ProviderConfigRef,
+				},
+			},
 			ForProvider: tfv1beta1.WorkspaceParameters{
-				Module: workspaceTemplate.Spec.Module,
-				Source: tfv1beta1.ModuleSource(workspaceTemplate.Spec.Source),
-				Vars:   vars,
+				Module:                    workspaceTemplate.Spec.Module,
+				Source:                    tfv1beta1.ModuleSource(workspaceTemplate.Spec.Source),
+				EnableTerraformCLILogging: true,
+				Vars:                      vars,
 			},
 		},
+	}
+
+	// Set WriteConnectionSecretToRef if specified
+	if workspaceTemplate.Spec.WriteConnectionSecretToRef != nil {
+		workspace.Spec.WriteConnectionSecretToReference = workspaceTemplate.Spec.WriteConnectionSecretToRef
+	}
+
+	// Set owner reference
+	if err := ctrl.SetControllerReference(workspaceTemplate, workspace, r.Scheme); err != nil {
+		return fmt.Errorf("failed to set owner reference: %w", err)
 	}
 
 	return r.Create(ctx, workspace)
@@ -249,7 +266,20 @@ func (r *WorkspaceTemplateReconciler) createWorkspace(ctx context.Context, works
 func (r *WorkspaceTemplateReconciler) updateWorkspace(ctx context.Context, workspaceTemplate *infrastructurev1beta1.WorkspaceTemplate, workspace *tfv1beta1.Workspace, vars []tfv1beta1.Var) error {
 	workspace.Spec.ForProvider.Module = workspaceTemplate.Spec.Module
 	workspace.Spec.ForProvider.Source = tfv1beta1.ModuleSource(workspaceTemplate.Spec.Source)
+	workspace.Spec.ForProvider.EnableTerraformCLILogging = true
 	workspace.Spec.ForProvider.Vars = vars
+
+	// Update WriteConnectionSecretToRef if specified
+	if workspaceTemplate.Spec.WriteConnectionSecretToRef != nil {
+		workspace.Spec.WriteConnectionSecretToReference = workspaceTemplate.Spec.WriteConnectionSecretToRef
+	}
+
+	// Ensure ProviderConfigReference is set
+	if workspace.Spec.ProviderConfigReference == nil {
+		workspace.Spec.ProviderConfigReference = &xpv1.Reference{
+			Name: workspaceTemplate.Spec.ProviderConfigRef,
+		}
+	}
 
 	return r.Update(ctx, workspace)
 }

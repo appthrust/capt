@@ -4,6 +4,7 @@ metadata:
   name: vpc-template-sample
 spec:
   source: Inline
+  providerConfigRef: aws-provider-for-eks
   module: |
     data "aws_availability_zones" "available" {
       filter {

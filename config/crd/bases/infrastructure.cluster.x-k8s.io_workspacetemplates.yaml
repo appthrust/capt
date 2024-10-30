@@ -49,6 +49,10 @@ spec:
               module:
                 description: Module is the HCL format Terraform module
                 type: string
+              providerConfigRef:
+                description: ProviderConfigRef specifies which provider config to
+                  use for the workspace
+                type: string
               source:
                 description: Source specifies how the module is sourced
                 enum:
@@ -127,6 +131,7 @@ spec:
                 type: object
             required:
             - module
+            - providerConfigRef
             - source
             type: object
           status:

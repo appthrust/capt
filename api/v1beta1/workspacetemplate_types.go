@@ -97,6 +97,10 @@ type WorkspaceTemplateSpec struct {
 	// +optional
 	Variables []Variable `json:"variables,omitempty"`
 
+	// ProviderConfigRef specifies which provider config to use for the workspace
+	// +kubebuilder:validation:Required
+	ProviderConfigRef string `json:"providerConfigRef"`
+
 	// WriteConnectionSecretToRef specifies the namespace and name of a
 	// Secret to which any connection details for this managed resource should
 	// be written.

@@ -3,5 +3,6 @@ resources:
 - infrastructure_v1beta1_captcluster.yaml
 - infrastructure_v1beta1_captmachinetemplate.yaml
 - infrastructure_v1beta1_captvpctemplate.yaml
+- infrastructure_v1beta1_workspacetemplate.yaml
 - controlplane_v1beta1_captcontrolplane.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

@@ -1,0 +1,186 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.1
+  name: workspacetemplates.infrastructure.cluster.x-k8s.io
+spec:
+  group: infrastructure.cluster.x-k8s.io
+  names:
+    kind: WorkspaceTemplate
+    listKind: WorkspaceTemplateList
+    plural: workspacetemplates
+    singular: workspacetemplate
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.workspaceName
+      name: WORKSPACE
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: AGE
+      type: date
+    name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: WorkspaceTemplate is the Schema for the workspacetemplates API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: WorkspaceTemplateSpec defines the desired state of WorkspaceTemplate
+            properties:
+              module:
+                description: Module is the HCL format Terraform module
+                type: string
+              source:
+                description: Source specifies how the module is sourced
+                enum:
+                - Inline
+                - Git
+                type: string
+              variables:
+                description: Variables is a list of variables to pass to the Terraform
+                  module
+                items:
+                  description: Variable defines a variable to be passed to the Terraform
+                    module
+                  properties:
+                    key:
+                      description: Key is the name of the variable
+                      type: string
+                    value:
+                      description: Value is the value of the variable
+                      type: string
+                    valueFrom:
+                      description: ValueFrom allows the value to be sourced from another
+                        resource
+                      properties:
+                        configMapKeyRef:
+                          description: ConfigMapKeyRef selects a key of a ConfigMap
+                          properties:
+                            key:
+                              description: Key is the key in the configmap
+                              type: string
+                            name:
+                              description: Name of the configmap
+                              type: string
+                            namespace:
+                              description: Namespace of the configmap
+                              type: string
+                          required:
+                          - key
+                          - name
+                          type: object
+                        secretKeyRef:
+                          description: SecretKeyRef selects a key of a Secret
+                          properties:
+                            key:
+                              description: Key is the key in the secret
+                              type: string
+                            name:
+                              description: Name of the secret
+                              type: string
+                            namespace:
+                              description: Namespace of the secret
+                              type: string
+                          required:
+                          - key
+                          - name
+                          type: object
+                      type: object
+                  required:
+                  - key
+                  type: object
+                type: array
+              writeConnectionSecretToRef:
+                description: |-
+                  WriteConnectionSecretToRef specifies the namespace and name of a
+                  Secret to which any connection details for this managed resource should
+                  be written.
+                properties:
+                  name:
+                    description: Name of the secret.
+                    type: string
+                  namespace:
+                    description: Namespace of the secret.
+                    type: string
+                required:
+                - name
+                - namespace
+                type: object
+            required:
+            - module
+            - source
+            type: object
+          status:
+            description: WorkspaceTemplateStatus defines the observed state of WorkspaceTemplate
+            properties:
+              conditions:
+                description: Conditions of the resource.
+                items:
+                  description: A Condition that may apply to a resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        LastTransitionTime is the last time this condition transitioned from one
+                        status to another.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        A Message containing details about this condition's last transition from
+                        one status to another, if any.
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        ObservedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      type: integer
+                    reason:
+                      description: A Reason for this condition's last transition from
+                        one status to another.
+                      type: string
+                    status:
+                      description: Status of this condition; is it currently True,
+                        False, or Unknown?
+                      type: string
+                    type:
+                      description: |-
+                        Type of this condition. At most one of each condition type may apply to
+                        a resource at any point in time.
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              workspaceName:
+                description: WorkspaceName is the name of the created Terraform Workspace
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

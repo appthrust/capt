@@ -37,8 +37,8 @@ const (
 	workspaceTemplateFinalizerV2 = "workspacetemplate.v2.infrastructure.cluster.x-k8s.io"
 )
 
-// WorkspaceTemplateReconcilerV2 reconciles a WorkspaceTemplate object
-type WorkspaceTemplateReconcilerV2 struct {
+// WorkspaceTemplateReconciler reconciles a WorkspaceTemplate object
+type WorkspaceTemplateReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
@@ -52,7 +52,7 @@ type WorkspaceTemplateReconcilerV2 struct {
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-func (r *WorkspaceTemplateReconcilerV2) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *WorkspaceTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
 	// Fetch the WorkspaceTemplate instance
@@ -82,7 +82,7 @@ func (r *WorkspaceTemplateReconcilerV2) Reconcile(ctx context.Context, req ctrl.
 	return r.reconcileNormal(ctx, workspaceTemplate)
 }
 
-func (r *WorkspaceTemplateReconcilerV2) reconcileNormal(ctx context.Context, workspaceTemplate *infrastructurev1beta1.WorkspaceTemplate) (ctrl.Result, error) {
+func (r *WorkspaceTemplateReconciler) reconcileNormal(ctx context.Context, workspaceTemplate *infrastructurev1beta1.WorkspaceTemplate) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
 	// Create or update the Terraform Workspace
@@ -119,7 +119,7 @@ func (r *WorkspaceTemplateReconcilerV2) reconcileNormal(ctx context.Context, wor
 	return ctrl.Result{}, nil
 }
 
-func (r *WorkspaceTemplateReconcilerV2) reconcileDelete(ctx context.Context, workspaceTemplate *infrastructurev1beta1.WorkspaceTemplate) (ctrl.Result, error) {
+func (r *WorkspaceTemplateReconciler) reconcileDelete(ctx context.Context, workspaceTemplate *infrastructurev1beta1.WorkspaceTemplate) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
 	// Delete the associated Terraform Workspace
@@ -148,7 +148,7 @@ func (r *WorkspaceTemplateReconcilerV2) reconcileDelete(ctx context.Context, wor
 	return ctrl.Result{}, nil
 }
 
-func (r *WorkspaceTemplateReconcilerV2) createWorkspace(ctx context.Context, workspaceTemplate *infrastructurev1beta1.WorkspaceTemplate, name types.NamespacedName) error {
+func (r *WorkspaceTemplateReconciler) createWorkspace(ctx context.Context, workspaceTemplate *infrastructurev1beta1.WorkspaceTemplate, name types.NamespacedName) error {
 	workspace := &tfv1beta1.Workspace{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name.Name,
@@ -172,7 +172,7 @@ func (r *WorkspaceTemplateReconcilerV2) createWorkspace(ctx context.Context, wor
 	return r.Create(ctx, workspace)
 }
 
-func (r *WorkspaceTemplateReconcilerV2) updateWorkspace(ctx context.Context, workspaceTemplate *infrastructurev1beta1.WorkspaceTemplate, workspace *tfv1beta1.Workspace) error {
+func (r *WorkspaceTemplateReconciler) updateWorkspace(ctx context.Context, workspaceTemplate *infrastructurev1beta1.WorkspaceTemplate, workspace *tfv1beta1.Workspace) error {
 	// Update ForProvider with template spec
 	workspace.Spec.ForProvider = workspaceTemplate.Spec.Template.Spec
 
@@ -185,7 +185,7 @@ func (r *WorkspaceTemplateReconcilerV2) updateWorkspace(ctx context.Context, wor
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *WorkspaceTemplateReconcilerV2) SetupWithManager(mgr ctrl.Manager) error {
+func (r *WorkspaceTemplateReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&infrastructurev1beta1.WorkspaceTemplate{}).
 		Owns(&tfv1beta1.Workspace{}).

@@ -46,73 +46,219 @@ spec:
           spec:
             description: WorkspaceTemplateSpec defines the desired state of WorkspaceTemplate
             properties:
-              module:
-                description: Module is the HCL format Terraform module
-                type: string
-              providerConfigRef:
-                description: ProviderConfigRef specifies which provider config to
-                  use for the workspace
-                type: string
-              source:
-                description: Source specifies how the module is sourced
-                enum:
-                - Inline
-                - Git
-                type: string
-              variables:
-                description: Variables is a list of variables to pass to the Terraform
-                  module
-                items:
-                  description: Variable defines a variable to be passed to the Terraform
-                    module
-                  properties:
-                    key:
-                      description: Key is the name of the variable
-                      type: string
-                    value:
-                      description: Value is the value of the variable
-                      type: string
-                    valueFrom:
-                      description: ValueFrom allows the value to be sourced from another
-                        resource
-                      properties:
-                        configMapKeyRef:
-                          description: ConfigMapKeyRef selects a key of a ConfigMap
+              template:
+                description: Template defines the workspace template
+                properties:
+                  metadata:
+                    description: Metadata contains template-specific metadata
+                    properties:
+                      description:
+                        description: Description provides a human-readable description
+                          of the template
+                        type: string
+                      tags:
+                        additionalProperties:
+                          type: string
+                        description: Tags are key-value pairs that can be used to
+                          organize and categorize templates
+                        type: object
+                      version:
+                        description: Version specifies the version of this template
+                        type: string
+                    type: object
+                  spec:
+                    description: Spec defines the desired state of the workspace
+                    properties:
+                      applyArgs:
+                        description: Arguments to be included in the terraform apply
+                          CLI command
+                        items:
+                          type: string
+                        type: array
+                      destroyArgs:
+                        description: Arguments to be included in the terraform destroy
+                          CLI command
+                        items:
+                          type: string
+                        type: array
+                      enableTerraformCLILogging:
+                        description: Boolean value to indicate  CLI logging of terraform
+                          execution is enabled or not
+                        type: boolean
+                      entrypoint:
+                        default: ""
+                        description: Entrypoint for `terraform init` within the module
+                        type: string
+                      env:
+                        description: Environment variables.
+                        items:
+                          description: An EnvVar specifies an environment variable
+                            to be set for the workspace.
+                          properties:
+                            configMapKeyRef:
+                              description: A ConfigMap key containing the desired
+                                env var value.
+                              properties:
+                                key:
+                                  description: Key within the referenced resource.
+                                  type: string
+                                name:
+                                  description: Name of the referenced resource.
+                                  type: string
+                                namespace:
+                                  description: Namespace of the referenced resource.
+                                  type: string
+                              required:
+                              - key
+                              - name
+                              - namespace
+                              type: object
+                            name:
+                              type: string
+                            secretKeyRef:
+                              description: A Secret key containing the desired env
+                                var value.
+                              properties:
+                                key:
+                                  description: Key within the referenced resource.
+                                  type: string
+                                name:
+                                  description: Name of the referenced resource.
+                                  type: string
+                                namespace:
+                                  description: Namespace of the referenced resource.
+                                  type: string
+                              required:
+                              - key
+                              - name
+                              - namespace
+                              type: object
+                            value:
+                              type: string
+                          required:
+                          - name
+                          type: object
+                        type: array
+                      initArgs:
+                        description: Arguments to be included in the terraform init
+                          CLI command
+                        items:
+                          type: string
+                        type: array
+                      inlineFormat:
+                        description: |-
+                          Specifies the format of the inline Terraform content
+                          if Source is 'Inline'
+                        enum:
+                        - HCL
+                        - JSON
+                        type: string
+                      module:
+                        description: |-
+                          The root module of this workspace; i.e. the module containing its main.tf
+                          file. When the workspace's source is 'Remote' (the default) this can be
+                          any address supported by terraform init -from-module, for example a git
+                          repository or an S3 bucket. When the workspace's source is 'Inline' the
+                          content of a simple main.tf or main.tf.json file may be written inline.
+                        type: string
+                      planArgs:
+                        description: Arguments to be included in the terraform plan
+                          CLI command
+                        items:
+                          type: string
+                        type: array
+                      source:
+                        description: Source of the root module of this workspace.
+                        enum:
+                        - Remote
+                        - Inline
+                        type: string
+                      varFiles:
+                        description: |-
+                          Files of configuration variables. Explicitly declared vars take
+                          precedence.
+                        items:
+                          description: A VarFile is a file containing many Terraform
+                            variables.
+                          properties:
+                            configMapKeyRef:
+                              description: A ConfigMap key containing the vars file.
+                              properties:
+                                key:
+                                  description: Key within the referenced resource.
+                                  type: string
+                                name:
+                                  description: Name of the referenced resource.
+                                  type: string
+                                namespace:
+                                  description: Namespace of the referenced resource.
+                                  type: string
+                              required:
+                              - key
+                              - name
+                              - namespace
+                              type: object
+                            format:
+                              default: HCL
+                              description: Format of this vars file.
+                              enum:
+                              - HCL
+                              - JSON
+                              type: string
+                            secretKeyRef:
+                              description: A Secret key containing the vars file.
+                              properties:
+                                key:
+                                  description: Key within the referenced resource.
+                                  type: string
+                                name:
+                                  description: Name of the referenced resource.
+                                  type: string
+                                namespace:
+                                  description: Namespace of the referenced resource.
+                                  type: string
+                              required:
+                              - key
+                              - name
+                              - namespace
+                              type: object
+                            source:
+                              description: Source of this vars file.
+                              enum:
+                              - ConfigMapKey
+                              - SecretKey
+                              type: string
+                          required:
+                          - source
+                          type: object
+                        type: array
+                      varmap:
+                        description: Terraform Variable Map. Should be a valid JSON
+                          representation of the input vars
+                        type: object
+                        x-kubernetes-preserve-unknown-fields: true
+                      vars:
+                        description: Configuration variables.
+                        items:
+                          description: A Var represents a Terraform configuration
+                            variable.
                           properties:
                             key:
-                              description: Key is the key in the configmap
                               type: string
-                            name:
-                              description: Name of the configmap
-                              type: string
-                            namespace:
-                              description: Namespace of the configmap
+                            value:
                               type: string
                           required:
                           - key
-                          - name
+                          - value
                           type: object
-                        secretKeyRef:
-                          description: SecretKeyRef selects a key of a Secret
-                          properties:
-                            key:
-                              description: Key is the key in the secret
-                              type: string
-                            name:
-                              description: Name of the secret
-                              type: string
-                            namespace:
-                              description: Namespace of the secret
-                              type: string
-                          required:
-                          - key
-                          - name
-                          type: object
-                      type: object
-                  required:
-                  - key
-                  type: object
-                type: array
+                        type: array
+                    required:
+                    - module
+                    - source
+                    type: object
+                required:
+                - spec
+                type: object
               writeConnectionSecretToRef:
                 description: |-
                   WriteConnectionSecretToRef specifies the namespace and name of a
@@ -130,9 +276,7 @@ spec:
                 - namespace
                 type: object
             required:
-            - module
-            - providerConfigRef
-            - source
+            - template
             type: object
           status:
             description: WorkspaceTemplateStatus defines the observed state of WorkspaceTemplate

@@ -170,6 +170,13 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "CAPTVPCTemplate")
 		os.Exit(1)
 	}
+	if err = (&controller.WorkspaceTemplateReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "WorkspaceTemplate")
+		os.Exit(1)
+	}
 	if err = (&controlplanecontroller.CAPTControlPlaneReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),

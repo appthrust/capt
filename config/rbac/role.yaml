@@ -5,6 +5,15 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - controlplane.cluster.x-k8s.io
   resources:
   - captcontrolplanes
@@ -61,6 +70,7 @@ rules:
   resources:
   - captclusters
   - captmachinetemplates
+  - workspacetemplates
   verbs:
   - create
   - delete
@@ -74,6 +84,7 @@ rules:
   resources:
   - captclusters/finalizers
   - captmachinetemplates/finalizers
+  - workspacetemplates/finalizers
   verbs:
   - update
 - apiGroups:
@@ -81,6 +92,7 @@ rules:
   resources:
   - captclusters/status
   - captmachinetemplates/status
+  - workspacetemplates/status
   verbs:
   - get
   - patch

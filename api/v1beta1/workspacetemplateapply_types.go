@@ -36,6 +36,10 @@ type WorkspaceTemplateApplySpec struct {
 	// Variables are used to override or provide additional variables to the workspace
 	// +optional
 	Variables map[string]string `json:"variables,omitempty"`
+
+	// WaitForSecret specifies a secret that must exist before creating the workspace
+	// +optional
+	WaitForSecret *xpv1.SecretReference `json:"waitForSecret,omitempty"`
 }
 
 // WorkspaceTemplateReference contains the reference to a WorkspaceTemplate

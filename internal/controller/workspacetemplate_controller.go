@@ -154,9 +154,7 @@ func (r *WorkspaceTemplateReconciler) createWorkspace(ctx context.Context, works
 			Name:      name.Name,
 			Namespace: name.Namespace,
 		},
-		Spec: tfv1beta1.WorkspaceSpec{
-			ForProvider: workspaceTemplate.Spec.Template.Spec,
-		},
+		Spec: workspaceTemplate.Spec.Template.Spec,
 	}
 
 	// Set WriteConnectionSecretToRef if specified
@@ -173,8 +171,8 @@ func (r *WorkspaceTemplateReconciler) createWorkspace(ctx context.Context, works
 }
 
 func (r *WorkspaceTemplateReconciler) updateWorkspace(ctx context.Context, workspaceTemplate *infrastructurev1beta1.WorkspaceTemplate, workspace *tfv1beta1.Workspace) error {
-	// Update ForProvider with template spec
-	workspace.Spec.ForProvider = workspaceTemplate.Spec.Template.Spec
+	// Update spec with template spec
+	workspace.Spec = workspaceTemplate.Spec.Template.Spec
 
 	// Update WriteConnectionSecretToRef if specified
 	if workspaceTemplate.Spec.WriteConnectionSecretToRef != nil {

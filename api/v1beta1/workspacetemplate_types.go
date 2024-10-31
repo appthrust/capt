@@ -43,7 +43,7 @@ type WorkspaceTemplateDefinition struct {
 
 	// Spec defines the desired state of the workspace
 	// +kubebuilder:validation:Required
-	Spec tfv1beta1.WorkspaceParameters `json:"spec"`
+	Spec tfv1beta1.WorkspaceSpec `json:"spec"`
 }
 
 // WorkspaceTemplateMetadata contains metadata specific to the workspace template

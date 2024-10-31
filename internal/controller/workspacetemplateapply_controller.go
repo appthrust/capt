@@ -18,11 +18,13 @@ package controller
 
 import (
 	"context"
+	"time"
 
 	"github.com/crossplane/crossplane-runtime/pkg/event"
 	"github.com/crossplane/crossplane-runtime/pkg/logging"
 	"github.com/crossplane/crossplane-runtime/pkg/meta"
 	tfv1beta1 "github.com/upbound/provider-terraform/apis/v1beta1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -40,12 +42,17 @@ const (
 	errGetCreds                  = "cannot get credentials"
 	errGetTemplate               = "cannot get WorkspaceTemplate"
 	errCreateWorkspace           = "cannot create Workspace"
+	errWaitingForSecret          = "waiting for required secret"
 
 	// Event reasons
 	reasonCreatedWorkspace = "CreatedWorkspace"
+	reasonWaitingForSecret = "WaitingForSecret"
 
 	// Controller name
 	controllerName = "workspacetemplateapply.infrastructure.cluster.x-k8s.io"
+
+	// Reconciliation
+	requeueAfterSecret = 30 * time.Second
 )
 
 // WorkspaceTemplateApplyGroupKind is the group and kind of the WorkspaceTemplateApply resource
@@ -60,6 +67,7 @@ var WorkspaceTemplateApplyGroupKind = schema.GroupKind{
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplates,verbs=get;list;watch
 //+kubebuilder:rbac:groups=tf.crossplane.io,resources=workspaces,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+//+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
 // SetupWorkspaceTemplateApply adds a controller that reconciles WorkspaceTemplateApplies.
 func SetupWorkspaceTemplateApply(mgr ctrl.Manager, l logging.Logger) error {
@@ -105,6 +113,20 @@ func (r *workspaceTemplateApplyReconciler) Reconcile(ctx context.Context, req ct
 	// If already applied, skip
 	if cr.Status.Applied {
 		return ctrl.Result{}, nil
+	}
+
+	// Check if we need to wait for a secret
+	if cr.Spec.WaitForSecret != nil {
+		secret := &corev1.Secret{}
+		err := r.client.Get(ctx, types.NamespacedName{
+			Name:      cr.Spec.WaitForSecret.Name,
+			Namespace: cr.Spec.WaitForSecret.Namespace,
+		}, secret)
+		if err != nil {
+			log.Debug(errWaitingForSecret, "error", err)
+			r.record.Event(cr, event.Normal(reasonWaitingForSecret, "Waiting for secret "+cr.Spec.WaitForSecret.Name))
+			return ctrl.Result{RequeueAfter: requeueAfterSecret}, nil
+		}
 	}
 
 	// Create Workspace from template

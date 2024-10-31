@@ -5,15 +5,6 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
-  - ""
-  resources:
-  - configmaps
-  - secrets
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
   - controlplane.cluster.x-k8s.io
   resources:
   - captcontrolplanes
@@ -98,7 +89,6 @@ rules:
   - patch
   - update
 - apiGroups:
-  - tf.crossplane.io
   - tf.upbound.io
   resources:
   - workspaces

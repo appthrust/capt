@@ -45,14 +45,21 @@ const (
 	reasonCreatedWorkspace = "CreatedWorkspace"
 
 	// Controller name
-	controllerName = "workspacetemplateapply.infrastructure.appthrust.dev"
+	controllerName = "workspacetemplateapply.infrastructure.cluster.x-k8s.io"
 )
 
 // WorkspaceTemplateApplyGroupKind is the group and kind of the WorkspaceTemplateApply resource
 var WorkspaceTemplateApplyGroupKind = schema.GroupKind{
-	Group: "infrastructure.appthrust.dev",
+	Group: "infrastructure.cluster.x-k8s.io",
 	Kind:  "WorkspaceTemplateApply",
 }
+
+//+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplateapplies,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplateapplies/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplateapplies/finalizers,verbs=update
+//+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplates,verbs=get;list;watch
+//+kubebuilder:rbac:groups=tf.crossplane.io,resources=workspaces,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 // SetupWorkspaceTemplateApply adds a controller that reconciles WorkspaceTemplateApplies.
 func SetupWorkspaceTemplateApply(mgr ctrl.Manager, l logging.Logger) error {

@@ -8,9 +8,14 @@ metadata:
 spec:
   group: infrastructure.cluster.x-k8s.io
   names:
+    categories:
+    - capt
+    - terraform
     kind: WorkspaceTemplateApply
     listKind: WorkspaceTemplateApplyList
     plural: workspacetemplateapplies
+    shortNames:
+    - wtapply
     singular: workspacetemplateapply
   scope: Namespaced
   versions:

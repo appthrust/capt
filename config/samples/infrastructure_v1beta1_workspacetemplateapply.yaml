@@ -1,12 +1,14 @@
-apiVersion: infrastructure.appthrust.dev/v1beta1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: WorkspaceTemplateApply
 metadata:
-  name: workspacetemplateapply-sample
+  name: vpc-template-apply-sample
+  namespace: default
 spec:
   templateRef:
-    name: workspacetemplate-sample
+    name: vpc-template-sample
+    namespace: default  # 明示的にnamespaceを指定
   variables:
-    environment: "production"
+    name: "production-vpc"
   writeConnectionSecretToRef:
-    name: workspace-connection
+    name: production-vpc-connection
     namespace: default

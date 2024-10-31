@@ -2,6 +2,7 @@ apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: WorkspaceTemplate
 metadata:
   name: vpc-template-sample
+  namespace: default  # 明示的にnamespaceを指定
 spec:
   template:
     metadata:

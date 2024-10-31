@@ -73,6 +73,8 @@ type WorkspaceTemplateApplyStatus struct {
 //+kubebuilder:printcolumn:name="WORKSPACE",type="string",JSONPath=".status.workspaceName"
 //+kubebuilder:printcolumn:name="APPLIED",type="boolean",JSONPath=".status.applied"
 //+kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
+//+kubebuilder:resource:categories={capt,terraform},shortName=wtapply,scope=Namespaced,path=workspacetemplateapplies,singular=workspacetemplateapply
+//+groupName=infrastructure.cluster.x-k8s.io
 
 // WorkspaceTemplateApply is the Schema for the workspacetemplateapplies API
 type WorkspaceTemplateApply struct {

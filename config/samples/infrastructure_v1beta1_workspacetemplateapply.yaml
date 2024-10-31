@@ -1,0 +1,12 @@
+apiVersion: infrastructure.appthrust.dev/v1beta1
+kind: WorkspaceTemplateApply
+metadata:
+  name: workspacetemplateapply-sample
+spec:
+  templateRef:
+    name: workspacetemplate-sample
+  variables:
+    environment: "production"
+  writeConnectionSecretToRef:
+    name: workspace-connection
+    namespace: default

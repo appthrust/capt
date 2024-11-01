@@ -80,6 +80,37 @@ func FindStatusCondition(conditions []xpv1.Condition, conditionType xpv1.Conditi
 	return nil
 }
 
+// waitForDependentWorkspaces checks if all dependent workspaces are ready
+func (r *workspaceTemplateApplyReconciler) waitForDependentWorkspaces(ctx context.Context, cr *v1beta1.WorkspaceTemplateApply) error {
+	for _, workspaceRef := range cr.Spec.WaitForWorkspaces {
+		workspace := &tfv1beta1.Workspace{}
+		namespace := workspaceRef.Namespace
+		if namespace == "" {
+			namespace = cr.Namespace
+		}
+
+		err := r.client.Get(ctx, types.NamespacedName{
+			Name:      workspaceRef.Name,
+			Namespace: namespace,
+		}, workspace)
+		if err != nil {
+			r.log.Debug(errWaitingForWorkspace, "error", err)
+			r.record.Event(cr, event.Normal(reasonWaitingForWorkspace,
+				fmt.Sprintf("Waiting for workspace %s/%s", namespace, workspaceRef.Name)))
+			return fmt.Errorf("%s: %w", errWaitingForWorkspace, err)
+		}
+
+		// Check if workspace is ready
+		readyCondition := FindStatusCondition(workspace.Status.Conditions, xpv1.TypeReady)
+		if readyCondition == nil || readyCondition.Status != corev1.ConditionTrue {
+			r.record.Event(cr, event.Normal(reasonWaitingForWorkspace,
+				fmt.Sprintf("Waiting for workspace %s/%s to be ready", namespace, workspaceRef.Name)))
+			return fmt.Errorf("%s: workspace %s/%s is not ready", errWaitingForWorkspace, namespace, workspaceRef.Name)
+		}
+	}
+	return nil
+}
+
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplateapplies,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplateapplies/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplateapplies/finalizers,verbs=update
@@ -150,28 +181,8 @@ func (r *workspaceTemplateApplyReconciler) Reconcile(ctx context.Context, req ct
 
 	// Check if we need to wait for workspaces
 	if len(cr.Spec.WaitForWorkspaces) > 0 {
-		for _, workspaceRef := range cr.Spec.WaitForWorkspaces {
-			workspace := &tfv1beta1.Workspace{}
-			namespace := workspaceRef.Namespace
-			if namespace == "" {
-				namespace = cr.Namespace
-			}
-			err := r.client.Get(ctx, types.NamespacedName{
-				Name:      workspaceRef.Name,
-				Namespace: namespace,
-			}, workspace)
-			if err != nil {
-				log.Debug(errWaitingForWorkspace, "error", err)
-				r.record.Event(cr, event.Normal(reasonWaitingForWorkspace, fmt.Sprintf("Waiting for workspace %s/%s", namespace, workspaceRef.Name)))
-				return ctrl.Result{RequeueAfter: requeueAfterSecret}, nil
-			}
-
-			// Check if workspace is ready
-			readyCondition := FindStatusCondition(workspace.Status.Conditions, xpv1.TypeReady)
-			if readyCondition == nil || readyCondition.Status != corev1.ConditionTrue {
-				r.record.Event(cr, event.Normal(reasonWaitingForWorkspace, fmt.Sprintf("Waiting for workspace %s/%s to be ready", namespace, workspaceRef.Name)))
-				return ctrl.Result{RequeueAfter: requeueAfterSecret}, nil
-			}
+		if err := r.waitForDependentWorkspaces(ctx, cr); err != nil {
+			return ctrl.Result{RequeueAfter: requeueAfterSecret}, nil
 		}
 	}
 

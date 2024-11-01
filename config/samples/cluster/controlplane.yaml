@@ -21,11 +21,17 @@ spec:
         env:
           - name: HELM_REPOSITORY_CACHE
             value: /tmp/.helmcache
-        varFiles:
-          - secretKeyRef:
+        vars:
+          - key: vpc_id
+            secretKeyRef:
               name: vpc-connection
               namespace: default
-              key: output
+              key: vpc_id
+          - key: private_subnets
+            secretKeyRef:
+              name: vpc-connection
+              namespace: default
+              key: private_subnets
         module: |
           module "eks" {
             source  = "terraform-aws-modules/eks/aws"

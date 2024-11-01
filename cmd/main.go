@@ -36,6 +36,7 @@ import (
 	controlplanev1beta1 "github.com/appthrust/capt/api/controlplane/v1beta1"
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
 	"github.com/appthrust/capt/internal/controller"
+	controlplanecontroller "github.com/appthrust/capt/internal/controller/controlplane"
 	tfv1beta1 "github.com/upbound/provider-terraform/apis/v1beta1"
 	//+kubebuilder:scaffold:imports
 )
@@ -91,20 +92,6 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "CAPTCluster")
 		os.Exit(1)
 	}
-	if err = (&controller.CAPTMachineTemplateReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "CAPTMachineTemplate")
-		os.Exit(1)
-	}
-	if err = (&controller.CAPTVPCTemplateReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "CAPTVPCTemplate")
-		os.Exit(1)
-	}
 	if err = (&controller.WorkspaceTemplateReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
@@ -114,6 +101,13 @@ func main() {
 	}
 	if err = controller.SetupWorkspaceTemplateApply(mgr, logging.NewLogrLogger(ctrl.Log.WithName("controllers").WithName("WorkspaceTemplateApply"))); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "WorkspaceTemplateApply")
+		os.Exit(1)
+	}
+	if err = (&controlplanecontroller.CAPTControlPlaneReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "CAPTControlPlane")
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder

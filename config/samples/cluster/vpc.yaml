@@ -1,0 +1,91 @@
+# VPC WorkspaceTemplate
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplate
+metadata:
+  name: vpc-template
+  namespace: default
+spec:
+  template:
+    metadata:
+      description: "Template for creating AWS VPC with public and private subnets"
+      version: "1.0.0"
+      tags:
+        provider: "aws"
+        resource: "vpc"
+        environment: "dev"
+    spec:
+      providerConfigRef:
+        name: aws-provider-for-eks
+      forProvider:
+        source: Inline
+        module: |
+          data "aws_availability_zones" "available" {
+            filter {
+              name   = "opt-in-status"
+              values = ["opt-in-not-required"]
+            }
+          }
+
+          locals {
+            azs = slice(data.aws_availability_zones.available.names, 0, 3)
+            name = try(var.name, basename(path.cwd))
+            tags = {
+              Module     = basename(path.cwd)
+              GithubRepo = "github.com/appthrust/terraform-aws"
+            }
+          }
+
+          variable "name" {
+            type        = string
+            description = "Name of the VPC"
+          }
+
+          module "vpc" {
+            source             = "terraform-aws-modules/vpc/aws"
+            version           = "~> 5.0"
+            name              = var.name
+            cidr              = "10.0.0.0/16"
+            azs               = local.azs
+            private_subnets   = [for k, v in local.azs : cidrsubnet("10.0.0.0/16", 4, k)]
+            public_subnets    = [for k, v in local.azs : cidrsubnet("10.0.0.0/16", 8, k + 48)]
+            enable_nat_gateway = true
+            single_nat_gateway = true
+            public_subnet_tags = {
+              "kubernetes.io/role/elb" = "1"
+            }
+            private_subnet_tags = {
+              "karpenter.sh/discovery"          = "$${local.name}"
+              "kubernetes.io/role/internal-elb" = "1"
+            }
+            tags = {
+              Environment = "dev"
+              Terraform   = "true"
+            }
+          }
+
+          output "vpc_id" {
+            description = "The ID of the VPC"
+            value       = module.vpc.vpc_id
+          }
+
+          output "private_subnets" {
+            description = "List of IDs of private subnets"
+            value       = module.vpc.private_subnets
+          }
+
+          output "public_subnets" {
+            description = "List of IDs of public subnets"
+            value       = module.vpc.public_subnets
+          }
+---
+# VPC WorkspaceTemplateApply
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplateApply
+metadata:
+  name: demo-vpc-apply
+  namespace: default
+spec:
+  templateRef:
+    name: vpc-template
+  variables:
+    name: demo-cluster-vpc

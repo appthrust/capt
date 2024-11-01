@@ -20,6 +20,7 @@ import (
 	"context"
 	"time"
 
+	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 	"github.com/crossplane/crossplane-runtime/pkg/event"
 	"github.com/crossplane/crossplane-runtime/pkg/logging"
 	"github.com/crossplane/crossplane-runtime/pkg/meta"
@@ -43,22 +44,37 @@ const (
 	errGetTemplate               = "cannot get WorkspaceTemplate"
 	errCreateWorkspace           = "cannot create Workspace"
 	errWaitingForSecret          = "waiting for required secret"
+	errGetWorkspace              = "cannot get Workspace"
 
 	// Event reasons
 	reasonCreatedWorkspace = "CreatedWorkspace"
 	reasonWaitingForSecret = "WaitingForSecret"
+	reasonWaitingForSync   = "WaitingForSync"
+	reasonWaitingForReady  = "WaitingForReady"
+	reasonWorkspaceReady   = "WorkspaceReady"
 
 	// Controller name
 	controllerName = "workspacetemplateapply.infrastructure.cluster.x-k8s.io"
 
 	// Reconciliation
 	requeueAfterSecret = 30 * time.Second
+	requeueAfterStatus = 10 * time.Second
 )
 
 // WorkspaceTemplateApplyGroupKind is the group and kind of the WorkspaceTemplateApply resource
 var WorkspaceTemplateApplyGroupKind = schema.GroupKind{
 	Group: "infrastructure.cluster.x-k8s.io",
 	Kind:  "WorkspaceTemplateApply",
+}
+
+// FindStatusCondition finds the condition that matches the given type in the condition slice.
+func FindStatusCondition(conditions []xpv1.Condition, conditionType xpv1.ConditionType) *xpv1.Condition {
+	for i := range conditions {
+		if conditions[i].Type == conditionType {
+			return &conditions[i]
+		}
+	}
+	return nil
 }
 
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplateapplies,verbs=get;list;watch;create;update;patch;delete
@@ -110,9 +126,9 @@ func (r *workspaceTemplateApplyReconciler) Reconcile(ctx context.Context, req ct
 		return ctrl.Result{}, err
 	}
 
-	// If already applied, skip
+	// If already applied, check workspace status
 	if cr.Status.Applied {
-		return ctrl.Result{}, nil
+		return r.reconcileWorkspaceStatus(ctx, cr)
 	}
 
 	// Check if we need to wait for a secret
@@ -159,5 +175,34 @@ func (r *workspaceTemplateApplyReconciler) Reconcile(ctx context.Context, req ct
 	}
 
 	r.record.Event(cr, event.Normal(reasonCreatedWorkspace, "Created Workspace from template"))
+	return ctrl.Result{RequeueAfter: requeueAfterStatus}, nil
+}
+
+func (r *workspaceTemplateApplyReconciler) reconcileWorkspaceStatus(ctx context.Context, cr *v1beta1.WorkspaceTemplateApply) (ctrl.Result, error) {
+	workspace := &tfv1beta1.Workspace{}
+	if err := r.client.Get(ctx, types.NamespacedName{
+		Name:      cr.Status.WorkspaceName,
+		Namespace: cr.Namespace,
+	}, workspace); err != nil {
+		r.log.Debug(errGetWorkspace, "error", err)
+		return ctrl.Result{}, err
+	}
+
+	// Check if workspace is synced
+	syncedCondition := FindStatusCondition(workspace.Status.Conditions, xpv1.TypeSynced)
+	if syncedCondition == nil || syncedCondition.Status != corev1.ConditionTrue {
+		r.record.Event(cr, event.Normal(reasonWaitingForSync, "Waiting for workspace to be synced"))
+		return ctrl.Result{RequeueAfter: requeueAfterStatus}, nil
+	}
+
+	// Check if workspace is ready
+	readyCondition := FindStatusCondition(workspace.Status.Conditions, xpv1.TypeReady)
+	if readyCondition == nil || readyCondition.Status != corev1.ConditionTrue {
+		r.record.Event(cr, event.Normal(reasonWaitingForReady, "Waiting for workspace to be ready"))
+		return ctrl.Result{RequeueAfter: requeueAfterStatus}, nil
+	}
+
+	// Both synced and ready are true
+	r.record.Event(cr, event.Normal(reasonWorkspaceReady, "Workspace is synced and ready"))
 	return ctrl.Result{}, nil
 }

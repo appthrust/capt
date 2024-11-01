@@ -21,6 +21,11 @@ spec:
         env:
           - name: HELM_REPOSITORY_CACHE
             value: /tmp/.helmcache
+        varFiles:
+          - secretKeyRef:
+              name: vpc-connection
+              namespace: default
+              key: output
         module: |
           module "eks" {
             source  = "terraform-aws-modules/eks/aws"
@@ -31,7 +36,7 @@ spec:
             cluster_endpoint_public_access = true
 
             vpc_id     = var.vpc_id
-            subnet_ids = var.private_subnet_ids
+            subnet_ids = var.private_subnets
 
             # Fargate profiles use the cluster primary security group so these are not utilized
             create_cluster_security_group = false
@@ -138,7 +143,7 @@ spec:
             description = "ID of the VPC where EKS cluster will be created"
           }
 
-          variable "private_subnet_ids" {
+          variable "private_subnets" {
             type        = list(string)
             description = "List of private subnet IDs for EKS cluster"
           }

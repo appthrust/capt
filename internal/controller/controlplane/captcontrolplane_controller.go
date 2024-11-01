@@ -41,6 +41,7 @@ type CAPTControlPlaneReconciler struct {
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanes/finalizers,verbs=update
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplates,verbs=get;list;watch
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplateapplies,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=captclusters,verbs=get;list;watch
 
 // Reconcile handles the reconciliation of CAPTControlPlane resources
 func (r *CAPTControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -76,6 +77,19 @@ func (r *CAPTControlPlaneReconciler) reconcileNormal(ctx context.Context, contro
 		return ctrl.Result{}, err
 	}
 
+	// Get the CAPTCluster instance
+	captCluster := &infrastructurev1beta1.CAPTCluster{}
+	if err := r.Get(ctx, types.NamespacedName{Name: controlPlane.Name, Namespace: controlPlane.Namespace}, captCluster); err != nil {
+		logger.Error(err, "Failed to get CAPTCluster")
+		return ctrl.Result{}, err
+	}
+
+	// Check if VPC is ready
+	if !captCluster.Status.Ready {
+		logger.Info("Waiting for VPC to be ready")
+		return ctrl.Result{Requeue: true}, nil
+	}
+
 	// Create or update WorkspaceTemplateApply
 	workspaceApply, err := r.reconcileWorkspaceTemplateApply(ctx, controlPlane, workspaceTemplate)
 	if err != nil {
@@ -92,7 +106,11 @@ func (r *CAPTControlPlaneReconciler) reconcileNormal(ctx context.Context, contro
 	return ctrl.Result{}, nil
 }
 
-func (r *CAPTControlPlaneReconciler) reconcileWorkspaceTemplateApply(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane, template *infrastructurev1beta1.WorkspaceTemplate) (*infrastructurev1beta1.WorkspaceTemplateApply, error) {
+func (r *CAPTControlPlaneReconciler) reconcileWorkspaceTemplateApply(
+	ctx context.Context,
+	controlPlane *controlplanev1beta1.CAPTControlPlane,
+	_ *infrastructurev1beta1.WorkspaceTemplate,
+) (*infrastructurev1beta1.WorkspaceTemplateApply, error) {
 	// Create WorkspaceTemplateApply name based on controlPlane name
 	applyName := fmt.Sprintf("%s-apply", controlPlane.Name)
 
@@ -122,9 +140,40 @@ func (r *CAPTControlPlaneReconciler) reconcileWorkspaceTemplateApply(ctx context
 		}
 	}
 
+	// Convert WorkspaceTemplateReference
+	templateRef := infrastructurev1beta1.WorkspaceTemplateReference{
+		Name:      controlPlane.Spec.WorkspaceTemplateRef.Name,
+		Namespace: controlPlane.Spec.WorkspaceTemplateRef.Namespace,
+	}
+
+	// Set template reference and variables
+	workspaceApply.Spec.TemplateRef = templateRef
+	workspaceApply.Spec.Variables = variables
+
+	// Set wait for VPC workspace
+	workspaceApply.Spec.WaitForWorkspaces = []infrastructurev1beta1.WorkspaceReference{
+		{
+			Name:      fmt.Sprintf("%s-vpc", controlPlane.Name),
+			Namespace: controlPlane.Namespace,
+		},
+	}
+
 	// Create or update the WorkspaceTemplateApply
-	// Note: This is a simplified version. You'll need to implement proper create/update logic
-	// and handle any necessary owner references and finalizers.
+	err := r.Get(ctx, types.NamespacedName{Name: applyName, Namespace: controlPlane.Namespace}, workspaceApply)
+	if err != nil {
+		if client.IgnoreNotFound(err) != nil {
+			return nil, err
+		}
+		// Create new WorkspaceTemplateApply
+		if err := r.Create(ctx, workspaceApply); err != nil {
+			return nil, err
+		}
+	} else {
+		// Update existing WorkspaceTemplateApply
+		if err := r.Update(ctx, workspaceApply); err != nil {
+			return nil, err
+		}
+	}
 
 	return workspaceApply, nil
 }

@@ -1,0 +1,308 @@
+# VPC WorkspaceTemplate
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplate
+metadata:
+  name: vpc-template
+  namespace: default
+spec:
+  template:
+    metadata:
+      description: "Template for creating AWS VPC with public and private subnets"
+      version: "1.0.0"
+      tags:
+        provider: "aws"
+        resource: "vpc"
+        environment: "dev"
+    spec:
+      providerConfigRef:
+        name: aws-provider-for-eks
+      forProvider:
+        source: Inline
+        module: |
+          data "aws_availability_zones" "available" {
+            filter {
+              name   = "opt-in-status"
+              values = ["opt-in-not-required"]
+            }
+          }
+
+          locals {
+            azs = slice(data.aws_availability_zones.available.names, 0, 3)
+            name = try(var.name, basename(path.cwd))
+            tags = {
+              Module     = basename(path.cwd)
+              GithubRepo = "github.com/appthrust/terraform-aws"
+            }
+          }
+
+          variable "name" {
+            type        = string
+            description = "Name of the VPC"
+          }
+
+          module "vpc" {
+            source             = "terraform-aws-modules/vpc/aws"
+            version           = "~> 5.0"
+            name              = var.name
+            cidr              = "10.0.0.0/16"
+            azs               = local.azs
+            private_subnets   = [for k, v in local.azs : cidrsubnet("10.0.0.0/16", 4, k)]
+            public_subnets    = [for k, v in local.azs : cidrsubnet("10.0.0.0/16", 8, k + 48)]
+            enable_nat_gateway = true
+            single_nat_gateway = true
+            public_subnet_tags = {
+              "kubernetes.io/role/elb" = "1"
+            }
+            private_subnet_tags = {
+              "karpenter.sh/discovery"          = "$${local.name}"
+              "kubernetes.io/role/internal-elb" = "1"
+            }
+            tags = {
+              Environment = "dev"
+              Terraform   = "true"
+            }
+          }
+
+          output "vpc_id" {
+            description = "The ID of the VPC"
+            value       = module.vpc.vpc_id
+          }
+
+          output "private_subnets" {
+            description = "List of IDs of private subnets"
+            value       = module.vpc.private_subnets
+          }
+
+          output "public_subnets" {
+            description = "List of IDs of public subnets"
+            value       = module.vpc.public_subnets
+          }
+---
+# VPC WorkspaceTemplateApply
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplateApply
+metadata:
+  name: demo-vpc-apply
+  namespace: default
+spec:
+  templateRef:
+    name: vpc-template
+  variables:
+    name: demo-cluster-vpc
+---
+# EKS Control Plane WorkspaceTemplate
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplate
+metadata:
+  name: eks-controlplane-template
+  namespace: default
+spec:
+  template:
+    metadata:
+      description: "Template for creating EKS Control Plane with Fargate and Karpenter"
+      version: "1.0.0"
+      tags:
+        provider: "aws"
+        resource: "eks"
+        environment: "dev"
+    spec:
+      providerConfigRef:
+        name: aws-provider-for-eks
+      forProvider:
+        source: Inline
+        env:
+          - name: HELM_REPOSITORY_CACHE
+            value: /tmp/.helmcache
+        module: |
+          module "eks" {
+            source  = "terraform-aws-modules/eks/aws"
+            version = "~> 20.11"
+
+            cluster_name                   = var.cluster_name
+            cluster_version                = var.kubernetes_version
+            cluster_endpoint_public_access = true
+
+            vpc_id     = var.vpc_id
+            subnet_ids = var.private_subnet_ids
+
+            # Fargate profiles use the cluster primary security group so these are not utilized
+            create_cluster_security_group = false
+            create_node_security_group    = false
+
+            enable_cluster_creator_admin_permissions = true
+
+            fargate_profiles = {
+              karpenter = {
+                selectors = [
+                  { namespace = "karpenter" }
+                ]
+              }
+              kube_system = {
+                name = "kube-system"
+                selectors = [
+                  { namespace = "kube-system" }
+                ]
+              }
+            }
+
+            tags = {
+              Environment = "dev"
+              Terraform   = "true"
+              "karpenter.sh/discovery" = var.cluster_name
+            }
+          }
+
+          module "eks_blueprints_addons" {
+            source  = "aws-ia/eks-blueprints-addons/aws"
+            version = "~> 1.16"
+
+            cluster_name      = module.eks.cluster_name
+            cluster_endpoint  = module.eks.cluster_endpoint
+            cluster_version   = module.eks.cluster_version
+            oidc_provider_arn = module.eks.oidc_provider_arn
+
+            # We want to wait for the Fargate profiles to be deployed first
+            create_delay_dependencies = [for prof in module.eks.fargate_profiles : prof.fargate_profile_arn]
+
+            eks_addons = {
+              coredns = {
+                configuration_values = jsonencode({
+                  computeType = "Fargate"
+                  resources = {
+                    limits = {
+                      cpu = "0.25"
+                      memory = "256M"
+                    }
+                    requests = {
+                      cpu = "0.25"
+                      memory = "256M"
+                    }
+                  }
+                })
+              }
+              vpc-cni    = {}
+              kube-proxy = {}
+            }
+
+            enable_karpenter = true
+
+            karpenter = {
+              helm_config = {
+                cacheDir = "/tmp/.helmcache"
+              }
+            }
+
+            karpenter_node = {
+              iam_role_use_name_prefix = false
+            }
+
+            tags = {
+              Environment = "dev"
+              Terraform   = "true"
+            }
+          }
+
+          resource "aws_eks_access_entry" "karpenter_node_access_entry" {
+            cluster_name      = module.eks.cluster_name
+            principal_arn     = module.eks_blueprints_addons.karpenter.node_iam_role_arn
+            kubernetes_groups = []
+            type             = "EC2_LINUX"
+
+            lifecycle {
+              ignore_changes = [
+                kubernetes_groups
+              ]
+            }
+          }
+
+          variable "cluster_name" {
+            type        = string
+            description = "Name of the EKS cluster"
+          }
+
+          variable "kubernetes_version" {
+            type        = string
+            description = "Kubernetes version for the EKS cluster"
+          }
+
+          variable "vpc_id" {
+            type        = string
+            description = "ID of the VPC where EKS cluster will be created"
+          }
+
+          variable "private_subnet_ids" {
+            type        = list(string)
+            description = "List of private subnet IDs for EKS cluster"
+          }
+
+          output "cluster_endpoint" {
+            description = "Endpoint for EKS control plane"
+            value       = module.eks.cluster_endpoint
+          }
+
+          output "cluster_name" {
+            description = "The name of the EKS cluster"
+            value       = module.eks.cluster_name
+          }
+---
+# CAPTCluster
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: CAPTCluster
+metadata:
+  name: demo-cluster
+  namespace: default
+spec:
+  region: "ap-northeast-1"
+  vpcTemplateRef:
+    name: vpc-template
+    namespace: default
+---
+# CAPTControlPlane
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: CAPTControlPlane
+metadata:
+  name: demo-cluster
+  namespace: default
+spec:
+  version: "1.31"
+  workspaceTemplateRef:
+    name: eks-controlplane-template
+    namespace: default
+  controlPlaneConfig:
+    endpointAccess:
+      public: true
+      private: true
+    fargateProfiles:
+      - name: kube-system
+        selectors:
+          - namespace: kube-system
+      - name: karpenter
+        selectors:
+          - namespace: karpenter
+  additionalTags:
+    Environment: "dev"
+    ManagedBy: "capt"
+---
+# Cluster
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: demo-cluster
+  namespace: default
+spec:
+  clusterNetwork:
+    services:
+      cidrBlocks: ["10.96.0.0/12"]
+    pods:
+      cidrBlocks: ["192.168.0.0/16"]
+    serviceDomain: "cluster.local"
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: CAPTCluster
+    name: demo-cluster
+    namespace: default
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    kind: CAPTControlPlane
+    name: demo-cluster
+    namespace: default

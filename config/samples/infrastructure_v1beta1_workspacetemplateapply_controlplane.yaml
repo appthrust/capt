@@ -1,0 +1,16 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplateApply
+metadata:
+  name: eks-controlplane-apply
+  namespace: default
+spec:
+  templateRef:
+    name: eks-controlplane-template
+  variables:
+    cluster_name: eks-karpenter-demo
+    kubernetes_version: "1.31"
+    vpc_id: ${dependencies.vpc-apply.outputs.vpc_id}
+    private_subnet_ids: ${dependencies.vpc-apply.outputs.private_subnets}
+  dependencies:
+    - name: vpc-apply
+      namespace: default

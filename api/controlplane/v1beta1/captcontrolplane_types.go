@@ -18,34 +18,158 @@ package v1beta1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 )
 
 // CAPTControlPlaneSpec defines the desired state of CAPTControlPlane
 type CAPTControlPlaneSpec struct {
-	// Version is the Kubernetes version of the control plane
+	// Version defines the desired Kubernetes version.
+	// +kubebuilder:validation:Required
 	Version string `json:"version"`
 
-	// MachineTemplate is a reference to the CAPTMachineTemplate that should be used
-	// to create control plane instances
-	MachineTemplate CAPTControlPlaneMachineTemplate `json:"machineTemplate"`
+	// WorkspaceTemplateRef is a reference to the WorkspaceTemplate used for creating the control plane.
+	// +kubebuilder:validation:Required
+	WorkspaceTemplateRef WorkspaceTemplateReference `json:"workspaceTemplateRef"`
+
+	// ControlPlaneConfig contains additional configuration for the EKS control plane.
+	// +optional
+	ControlPlaneConfig *ControlPlaneConfig `json:"controlPlaneConfig,omitempty"`
+
+	// AdditionalTags is an optional set of tags to add to AWS resources managed by the AWS provider.
+	// +optional
+	AdditionalTags map[string]string `json:"additionalTags,omitempty"`
 }
 
-// CAPTControlPlaneMachineTemplate defines the template for creating control plane instances
-type CAPTControlPlaneMachineTemplate struct {
-	// InfrastructureRef is a reference to a provider-specific resource that holds the details
-	// for provisioning the Control Plane for a Cluster.
-	InfrastructureRef runtime.RawExtension `json:"infrastructureRef"`
+// WorkspaceTemplateReference contains the reference to WorkspaceTemplate
+type WorkspaceTemplateReference struct {
+	// Name is the name of the WorkspaceTemplate.
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+
+	// Namespace is the namespace of the WorkspaceTemplate.
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+}
+
+// ControlPlaneConfig contains EKS-specific configuration
+type ControlPlaneConfig struct {
+	// EndpointAccess defines the access configuration for the API server endpoint
+	// +optional
+	EndpointAccess *EndpointAccess `json:"endpointAccess,omitempty"`
+
+	// Addons defines the EKS addons to be installed
+	// +optional
+	Addons []Addon `json:"addons,omitempty"`
+
+	// FargateProfiles defines the Fargate profiles to be created
+	// +optional
+	FargateProfiles []FargateProfile `json:"fargateProfiles,omitempty"`
+}
+
+// EndpointAccess defines the access configuration for the API server endpoint
+type EndpointAccess struct {
+	// Public controls whether the API server has public access
+	// +optional
+	Public bool `json:"public,omitempty"`
+
+	// Private controls whether the API server has private access
+	// +optional
+	Private bool `json:"private,omitempty"`
+
+	// PublicCIDRs is a list of CIDR blocks that can access the API server
+	// +optional
+	PublicCIDRs []string `json:"publicCIDRs,omitempty"`
+}
+
+// Addon represents an EKS addon
+type Addon struct {
+	// Name is the name of the addon
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+
+	// Version is the version of the addon
+	// +optional
+	Version string `json:"version,omitempty"`
+
+	// ConfigurationValues is a string containing configuration values
+	// +optional
+	ConfigurationValues string `json:"configurationValues,omitempty"`
+}
+
+// FargateProfile defines a Fargate profile
+type FargateProfile struct {
+	// Name is the name of the Fargate profile
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+
+	// Selectors is a list of label selectors to use for pods
+	// +kubebuilder:validation:Required
+	Selectors []FargateSelector `json:"selectors"`
+}
+
+// FargateSelector defines the selectors for a Fargate profile
+type FargateSelector struct {
+	// Namespace is the Kubernetes namespace to select
+	// +kubebuilder:validation:Required
+	Namespace string `json:"namespace"`
+
+	// Labels is a map of Kubernetes labels to match
+	// +optional
+	Labels map[string]string `json:"labels,omitempty"`
 }
 
 // CAPTControlPlaneStatus defines the observed state of CAPTControlPlane
 type CAPTControlPlaneStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// Ready denotes that the control plane is ready
+	// +optional
+	Ready bool `json:"ready"`
+
+	// Initialized denotes if the control plane has been initialized
+	// +optional
+	Initialized bool `json:"initialized"`
+
+	// WorkspaceTemplateStatus contains the status of the WorkspaceTemplate
+	// +optional
+	WorkspaceTemplateStatus *WorkspaceTemplateStatus `json:"workspaceTemplateStatus,omitempty"`
+
+	// FailureReason indicates that there is a terminal problem reconciling the
+	// state, and will be set to a token value suitable for programmatic
+	// interpretation.
+	// +optional
+	FailureReason *string `json:"failureReason,omitempty"`
+
+	// FailureMessage indicates that there is a terminal problem reconciling the
+	// state, and will be set to a descriptive error message.
+	// +optional
+	FailureMessage *string `json:"failureMessage,omitempty"`
+
+	// Conditions defines current service state of the CAPTControlPlane.
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
-// +kubebuilder:object:root=true
-// +kubebuilder:subresource:status
+// WorkspaceTemplateStatus contains the status of the WorkspaceTemplate
+type WorkspaceTemplateStatus struct {
+	// Ready indicates if the WorkspaceTemplate is ready
+	// +optional
+	Ready bool `json:"ready"`
+
+	// State represents the current state of the WorkspaceTemplate
+	// +optional
+	State string `json:"state,omitempty"`
+
+	// LastAppliedRevision is the revision of the WorkspaceTemplate that was last applied
+	// +optional
+	LastAppliedRevision string `json:"lastAppliedRevision,omitempty"`
+
+	// Outputs contains the outputs from the WorkspaceTemplate
+	// +optional
+	Outputs map[string]string `json:"outputs,omitempty"`
+}
+
+//+kubebuilder:object:root=true
+//+kubebuilder:subresource:status
+//+kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.ready",description="Control Plane Ready status"
+//+kubebuilder:printcolumn:name="Version",type="string",JSONPath=".spec.version",description="Kubernetes version"
 
 // CAPTControlPlane is the Schema for the captcontrolplanes API
 type CAPTControlPlane struct {
@@ -56,7 +180,7 @@ type CAPTControlPlane struct {
 	Status CAPTControlPlaneStatus `json:"status,omitempty"`
 }
 
-// +kubebuilder:object:root=true
+//+kubebuilder:object:root=true
 
 // CAPTControlPlaneList contains a list of CAPTControlPlane
 type CAPTControlPlaneList struct {

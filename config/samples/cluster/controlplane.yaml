@@ -18,16 +18,24 @@ spec:
         name: aws-provider-for-eks
       forProvider:
         source: Inline
+        enableTerraformCLILogging: true
         env:
           - name: HELM_REPOSITORY_CACHE
             value: /tmp/.helmcache
         vars:
-          - key: vpc_id
+          - key: cluster_name
+            value: "demo-cluster"
+          - key: kubernetes_version
+            value: "1.31"
+        varFiles:
+          - source: SecretKey
+            format: JSON
             secretKeyRef:
               name: vpc-connection
               namespace: default
               key: vpc_id
-          - key: private_subnets
+          - source: SecretKey
+            format: JSON
             secretKeyRef:
               name: vpc-connection
               namespace: default
@@ -163,6 +171,20 @@ spec:
             description = "The name of the EKS cluster"
             value       = module.eks.cluster_name
           }
+---
+# EKS Control Plane WorkspaceTemplateApply
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplateApply
+metadata:
+  name: demo-eks-controlplane-apply
+  namespace: default
+spec:
+  templateRef:
+    name: eks-controlplane-template
+    namespace: default
+  waitForSecret:
+    name: vpc-connection
+    namespace: default
 ---
 # CAPTControlPlane
 apiVersion: controlplane.cluster.x-k8s.io/v1beta1

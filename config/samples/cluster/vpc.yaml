@@ -18,6 +18,9 @@ spec:
         name: aws-provider-for-eks
       forProvider:
         source: Inline
+        vars:
+          - key: name
+            value: demo-cluster-vpc
         module: |
           data "aws_availability_zones" "available" {
             filter {
@@ -93,5 +96,4 @@ metadata:
 spec:
   templateRef:
     name: vpc-template
-  variables:
-    name: demo-cluster-vpc
+    namespace: default

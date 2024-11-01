@@ -28,3 +28,4 @@ go.work
 
 docs/journal
 references
+crossplane-terraform-config/aws-creds-secret.yaml

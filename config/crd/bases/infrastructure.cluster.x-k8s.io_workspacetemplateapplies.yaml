@@ -87,6 +87,22 @@ spec:
                 - name
                 - namespace
                 type: object
+              waitForWorkspaces:
+                description: WaitForWorkspaces specifies a list of workspaces that
+                  must be ready before creating this workspace
+                items:
+                  description: WorkspaceReference defines a reference to a Workspace
+                  properties:
+                    name:
+                      description: Name of the referenced Workspace
+                      type: string
+                    namespace:
+                      description: Namespace of the referenced Workspace
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
               writeConnectionSecretToRef:
                 description: |-
                   WriteConnectionSecretToRef specifies the namespace and name of a

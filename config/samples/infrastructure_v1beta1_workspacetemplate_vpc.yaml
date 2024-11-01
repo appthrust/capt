@@ -1,0 +1,63 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplate
+metadata:
+  name: vpc-template
+spec:
+  template:
+    metadata:
+      description: "Standard VPC configuration for EKS clusters"
+      version: "1.0.0"
+      tags:
+        type: "vpc"
+        environment: "production"
+    spec:
+      module:
+        source: "terraform-aws-modules/vpc/aws"
+        version: "5.0.0"
+      variables:
+        name:
+          value: "${var.cluster_name}-vpc"
+        cidr:
+          value: "${var.vpc_cidr}"
+        azs:
+          value: "${var.availability_zones}"
+        private_subnets:
+          value: "${var.private_subnet_cidrs}"
+        public_subnets:
+          value: "${var.public_subnet_cidrs}"
+        enable_nat_gateway:
+          value: true
+        single_nat_gateway:
+          value: true
+        public_subnet_tags:
+          value:
+            "kubernetes.io/role/elb": "1"
+        private_subnet_tags:
+          value:
+            "kubernetes.io/role/internal-elb": "1"
+        tags:
+          value:
+            Environment: "${var.environment}"
+            Terraform: "true"
+            Project: "capt"
+      variableDefinitions:
+        - name: cluster_name
+          type: string
+          description: "Name of the EKS cluster"
+        - name: vpc_cidr
+          type: string
+          description: "CIDR block for the VPC"
+          default: "10.0.0.0/16"
+        - name: availability_zones
+          type: list(string)
+          description: "List of availability zones"
+        - name: private_subnet_cidrs
+          type: list(string)
+          description: "List of private subnet CIDRs"
+        - name: public_subnet_cidrs
+          type: list(string)
+          description: "List of public subnet CIDRs"
+        - name: environment
+          type: string
+          description: "Environment name"
+          default: "production"

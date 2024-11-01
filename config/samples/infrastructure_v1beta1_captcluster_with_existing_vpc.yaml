@@ -1,0 +1,8 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: CAPTCluster
+metadata:
+  name: sample-cluster-existing-vpc
+  namespace: default
+spec:
+  region: us-west-2
+  existingVpcId: vpc-0123456789abcdef0

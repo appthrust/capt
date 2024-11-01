@@ -77,6 +77,9 @@ spec:
             description = "List of IDs of public subnets"
             value       = module.vpc.public_subnets
           }
+      writeConnectionSecretToRef:
+        name: vpc-connection
+        namespace: default
 ---
 # VPC WorkspaceTemplateApply
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1

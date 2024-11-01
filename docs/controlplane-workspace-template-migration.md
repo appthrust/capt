@@ -14,92 +14,109 @@ The current implementation uses `CAPTControlPlane` CRD with the following key co
 
 ## Target Implementation
 
-The new implementation will use WorkspaceTemplate to manage the control plane configuration through Terraform. This approach offers several benefits:
+The new implementation uses WorkspaceTemplate to manage the control plane configuration through Terraform. This approach offers several benefits:
 
 1. Consistent management with infrastructure components
 2. Direct integration with AWS APIs through Terraform
 3. Better state management and drift detection
 4. Simplified dependency management
 
-## Implementation Steps
+## Implementation Details
 
-### 1. Create Control Plane WorkspaceTemplate
+### 1. CAPTControlPlane Changes
 
-Create a new WorkspaceTemplate that defines the EKS control plane configuration. The template includes:
-
-- EKS cluster configuration with Fargate profiles
-- EKS Blueprints Addons (CoreDNS, VPC-CNI, Kube-Proxy)
-- Karpenter configuration
-- IAM roles and access entries
-
-Example WorkspaceTemplate is available at: `config/samples/infrastructure_v1beta1_workspacetemplate_controlplane.yaml`
-
-Key features of the template:
+The CAPTControlPlane CRD has been updated to use WorkspaceTemplate:
 
 ```yaml
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-kind: WorkspaceTemplate
-metadata:
-  name: eks-controlplane-template
 spec:
-  template:
-    spec:
-      forProvider:
-        source: Inline
-        module: |
-          module "eks" {
-            source  = "terraform-aws-modules/eks/aws"
-            version = "~> 20.11"
-            # ... EKS configuration
-          }
-
-          module "eks_blueprints_addons" {
-            source  = "aws-ia/eks-blueprints-addons/aws"
-            # ... Addons configuration
-          }
-```
-
-### 2. Apply the WorkspaceTemplate
-
-Use WorkspaceTemplateApply to create an instance of the control plane, with dependencies on VPC resources:
-
-Example available at: `config/samples/infrastructure_v1beta1_workspacetemplateapply_controlplane.yaml`
-
-```yaml
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-kind: WorkspaceTemplateApply
-metadata:
-  name: eks-controlplane-apply
-spec:
-  templateRef:
+  version: "1.31"
+  workspaceTemplateRef:
     name: eks-controlplane-template
-  variables:
-    cluster_name: eks-karpenter-demo
-    kubernetes_version: "1.31"
-    vpc_id: ${dependencies.vpc-apply.outputs.vpc_id}
-    private_subnet_ids: ${dependencies.vpc-apply.outputs.private_subnets}
-  dependencies:
-    - name: vpc-apply
-      namespace: default
+    namespace: default
+  controlPlaneConfig:
+    endpointAccess:
+      public: true
+      private: true
+    fargateProfiles:
+      - name: kube-system
+        selectors:
+          - namespace: kube-system
 ```
 
-### 3. Update Controllers
+Key changes:
+- Removed MachineTemplate in favor of WorkspaceTemplateRef
+- Added ControlPlaneConfig for EKS-specific settings
+- Added support for Fargate profiles and addons
 
-1. Remove the existing `CAPTControlPlane` controller
-2. Implement a new controller that:
-   - Watches WorkspaceTemplate resources
-   - Manages the lifecycle of EKS control plane
-   - Handles updates and deletions
-   - Manages dependencies with other components
+### 2. WorkspaceTemplate Implementation
 
-### 4. Implementation Process
+The EKS control plane is managed through a WorkspaceTemplate that includes:
 
-For the initial implementation:
+1. EKS Cluster Configuration:
+   - Fargate profiles
+   - Security settings
+   - Network configuration
 
-1. Create the WorkspaceTemplate CRD for control plane management
-2. Implement the controller logic for handling WorkspaceTemplate resources
-3. Integrate with existing infrastructure components
-4. Implement proper status reporting and error handling
+2. EKS Blueprints Addons:
+   - CoreDNS with Fargate optimization
+   - VPC-CNI
+   - Kube-proxy
+   - Karpenter
+
+3. Access Management:
+   - IAM roles and policies
+   - Karpenter node access
+
+For detailed implementation, see: [EKS Control Plane Template](../config/samples/cluster/controlplane.yaml)
+
+### 3. Controller Implementation
+
+The controller has been updated to:
+- Watch WorkspaceTemplate resources
+- Manage WorkspaceTemplateApply resources
+- Handle lifecycle operations
+- Update status based on WorkspaceTemplate state
+
+## Sample Implementation
+
+The complete implementation is organized into three main components:
+
+1. [VPC Infrastructure](../config/samples/cluster/vpc.yaml):
+   - VPC WorkspaceTemplate
+   - Network configuration
+   - Subnet tagging for EKS
+
+2. [Control Plane](../config/samples/cluster/controlplane.yaml):
+   - EKS WorkspaceTemplate
+   - Fargate profiles
+   - EKS Blueprints addons
+
+3. [Cluster Configuration](../config/samples/cluster/cluster.yaml):
+   - CAPTCluster
+   - CAPI Cluster
+   - Resource references
+
+For detailed design documentation, see: [EKS Cluster Design](eks-cluster-design.md)
+
+## Migration Process
+
+1. Preparation:
+   - Deploy new CRDs with WorkspaceTemplate support
+   - Create WorkspaceTemplates for control plane
+   - Verify template validity
+
+2. Migration Steps:
+   - For each existing cluster:
+     1. Create VPC WorkspaceTemplate and apply
+     2. Create EKS WorkspaceTemplate and apply
+     3. Update CAPTControlPlane to use WorkspaceTemplate
+     4. Verify cluster functionality
+
+3. Validation:
+   - Verify control plane operations
+   - Check Fargate profile creation
+   - Validate addon deployment
+   - Test cluster access
 
 ## Testing Strategy
 
@@ -120,54 +137,41 @@ For the initial implementation:
 The implementation will be considered successful when:
 
 1. Control plane can be created using WorkspaceTemplate
-2. All control plane operations (create, update, delete) work as expected
+2. All control plane operations work as expected:
+   - Creation
+   - Updates
+   - Deletion
 3. Fargate profiles are properly configured
 4. EKS Blueprints addons are successfully deployed
 5. Karpenter is operational
 6. Monitoring and logging show expected behavior
-7. All tests pass with the new implementation
+7. All tests pass
 
 ## Implementation Timeline
 
 1. Development Phase:
-   - Create WorkspaceTemplate implementation
-   - Develop new controller
-   - Write tests
+   - Update CAPTControlPlane CRD
+   - Implement WorkspaceTemplate support
+   - Update controller logic
+   - Create sample configurations
 
 2. Testing Phase:
-   - Run unit and integration tests
-   - Validate functionality
-   - Document any issues or limitations
+   - Run unit tests
+   - Perform integration testing
+   - Validate migration process
+   - Document any issues
 
 3. Documentation Phase:
-   - Update user documentation
-   - Create example templates
+   - Update API documentation
+   - Create migration guides
    - Document best practices
-
-## Migration Process
-
-1. Preparation:
-   - Deploy new WorkspaceTemplate CRDs
-   - Create WorkspaceTemplates for control plane
-   - Verify template validity
-
-2. Migration:
-   - For each existing cluster:
-     1. Create WorkspaceTemplateApply for control plane
-     2. Verify new control plane is operational
-     3. Verify Fargate profiles and addons
-     4. Remove old CAPTControlPlane resources
-
-3. Validation:
-   - Verify cluster functionality
-   - Check monitoring and logging
-   - Validate access and security
-   - Test Fargate workload scheduling
-   - Verify Karpenter operation
+   - Create example templates
 
 ## References
 
-- [WorkspaceTemplate Controlplane Sample](../config/samples/infrastructure_v1beta1_workspacetemplate_controlplane.yaml)
-- [WorkspaceTemplateApply Controlplane Sample](../config/samples/infrastructure_v1beta1_workspacetemplateapply_controlplane.yaml)
+- [EKS Cluster Design](eks-cluster-design.md)
+- [VPC Template Sample](../config/samples/cluster/vpc.yaml)
+- [Control Plane Template Sample](../config/samples/cluster/controlplane.yaml)
+- [Cluster Configuration Sample](../config/samples/cluster/cluster.yaml)
 - [WorkspaceTemplate API Specification](../api/v1beta1/workspacetemplate_types.go)
-- [Current CAPTControlPlane Implementation](../api/controlplane/v1beta1/captcontrolplane_types.go)
+- [CAPTControlPlane Implementation](../api/controlplane/v1beta1/captcontrolplane_types.go)

@@ -44,6 +44,7 @@ func handleFinalizer(ctx context.Context, c client.Client, captCluster *infrastr
 }
 
 func deleteExternalResources(ctx context.Context, c client.Client, captCluster *infrastructurev1beta1.CAPTCluster) error {
-	// Delete the associated Terraform Workspace
-	return deleteWorkspace(ctx, c, captCluster)
+	// WorkspaceTemplateApply resources are automatically garbage collected by Kubernetes
+	// when the owner (CAPTCluster) is deleted, so no explicit cleanup is needed here
+	return nil
 }

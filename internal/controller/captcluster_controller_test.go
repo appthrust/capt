@@ -8,7 +8,6 @@ import (
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -50,15 +49,9 @@ var _ = Describe("CAPTCluster Controller", func() {
 				},
 				Spec: infrastructurev1beta1.CAPTClusterSpec{
 					Region: "us-west-2",
-					VPCTemplateRef: &corev1.ObjectReference{
-						APIVersion: "infrastructure.cluster.x-k8s.io/v1beta1",
-						Kind:       "WorkspaceTemplate",
-						Name:       "vpc-template",
-					},
-					EKS: infrastructurev1beta1.EKSConfig{
-						Version:       "1.27",
-						PublicAccess:  true,
-						PrivateAccess: true,
+					VPCTemplateRef: &infrastructurev1beta1.WorkspaceTemplateReference{
+						Name:      "vpc-template",
+						Namespace: ClusterNamespace,
 					},
 				},
 			}
@@ -78,7 +71,7 @@ var _ = Describe("CAPTCluster Controller", func() {
 
 			// Verify WorkspaceTemplateApply properties
 			Expect(createdVPCApply.Spec.TemplateRef.Name).Should(Equal("vpc-template"))
-			Expect(createdVPCApply.Spec.Variables["cluster_name"]).Should(Equal(ClusterName))
+			Expect(createdVPCApply.Spec.Variables["name"]).Should(Equal(ClusterName + "-vpc"))
 		})
 	})
 })

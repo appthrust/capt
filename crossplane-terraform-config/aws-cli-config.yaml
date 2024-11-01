@@ -1,0 +1,59 @@
+apiVersion: pkg.crossplane.io/v1beta1
+kind: DeploymentRuntimeConfig
+metadata:
+  name: aws-cli-config
+spec:
+  deploymentTemplate:
+    spec:
+      selector: {}
+      template:
+        spec:
+          initContainers:
+          - name: nix-build
+            image: nixos/nix:latest
+            command: ["/bin/sh", "-c"]
+            securityContext:
+              runAsUser: 0
+              runAsNonRoot: false
+            args:
+              - |
+                # while true; do sleep 30; done
+                mkdir -p /tmp/build
+                cp /src/flake.nix /tmp/build/
+                cd /tmp/build
+                nix --extra-experimental-features "nix-command flakes" build
+                mkdir -p /nix-output
+                cp -R /nix/store /nix-output/
+                cp -R result/* /nix-result/
+            volumeMounts:
+            - name: nix-store
+              mountPath: /nix-output
+            - name: nix-result
+              mountPath: /nix-result
+            - name: src
+              mountPath: /src
+          containers:
+          - name: package-runtime
+            env:
+            - name: PATH
+              value: /nix-result/bin:/root/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+            volumeMounts:
+            - name: nix-store
+              mountPath: /nix
+              readOnly: true
+            - name: nix-result
+              mountPath: /nix-result
+              readOnly: true
+            args:
+              - -d
+              - --poll=5m
+              - --max-reconcile-rate=10
+              - --timeout=40m
+          volumes:
+          - name: nix-store
+            emptyDir: {}
+          - name: nix-result
+            emptyDir: {}
+          - name: src
+            configMap:
+              name: flake-config

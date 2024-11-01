@@ -40,6 +40,10 @@ type WorkspaceTemplateApplySpec struct {
 	// WaitForSecret specifies a secret that must exist before creating the workspace
 	// +optional
 	WaitForSecret *xpv1.SecretReference `json:"waitForSecret,omitempty"`
+
+	// WaitForWorkspaces specifies a list of workspaces that must be ready before creating this workspace
+	// +optional
+	WaitForWorkspaces []WorkspaceReference `json:"waitForWorkspaces,omitempty"`
 }
 
 // WorkspaceTemplateReference contains the reference to a WorkspaceTemplate
@@ -49,6 +53,17 @@ type WorkspaceTemplateReference struct {
 	Name string `json:"name"`
 
 	// Namespace of the referenced WorkspaceTemplate
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+}
+
+// WorkspaceReference defines a reference to a Workspace
+type WorkspaceReference struct {
+	// Name of the referenced Workspace
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+
+	// Namespace of the referenced Workspace
 	// +optional
 	Namespace string `json:"namespace,omitempty"`
 }

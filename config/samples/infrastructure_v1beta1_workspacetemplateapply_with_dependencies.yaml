@@ -1,7 +1,7 @@
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: WorkspaceTemplateApply
 metadata:
-  name: vpc-template-apply-sample
+  name: vpc-template-apply-with-deps
   namespace: default
 spec:
   templateRef:
@@ -12,3 +12,8 @@ spec:
   writeConnectionSecretToRef:
     name: production-vpc-connection
     namespace: default
+  waitForWorkspaces:
+    - name: base-vpc-workspace
+      namespace: default
+    - name: network-workspace
+      namespace: default

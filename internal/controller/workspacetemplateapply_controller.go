@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
@@ -45,13 +46,15 @@ const (
 	errCreateWorkspace           = "cannot create Workspace"
 	errWaitingForSecret          = "waiting for required secret"
 	errGetWorkspace              = "cannot get Workspace"
+	errWaitingForWorkspace       = "waiting for required workspace"
 
 	// Event reasons
-	reasonCreatedWorkspace = "CreatedWorkspace"
-	reasonWaitingForSecret = "WaitingForSecret"
-	reasonWaitingForSync   = "WaitingForSync"
-	reasonWaitingForReady  = "WaitingForReady"
-	reasonWorkspaceReady   = "WorkspaceReady"
+	reasonCreatedWorkspace    = "CreatedWorkspace"
+	reasonWaitingForSecret    = "WaitingForSecret"
+	reasonWaitingForWorkspace = "WaitingForWorkspace"
+	reasonWaitingForSync      = "WaitingForSync"
+	reasonWaitingForReady     = "WaitingForReady"
+	reasonWorkspaceReady      = "WorkspaceReady"
 
 	// Controller name
 	controllerName = "workspacetemplateapply.infrastructure.cluster.x-k8s.io"
@@ -142,6 +145,33 @@ func (r *workspaceTemplateApplyReconciler) Reconcile(ctx context.Context, req ct
 			log.Debug(errWaitingForSecret, "error", err)
 			r.record.Event(cr, event.Normal(reasonWaitingForSecret, "Waiting for secret "+cr.Spec.WaitForSecret.Name))
 			return ctrl.Result{RequeueAfter: requeueAfterSecret}, nil
+		}
+	}
+
+	// Check if we need to wait for workspaces
+	if len(cr.Spec.WaitForWorkspaces) > 0 {
+		for _, workspaceRef := range cr.Spec.WaitForWorkspaces {
+			workspace := &tfv1beta1.Workspace{}
+			namespace := workspaceRef.Namespace
+			if namespace == "" {
+				namespace = cr.Namespace
+			}
+			err := r.client.Get(ctx, types.NamespacedName{
+				Name:      workspaceRef.Name,
+				Namespace: namespace,
+			}, workspace)
+			if err != nil {
+				log.Debug(errWaitingForWorkspace, "error", err)
+				r.record.Event(cr, event.Normal(reasonWaitingForWorkspace, fmt.Sprintf("Waiting for workspace %s/%s", namespace, workspaceRef.Name)))
+				return ctrl.Result{RequeueAfter: requeueAfterSecret}, nil
+			}
+
+			// Check if workspace is ready
+			readyCondition := FindStatusCondition(workspace.Status.Conditions, xpv1.TypeReady)
+			if readyCondition == nil || readyCondition.Status != corev1.ConditionTrue {
+				r.record.Event(cr, event.Normal(reasonWaitingForWorkspace, fmt.Sprintf("Waiting for workspace %s/%s to be ready", namespace, workspaceRef.Name)))
+				return ctrl.Result{RequeueAfter: requeueAfterSecret}, nil
+			}
 		}
 	}
 

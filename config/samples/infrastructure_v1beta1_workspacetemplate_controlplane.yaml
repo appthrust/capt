@@ -1,0 +1,184 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplate
+metadata:
+  name: eks-controlplane-template
+  namespace: default
+spec:
+  template:
+    metadata:
+      description: "Template for creating EKS Control Plane with Fargate and Karpenter"
+      version: "1.0.0"
+      tags:
+        provider: "aws"
+        resource: "eks"
+        environment: "dev"
+    spec:
+      providerConfigRef:
+        name: aws-provider-for-eks
+      forProvider:
+        source: Inline
+        module: |
+          data "aws_availability_zones" "available" {
+            filter {
+              name   = "opt-in-status"
+              values = ["opt-in-not-required"]
+            }
+          }
+
+          locals {
+            azs  = slice(data.aws_availability_zones.available.names, 0, 3)
+            name = try(var.cluster_name, basename(path.cwd))
+            tags = {
+              Module     = basename(path.cwd)
+              GithubRepo = "github.com/labthrust/terraform-aws"
+            }
+          }
+
+          ################################################################################
+          # Cluster
+          ################################################################################
+
+          module "eks" {
+            source  = "terraform-aws-modules/eks/aws"
+            version = "~> 20.11"
+
+            cluster_name                   = local.name
+            cluster_version                = var.kubernetes_version
+            cluster_endpoint_public_access = true
+
+            vpc_id     = var.vpc_id
+            subnet_ids = var.private_subnet_ids
+
+            # Fargate profiles use the cluster primary security group so these are not utilized
+            create_cluster_security_group = false
+            create_node_security_group    = false
+
+            enable_cluster_creator_admin_permissions = true
+
+            fargate_profiles = {
+              karpenter = {
+                selectors = [
+                  { namespace = "karpenter" }
+                ]
+              }
+              kube_system = {
+                name = "kube-system"
+                selectors = [
+                  { namespace = "kube-system" }
+                ]
+              }
+            }
+
+            tags = merge(local.tags, {
+              "karpenter.sh/discovery" = local.name
+            })
+          }
+
+          ################################################################################
+          # EKS Blueprints Addons
+          ################################################################################
+
+          module "eks_blueprints_addons" {
+            source  = "aws-ia/eks-blueprints-addons/aws"
+            version = "~> 1.16"
+
+            cluster_name      = module.eks.cluster_name
+            cluster_endpoint  = module.eks.cluster_endpoint
+            cluster_version   = module.eks.cluster_version
+            oidc_provider_arn = module.eks.oidc_provider_arn
+
+            create_delay_dependencies = [for prof in module.eks.fargate_profiles : prof.fargate_profile_arn]
+
+            eks_addons = {
+              coredns = {
+                configuration_values = jsonencode({
+                  computeType = "Fargate"
+                  resources = {
+                    limits = {
+                      cpu = "0.25"
+                      memory = "256M"
+                    }
+                    requests = {
+                      cpu = "0.25"
+                      memory = "256M"
+                    }
+                  }
+                })
+              }
+              vpc-cni    = {}
+              kube-proxy = {}
+            }
+
+            enable_karpenter = true
+
+            karpenter = {
+              helm_config = {
+                cacheDir = "/tmp/.helmcache"
+              }
+            }
+
+            karpenter_node = {
+              iam_role_use_name_prefix = false
+            }
+
+            tags = local.tags
+          }
+
+          resource "aws_eks_access_entry" "karpenter_node_access_entry" {
+            cluster_name      = module.eks.cluster_name
+            principal_arn     = module.eks_blueprints_addons.karpenter.node_iam_role_arn
+            kubernetes_groups = []
+            type             = "EC2_LINUX"
+
+            lifecycle {
+              ignore_changes = [
+                kubernetes_groups
+              ]
+            }
+          }
+
+          # Input variables
+          variable "cluster_name" {
+            type        = string
+            description = "Name of the EKS cluster"
+          }
+
+          variable "kubernetes_version" {
+            type        = string
+            description = "Kubernetes version for the EKS cluster"
+            default     = "1.31"
+          }
+
+          variable "vpc_id" {
+            type        = string
+            description = "ID of the VPC where EKS cluster will be created"
+          }
+
+          variable "private_subnet_ids" {
+            type        = list(string)
+            description = "List of private subnet IDs for EKS cluster"
+          }
+
+          # Outputs
+          output "cluster_endpoint" {
+            description = "Endpoint for EKS control plane"
+            value       = module.eks.cluster_endpoint
+          }
+
+          output "cluster_security_group_id" {
+            description = "Security group ids attached to the cluster control plane"
+            value       = module.eks.cluster_security_group_id
+          }
+
+          output "cluster_name" {
+            description = "Kubernetes Cluster Name"
+            value       = module.eks.cluster_name
+          }
+        vars:
+          - key: cluster_name
+            value: eks-karpenter-demo
+          - key: kubernetes_version
+            value: "1.31"
+  writeConnectionSecretToRef:
+    name: eks-controlplane-connection
+    namespace: default

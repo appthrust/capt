@@ -24,20 +24,19 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
-	"github.com/crossplane/crossplane-runtime/pkg/logging"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	controlplanev1beta1 "github.com/appthrust/capt/api/controlplane/v1beta1"
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
 	"github.com/appthrust/capt/internal/controller"
 	controlplanecontroller "github.com/appthrust/capt/internal/controller/controlplane"
-	tfv1beta1 "github.com/upbound/provider-terraform/apis/v1beta1"
+	"github.com/crossplane/crossplane-runtime/pkg/logging"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -50,7 +49,6 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(infrastructurev1beta1.AddToScheme(scheme))
 	utilruntime.Must(controlplanev1beta1.AddToScheme(scheme))
-	utilruntime.Must(tfv1beta1.SchemeBuilder.AddToScheme(scheme)) // provider-terraformのスキームを登録
 	//+kubebuilder:scaffold:scheme
 }
 
@@ -73,7 +71,7 @@ func main() {
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: scheme,
-		Metrics: metricsserver.Options{
+		Metrics: server.Options{
 			BindAddress: metricsAddr,
 		},
 		HealthProbeBindAddress: probeAddr,
@@ -85,24 +83,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controller.CAPTClusterReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "CAPTCluster")
-		os.Exit(1)
-	}
-	if err = (&controller.WorkspaceTemplateReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "WorkspaceTemplate")
-		os.Exit(1)
-	}
-	if err = controller.SetupWorkspaceTemplateApply(mgr, logging.NewLogrLogger(ctrl.Log.WithName("controllers").WithName("WorkspaceTemplateApply"))); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "WorkspaceTemplateApply")
-		os.Exit(1)
-	}
 	if err = (&controlplanecontroller.CAPTControlPlaneReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
@@ -110,6 +90,28 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "CAPTControlPlane")
 		os.Exit(1)
 	}
+
+	if err = (&controller.WorkspaceTemplateReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "WorkspaceTemplate")
+		os.Exit(1)
+	}
+
+	if err = controller.SetupWorkspaceTemplateApply(mgr, logging.NewLogrLogger(ctrl.Log.WithName("controllers").WithName("WorkspaceTemplateApply"))); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "WorkspaceTemplateApply")
+		os.Exit(1)
+	}
+
+	if err = (&controller.CaptMachineReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "CaptMachine")
+		os.Exit(1)
+	}
+
 	//+kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

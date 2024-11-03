@@ -7,7 +7,7 @@ metadata:
 spec:
   template:
     metadata:
-      description: "Template for creating EKS Control Plane with Fargate and Karpenter"
+      description: "Template for creating EKS Control Plane"
       version: "1.0.0"
       tags:
         provider: "aws"
@@ -49,25 +49,11 @@ spec:
             vpc_id     = var.vpc_id
             subnet_ids = var.private_subnets
 
-            # Fargate profiles use the cluster primary security group so these are not utilized
+            # Security groups are managed separately
             create_cluster_security_group = false
             create_node_security_group    = false
 
             enable_cluster_creator_admin_permissions = true
-
-            fargate_profiles = {
-              karpenter = {
-                selectors = [
-                  { namespace = "karpenter" }
-                ]
-              }
-              kube_system = {
-                name = "kube-system"
-                selectors = [
-                  { namespace = "kube-system" }
-                ]
-              }
-            }
 
             tags = {
               Environment = "dev"
@@ -84,9 +70,6 @@ spec:
             cluster_endpoint  = module.eks.cluster_endpoint
             cluster_version   = module.eks.cluster_version
             oidc_provider_arn = module.eks.oidc_provider_arn
-
-            # We want to wait for the Fargate profiles to be deployed first
-            create_delay_dependencies = [for prof in module.eks.fargate_profiles : prof.fargate_profile_arn]
 
             eks_addons = {
               coredns = {
@@ -185,6 +168,11 @@ spec:
             value       = module.eks.oidc_provider_arn
           }
 
+          output "pod_execution_role_arn" {
+            description = "The ARN of the pod execution role for Fargate profiles"
+            value       = module.eks.fargate_profile_pod_execution_role_arn
+          }
+
           output "kubeconfig" {
             description = "Kubeconfig in YAML format"
             sensitive   = true
@@ -255,13 +243,6 @@ spec:
     endpointAccess:
       public: true
       private: true
-    fargateProfiles:
-      - name: kube-system
-        selectors:
-          - namespace: kube-system
-      - name: karpenter
-        selectors:
-          - namespace: karpenter
   additionalTags:
     Environment: "dev"
     ManagedBy: "capt"

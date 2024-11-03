@@ -1,0 +1,109 @@
+# Fargate Profile WorkspaceTemplate
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplate
+metadata:
+  name: eks-fargate-template
+  namespace: default
+spec:
+  template:
+    metadata:
+      description: "Template for creating EKS Fargate Profiles"
+      version: "1.0.0"
+      tags:
+        provider: "aws"
+        resource: "fargate"
+        environment: "dev"
+    spec:
+      writeConnectionSecretToRef:
+        name: fargate-connection
+        namespace: default
+      providerConfigRef:
+        name: aws-provider-for-eks-test
+      forProvider:
+        source: Inline
+        vars:
+          - key: cluster_name
+            value: "demo-cluster"
+        varFiles:
+          - source: SecretKey
+            format: HCL
+            secretKeyRef:
+              namespace: default
+              name: eks-connection
+              key: cluster_config
+        module: |
+          variable "cluster_name" {
+            type        = string
+            description = "Name of the EKS cluster"
+          }
+
+          variable "cluster_id" {
+            type        = string
+            description = "ID of the EKS cluster"
+          }
+
+          variable "subnet_ids" {
+            type        = list(string)
+            description = "List of subnet IDs for Fargate profiles"
+          }
+
+          variable "pod_execution_role_arn" {
+            type        = string
+            description = "ARN of the IAM role for Fargate pod execution"
+          }
+
+          resource "aws_eks_fargate_profile" "kube_system" {
+            cluster_name           = var.cluster_name
+            fargate_profile_name   = "kube-system"
+            pod_execution_role_arn = var.pod_execution_role_arn
+            subnet_ids            = var.subnet_ids
+
+            selector {
+              namespace = "kube-system"
+            }
+
+            tags = {
+              Environment = "dev"
+              Terraform   = "true"
+            }
+          }
+
+          resource "aws_eks_fargate_profile" "karpenter" {
+            cluster_name           = var.cluster_name
+            fargate_profile_name   = "karpenter"
+            pod_execution_role_arn = var.pod_execution_role_arn
+            subnet_ids            = var.subnet_ids
+
+            selector {
+              namespace = "karpenter"
+            }
+
+            tags = {
+              Environment = "dev"
+              Terraform   = "true"
+            }
+          }
+
+          output "kube_system_profile_arn" {
+            description = "ARN of the kube-system Fargate profile"
+            value       = aws_eks_fargate_profile.kube_system.arn
+          }
+
+          output "karpenter_profile_arn" {
+            description = "ARN of the karpenter Fargate profile"
+            value       = aws_eks_fargate_profile.karpenter.arn
+          }
+---
+# Fargate Profile WorkspaceTemplateApply
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplateApply
+metadata:
+  name: demo-fargate-apply
+  namespace: default
+spec:
+  templateRef:
+    name: eks-fargate-template
+    namespace: default
+  waitForSecret:
+    name: eks-connection
+    namespace: default

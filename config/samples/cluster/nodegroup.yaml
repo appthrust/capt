@@ -1,0 +1,176 @@
+# NodeGroup WorkspaceTemplate
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplate
+metadata:
+  name: eks-nodegroup-template
+  namespace: default
+spec:
+  template:
+    metadata:
+      description: "Template for creating EKS Managed Node Group"
+      version: "1.0.0"
+      tags:
+        provider: "aws"
+        resource: "nodegroup"
+        environment: "dev"
+    spec:
+      writeConnectionSecretToRef:
+        name: nodegroup-connection
+        namespace: default
+      providerConfigRef:
+        name: aws-provider-for-eks-test
+      forProvider:
+        source: Inline
+        vars:
+          - key: cluster_name
+            value: "demo-cluster"
+          - key: node_group_name
+            value: "managed-ng-1"
+          - key: instance_type
+            value: "t3.medium"
+          - key: desired_size
+            value: "2"
+          - key: min_size
+            value: "1"
+          - key: max_size
+            value: "3"
+        varFiles:
+          - source: SecretKey
+            format: HCL
+            secretKeyRef:
+              namespace: default
+              name: eks-connection
+              key: cluster_config
+        module: |
+          variable "cluster_name" {
+            type        = string
+            description = "Name of the EKS cluster"
+          }
+
+          variable "node_group_name" {
+            type        = string
+            description = "Name of the EKS node group"
+          }
+
+          variable "instance_type" {
+            type        = string
+            description = "EC2 instance type for the node group"
+          }
+
+          variable "desired_size" {
+            type        = string
+            description = "Desired size of the node group"
+          }
+
+          variable "min_size" {
+            type        = string
+            description = "Minimum size of the node group"
+          }
+
+          variable "max_size" {
+            type        = string
+            description = "Maximum size of the node group"
+          }
+
+          variable "subnet_ids" {
+            type        = list(string)
+            description = "List of subnet IDs for the node group"
+          }
+
+          variable "cluster_security_group_id" {
+            type        = string
+            description = "Security group ID for the EKS cluster"
+          }
+
+          module "eks_managed_node_group" {
+            source = "terraform-aws-modules/eks/aws//modules/eks-managed-node-group"
+            version = "~> 20.0"
+
+            name            = var.node_group_name
+            cluster_name    = var.cluster_name
+            cluster_version = "1.31"
+
+            subnet_ids = var.subnet_ids
+
+            min_size     = var.min_size
+            max_size     = var.max_size
+            desired_size = var.desired_size
+
+            instance_types = [var.instance_type]
+
+            cluster_primary_security_group_id = var.cluster_security_group_id
+
+            labels = {
+              role = "worker"
+              nodegroup = var.node_group_name
+            }
+
+            tags = {
+              Environment = "dev"
+              Terraform   = "true"
+              NodeGroup  = var.node_group_name
+            }
+
+            update_config = {
+              max_unavailable_percentage = 33
+            }
+          }
+
+          output "node_group_arn" {
+            description = "ARN of the EKS Node Group"
+            value       = module.eks_managed_node_group.node_group_arn
+          }
+
+          output "node_group_id" {
+            description = "ID of the EKS Node Group"
+            value       = module.eks_managed_node_group.node_group_id
+          }
+
+          output "node_group_status" {
+            description = "Status of the EKS Node Group"
+            value       = module.eks_managed_node_group.node_group_status
+          }
+
+          output "node_group_resources" {
+            description = "List of objects containing information about underlying resources"
+            value       = module.eks_managed_node_group.node_group_resources
+          }
+---
+# NodeGroup WorkspaceTemplateApply
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplateApply
+metadata:
+  name: demo-nodegroup-apply
+  namespace: default
+spec:
+  templateRef:
+    name: eks-nodegroup-template
+    namespace: default
+  waitForSecret:
+    name: eks-connection
+    namespace: default
+---
+# CaptMachine
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: CaptMachine
+metadata:
+  name: demo-nodegroup
+  namespace: default
+spec:
+  workspaceTemplateRef:
+    name: eks-nodegroup-template
+    namespace: default
+  nodeGroupConfig:
+    name: "managed-ng-1"
+    instanceType: "t3.medium"
+    scaling:
+      minSize: 1
+      maxSize: 3
+      desiredSize: 2
+    updateConfig:
+      maxUnavailablePercentage: 33
+    labels:
+      role: "worker"
+    tags:
+      Environment: "dev"
+      NodeGroup: "managed-ng-1"

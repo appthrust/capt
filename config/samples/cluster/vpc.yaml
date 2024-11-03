@@ -83,6 +83,15 @@ spec:
             value       = module.vpc.public_subnets
             sensitive   = true
           }
+
+          output "vpc_config" {
+            description = "VPC configuration in HCL format"
+            value = <<-EOT
+            vpc_id = "${module.vpc.vpc_id}"
+            private_subnets = ${jsonencode(module.vpc.private_subnets)}
+            EOT
+            sensitive = true
+          }
       writeConnectionSecretToRef:
         name: vpc-connection
         namespace: default

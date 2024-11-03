@@ -1,7 +1,7 @@
 apiVersion: tf.upbound.io/v1beta1
 kind: ProviderConfig
 metadata:
-  name: aws-provider-for-eks
+  name: aws-provider-for-eks-test
 spec:
   credentials:
     - filename: aws-creds.ini
@@ -23,7 +23,7 @@ spec:
         }
       }
       backend "kubernetes" {
-        secret_suffix     = "aws-provider"
+        secret_suffix     = "aws-provider-eks"
         namespace         = "upbound-system"
         in_cluster_config = true
       }

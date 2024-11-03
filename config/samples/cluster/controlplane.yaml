@@ -14,8 +14,11 @@ spec:
         resource: "eks"
         environment: "dev"
     spec:
+      writeConnectionSecretToRef:
+        name: eks-connection
+        namespace: default
       providerConfigRef:
-        name: aws-provider-for-eks
+        name: aws-provider-for-eks-test
       forProvider:
         source: Inline
         enableTerraformCLILogging: true
@@ -29,17 +32,11 @@ spec:
             value: "1.31"
         varFiles:
           - source: SecretKey
-            format: JSON
+            format: HCL
             secretKeyRef:
-              name: vpc-connection
               namespace: default
-              key: vpc_id
-          - source: SecretKey
-            format: JSON
-            secretKeyRef:
               name: vpc-connection
-              namespace: default
-              key: private_subnets
+              key: vpc_config
         module: |
           module "eks" {
             source  = "terraform-aws-modules/eks/aws"
@@ -171,6 +168,63 @@ spec:
             description = "The name of the EKS cluster"
             value       = module.eks.cluster_name
           }
+
+          output "cluster_certificate_authority_data" {
+            description = "Base64 encoded certificate data required to communicate with the cluster"
+            value       = module.eks.cluster_certificate_authority_data
+            sensitive   = true
+          }
+
+          output "oidc_provider" {
+            description = "The OpenID Connect identity provider (issuer URL without leading https://)"
+            value       = module.eks.oidc_provider
+          }
+
+          output "oidc_provider_arn" {
+            description = "The ARN of the OIDC Provider"
+            value       = module.eks.oidc_provider_arn
+          }
+
+          output "kubeconfig" {
+            description = "Kubeconfig in YAML format"
+            sensitive   = true
+            value = <<-EOT
+          apiVersion: v1
+          clusters:
+          - cluster:
+              certificate-authority-data: ${module.eks.cluster_certificate_authority_data}
+              server: ${module.eks.cluster_endpoint}
+            name: ${module.eks.cluster_name}.ap-northeast-1.eksctl.io
+          contexts:
+          - context:
+              cluster: ${module.eks.cluster_name}.ap-northeast-1.eksctl.io
+              user: rancher-installer@${module.eks.cluster_name}.ap-northeast-1.eksctl.io
+            name: rancher-installer@${module.eks.cluster_name}.ap-northeast-1.eksctl.io
+          current-context: rancher-installer@${module.eks.cluster_name}.ap-northeast-1.eksctl.io
+          kind: Config
+          preferences: {}
+          users:
+          - name: rancher-installer@${module.eks.cluster_name}.ap-northeast-1.eksctl.io
+            user:
+              exec:
+                apiVersion: client.authentication.k8s.io/v1beta1
+                args:
+                - eks
+                - get-token
+                - --output
+                - json
+                - --cluster-name
+                - ${module.eks.cluster_name}
+                - --region
+                - ${data.aws_region.current.name}
+                command: aws
+                env:
+                - name: AWS_STS_REGIONAL_ENDPOINTS
+                  value: regional
+                provideClusterInfo: false
+          EOT
+          }
+          data "aws_region" "current" {}
 ---
 # EKS Control Plane WorkspaceTemplateApply
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1

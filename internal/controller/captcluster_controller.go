@@ -121,45 +121,61 @@ func (r *CAPTClusterReconciler) setOwnerReference(ctx context.Context, captClust
 }
 
 func (r *CAPTClusterReconciler) updateStatus(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster, cluster *clusterv1.Cluster) error {
+	logger := log.FromContext(ctx)
+	logger.Info("Updating status", "captCluster.Status.Ready", captCluster.Status.Ready)
+
 	// Update CAPTCluster status
 	if err := r.Status().Update(ctx, captCluster); err != nil {
+		logger.Error(err, "Failed to update CAPTCluster status")
 		return fmt.Errorf("failed to update CAPTCluster status: %v", err)
 	}
 
 	// Update Cluster status if it exists
 	if cluster != nil {
+		logger.Info("Updating cluster status",
+			"InfrastructureReady", cluster.Status.InfrastructureReady,
+			"ControlPlaneReady", cluster.Status.ControlPlaneReady,
+			"CurrentPhase", cluster.Status.Phase)
+
 		patch := client.MergeFrom(cluster.DeepCopy())
 
 		// Update infrastructure ready status
 		cluster.Status.InfrastructureReady = captCluster.Status.Ready
+		logger.Info("Set InfrastructureReady", "value", cluster.Status.InfrastructureReady)
 
 		// Update control plane endpoint
 		if captCluster.Spec.ControlPlaneEndpoint.Host != "" {
 			cluster.Spec.ControlPlaneEndpoint = captCluster.Spec.ControlPlaneEndpoint
+			logger.Info("Updated control plane endpoint", "host", captCluster.Spec.ControlPlaneEndpoint.Host)
 		}
 
 		// Update failure reason and message if present
 		if captCluster.Status.FailureReason != nil {
 			reason := capierrors.ClusterStatusError(*captCluster.Status.FailureReason)
 			cluster.Status.FailureReason = &reason
+			logger.Info("Updated failure reason", "reason", *captCluster.Status.FailureReason)
 		}
 		if captCluster.Status.FailureMessage != nil {
 			cluster.Status.FailureMessage = captCluster.Status.FailureMessage
+			logger.Info("Updated failure message", "message", *captCluster.Status.FailureMessage)
 		}
 
 		// Update failure domains if present
 		if len(captCluster.Status.FailureDomains) > 0 {
 			cluster.Status.FailureDomains = captCluster.Status.FailureDomains
+			logger.Info("Updated failure domains", "count", len(captCluster.Status.FailureDomains))
 		}
 
-		// Update phase if both infrastructure and control plane are ready
-		if cluster.Status.InfrastructureReady && cluster.Status.ControlPlaneReady {
-			cluster.Status.Phase = string(clusterv1.ClusterPhaseProvisioned)
-		}
+		// Note: We don't update the Phase here as it's managed by the Control Plane controller
+		logger.Info("Current cluster phase", "phase", cluster.Status.Phase)
 
 		if err := r.Status().Patch(ctx, cluster, patch); err != nil {
+			logger.Error(err, "Failed to patch cluster status")
 			return fmt.Errorf("failed to update Cluster status: %v", err)
 		}
+		logger.Info("Successfully patched cluster status")
+	} else {
+		logger.Info("Cluster is nil, skipping cluster status update")
 	}
 
 	return nil

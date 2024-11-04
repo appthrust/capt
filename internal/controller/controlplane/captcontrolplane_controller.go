@@ -316,6 +316,7 @@ func (r *CAPTControlPlaneReconciler) updateStatus(ctx context.Context, controlPl
 
 	// Update Cluster status if it exists
 	if cluster != nil {
+		oldPhase := cluster.Status.Phase
 		patch := client.MergeFrom(cluster.DeepCopy())
 
 		// Update control plane ready status
@@ -335,10 +336,20 @@ func (r *CAPTControlPlaneReconciler) updateStatus(ctx context.Context, controlPl
 			cluster.Status.FailureMessage = controlPlane.Status.FailureMessage
 		}
 
+		// Update phase based on control plane status
+		if !cluster.Status.ControlPlaneReady {
+			cluster.Status.Phase = string(clusterv1.ClusterPhaseProvisioning)
+		} else if cluster.Status.ControlPlaneReady && cluster.Status.InfrastructureReady {
+			cluster.Status.Phase = string(clusterv1.ClusterPhaseProvisioned)
+		}
+
+		logger.Info("Phase transition", "from", oldPhase, "to", cluster.Status.Phase)
+
 		if err := r.Status().Patch(ctx, cluster, patch); err != nil {
 			logger.Error(err, "Failed to update Cluster status")
 			return ctrl.Result{}, err
 		}
+		logger.Info("Successfully updated cluster status")
 	}
 
 	logger.Info("Successfully updated status")

@@ -1,24 +1,9 @@
-/*
-Copyright 2024.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package controlplane
 
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -28,6 +13,17 @@ import (
 
 	controlplanev1beta1 "github.com/appthrust/capt/api/controlplane/v1beta1"
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
+	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+const (
+	// Timeouts
+	controlPlaneTimeout = 30 * time.Minute
+	vpcReadyTimeout     = 15 * time.Minute
+	requeueInterval     = 10 * time.Second
 )
 
 // CAPTControlPlaneReconciler reconciles a CAPTControlPlane object
@@ -43,7 +39,6 @@ type CAPTControlPlaneReconciler struct {
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplateapplies,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=captclusters,verbs=get;list;watch
 
-// Reconcile handles the reconciliation of CAPTControlPlane resources
 func (r *CAPTControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
@@ -52,6 +47,11 @@ func (r *CAPTControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	if err := r.Get(ctx, req.NamespacedName, controlPlane); err != nil {
 		logger.Error(err, "Failed to get CAPTControlPlane")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	// Check overall timeout
+	if !controlPlane.CreationTimestamp.IsZero() && time.Since(controlPlane.CreationTimestamp.Time) > controlPlaneTimeout {
+		return r.setFailedStatus(ctx, controlPlane, controlplanev1beta1.ReasonControlPlaneTimeout, "Control plane creation timed out")
 	}
 
 	// Handle deletion
@@ -74,27 +74,52 @@ func (r *CAPTControlPlaneReconciler) reconcileNormal(ctx context.Context, contro
 	}
 	if err := r.Get(ctx, templateNamespacedName, workspaceTemplate); err != nil {
 		logger.Error(err, "Failed to get WorkspaceTemplate")
-		return ctrl.Result{}, err
+		return r.setFailedStatus(ctx, controlPlane, controlplanev1beta1.ReasonFailed, fmt.Sprintf("Failed to get WorkspaceTemplate: %v", err))
 	}
 
 	// Get the CAPTCluster instance
 	captCluster := &infrastructurev1beta1.CAPTCluster{}
 	if err := r.Get(ctx, types.NamespacedName{Name: controlPlane.Name, Namespace: controlPlane.Namespace}, captCluster); err != nil {
 		logger.Error(err, "Failed to get CAPTCluster")
-		return ctrl.Result{}, err
+		return r.setFailedStatus(ctx, controlPlane, controlplanev1beta1.ReasonFailed, fmt.Sprintf("Failed to get CAPTCluster: %v", err))
 	}
 
-	// Check if VPC is ready
+	// Check VPC readiness with timeout
 	if !captCluster.Status.Ready {
-		logger.Info("Waiting for VPC to be ready")
-		return ctrl.Result{Requeue: true}, nil
+		// Get the last transition time for WaitingForVPC condition
+		var lastTransitionTime time.Time
+		if condition := meta.FindStatusCondition(controlPlane.Status.Conditions, controlplanev1beta1.ControlPlaneInitializedCondition); condition != nil {
+			lastTransitionTime = condition.LastTransitionTime.Time
+		} else {
+			lastTransitionTime = controlPlane.CreationTimestamp.Time
+		}
+
+		if time.Since(lastTransitionTime) > vpcReadyTimeout {
+			return r.setFailedStatus(ctx, controlPlane, controlplanev1beta1.ReasonVPCReadyTimeout, "Timed out waiting for VPC to be ready")
+		}
+
+		// Update status to indicate waiting for VPC
+		meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
+			Type:               controlplanev1beta1.ControlPlaneInitializedCondition,
+			Status:             metav1.ConditionFalse,
+			LastTransitionTime: metav1.Now(),
+			Reason:             controlplanev1beta1.ReasonWaitingForVPC,
+			Message:            "Waiting for VPC to be ready",
+		})
+		controlPlane.Status.Phase = "Creating"
+		if err := r.Status().Update(ctx, controlPlane); err != nil {
+			logger.Error(err, "Failed to update status")
+			return ctrl.Result{}, err
+		}
+
+		return ctrl.Result{RequeueAfter: requeueInterval}, nil
 	}
 
 	// Create or update WorkspaceTemplateApply
 	workspaceApply, err := r.reconcileWorkspaceTemplateApply(ctx, controlPlane, workspaceTemplate)
 	if err != nil {
 		logger.Error(err, "Failed to reconcile WorkspaceTemplateApply")
-		return ctrl.Result{}, err
+		return r.setFailedStatus(ctx, controlPlane, controlplanev1beta1.ReasonFailed, fmt.Sprintf("Failed to reconcile WorkspaceTemplateApply: %v", err))
 	}
 
 	// Update status based on WorkspaceTemplateApply status
@@ -179,21 +204,110 @@ func (r *CAPTControlPlaneReconciler) reconcileWorkspaceTemplateApply(
 }
 
 func (r *CAPTControlPlaneReconciler) updateStatus(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane, workspaceApply *infrastructurev1beta1.WorkspaceTemplateApply) error {
-	// Update status based on WorkspaceTemplateApply status
-	if workspaceApply.Status.Applied {
-		controlPlane.Status.Ready = true
-		controlPlane.Status.Initialized = true
-		if controlPlane.Status.WorkspaceTemplateStatus == nil {
-			controlPlane.Status.WorkspaceTemplateStatus = &controlplanev1beta1.WorkspaceTemplateStatus{}
-		}
-		controlPlane.Status.WorkspaceTemplateStatus.Ready = true
-		controlPlane.Status.WorkspaceTemplateStatus.State = workspaceApply.Status.WorkspaceName
-		if workspaceApply.Status.LastAppliedTime != nil {
-			controlPlane.Status.WorkspaceTemplateStatus.LastAppliedRevision = workspaceApply.Status.LastAppliedTime.String()
+	// Initialize status if needed
+	if controlPlane.Status.WorkspaceTemplateStatus == nil {
+		controlPlane.Status.WorkspaceTemplateStatus = &controlplanev1beta1.WorkspaceTemplateStatus{}
+	}
+
+	// Update workspace template status
+	controlPlane.Status.WorkspaceTemplateStatus.State = workspaceApply.Status.WorkspaceName
+	if workspaceApply.Status.LastAppliedTime != nil {
+		controlPlane.Status.WorkspaceTemplateStatus.LastAppliedRevision = workspaceApply.Status.LastAppliedTime.String()
+	}
+
+	// Check workspace conditions
+	var syncedCondition, readyCondition bool
+	var errorMessage string
+
+	for _, condition := range workspaceApply.Status.Conditions {
+		switch condition.Type {
+		case xpv1.TypeSynced:
+			syncedCondition = condition.Status == corev1.ConditionTrue
+			if !syncedCondition {
+				errorMessage = condition.Message
+			}
+		case xpv1.TypeReady:
+			readyCondition = condition.Status == corev1.ConditionTrue
+			if !readyCondition {
+				errorMessage = condition.Message
+			}
 		}
 	}
 
+	// Update status based on workspace conditions
+	if !workspaceApply.Status.Applied || !syncedCondition || !readyCondition {
+		if errorMessage != "" {
+			meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
+				Type:               controlplanev1beta1.ControlPlaneFailedCondition,
+				Status:             metav1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
+				Reason:             controlplanev1beta1.ReasonWorkspaceError,
+				Message:            errorMessage,
+			})
+			controlPlane.Status.Phase = "Failed"
+			failureReason := controlplanev1beta1.ReasonWorkspaceError
+			controlPlane.Status.FailureReason = &failureReason
+			controlPlane.Status.FailureMessage = &errorMessage
+		} else {
+			meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
+				Type:               controlplanev1beta1.ControlPlaneReadyCondition,
+				Status:             metav1.ConditionFalse,
+				LastTransitionTime: metav1.Now(),
+				Reason:             controlplanev1beta1.ReasonCreating,
+				Message:            "Control plane is being created",
+			})
+			controlPlane.Status.Phase = "Creating"
+		}
+		controlPlane.Status.Ready = false
+		controlPlane.Status.Initialized = false
+		controlPlane.Status.WorkspaceTemplateStatus.Ready = false
+		if errorMessage != "" {
+			controlPlane.Status.WorkspaceTemplateStatus.LastFailureMessage = errorMessage
+			if workspaceApply.Status.LastAppliedTime != nil {
+				controlPlane.Status.WorkspaceTemplateStatus.LastFailedRevision = workspaceApply.Status.LastAppliedTime.String()
+			}
+		}
+	} else {
+		meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
+			Type:               controlplanev1beta1.ControlPlaneReadyCondition,
+			Status:             metav1.ConditionTrue,
+			LastTransitionTime: metav1.Now(),
+			Reason:             controlplanev1beta1.ReasonReady,
+			Message:            "Control plane is ready",
+		})
+		controlPlane.Status.Phase = "Ready"
+		controlPlane.Status.Ready = true
+		controlPlane.Status.Initialized = true
+		controlPlane.Status.WorkspaceTemplateStatus.Ready = true
+		controlPlane.Status.FailureReason = nil
+		controlPlane.Status.FailureMessage = nil
+	}
+
 	return r.Status().Update(ctx, controlPlane)
+}
+
+func (r *CAPTControlPlaneReconciler) setFailedStatus(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane, reason, message string) (ctrl.Result, error) {
+	meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
+		Type:               controlplanev1beta1.ControlPlaneFailedCondition,
+		Status:             metav1.ConditionTrue,
+		LastTransitionTime: metav1.Now(),
+		Reason:             reason,
+		Message:            message,
+	})
+	controlPlane.Status.Phase = "Failed"
+	controlPlane.Status.Ready = false
+	controlPlane.Status.Initialized = false
+	controlPlane.Status.FailureReason = &reason
+	controlPlane.Status.FailureMessage = &message
+	if controlPlane.Status.WorkspaceTemplateStatus != nil {
+		controlPlane.Status.WorkspaceTemplateStatus.Ready = false
+		controlPlane.Status.WorkspaceTemplateStatus.LastFailureMessage = message
+	}
+
+	if err := r.Status().Update(ctx, controlPlane); err != nil {
+		return ctrl.Result{}, err
+	}
+	return ctrl.Result{}, fmt.Errorf(message)
 }
 
 func (r *CAPTControlPlaneReconciler) reconcileDelete(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane) (ctrl.Result, error) {

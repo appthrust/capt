@@ -18,6 +18,46 @@ package v1beta1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+)
+
+// Condition Types
+const (
+	// ControlPlaneReadyCondition indicates the control plane is ready
+	ControlPlaneReadyCondition = "Ready"
+
+	// ControlPlaneInitializedCondition indicates the control plane has been initialized
+	ControlPlaneInitializedCondition = "Initialized"
+
+	// ControlPlaneFailedCondition indicates the control plane has failed
+	ControlPlaneFailedCondition = "Failed"
+
+	// ControlPlaneCreatingCondition indicates the control plane is being created
+	ControlPlaneCreatingCondition = "Creating"
+)
+
+// Condition Reasons
+const (
+	// ReasonCreating indicates the control plane is being created
+	ReasonCreating = "Creating"
+
+	// ReasonReady indicates the control plane is ready
+	ReasonReady = "Ready"
+
+	// ReasonFailed indicates the control plane has failed
+	ReasonFailed = "Failed"
+
+	// ReasonWaitingForVPC indicates waiting for VPC to be ready
+	ReasonWaitingForVPC = "WaitingForVPC"
+
+	// ReasonVPCReadyTimeout indicates VPC ready check timed out
+	ReasonVPCReadyTimeout = "VPCReadyTimeout"
+
+	// ReasonControlPlaneTimeout indicates control plane creation timed out
+	ReasonControlPlaneTimeout = "ControlPlaneTimeout"
+
+	// ReasonWorkspaceError indicates an error with the workspace
+	ReasonWorkspaceError = "WorkspaceError"
 )
 
 // CAPTControlPlaneSpec defines the desired state of CAPTControlPlane
@@ -37,6 +77,10 @@ type CAPTControlPlaneSpec struct {
 	// AdditionalTags is an optional set of tags to add to AWS resources managed by the AWS provider.
 	// +optional
 	AdditionalTags map[string]string `json:"additionalTags,omitempty"`
+
+	// ControlPlaneEndpoint represents the endpoint used to communicate with the control plane.
+	// +optional
+	ControlPlaneEndpoint clusterv1.APIEndpoint `json:"controlPlaneEndpoint,omitempty"`
 }
 
 // WorkspaceTemplateReference contains the reference to WorkspaceTemplate
@@ -142,7 +186,18 @@ type CAPTControlPlaneStatus struct {
 	// +optional
 	FailureMessage *string `json:"failureMessage,omitempty"`
 
+	// Phase represents the current phase of the control plane
+	// Valid values are: "Creating", "Ready", "Failed"
+	// +optional
+	// +kubebuilder:validation:Enum=Creating;Ready;Failed
+	Phase string `json:"phase,omitempty"`
+
 	// Conditions defines current service state of the CAPTControlPlane.
+	// Known condition types are:
+	// - "Ready"
+	// - "Initialized"
+	// - "Failed"
+	// - "Creating"
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
@@ -164,12 +219,23 @@ type WorkspaceTemplateStatus struct {
 	// Outputs contains the outputs from the WorkspaceTemplate
 	// +optional
 	Outputs map[string]string `json:"outputs,omitempty"`
+
+	// LastFailedRevision is the revision of the WorkspaceTemplate that last failed
+	// +optional
+	LastFailedRevision string `json:"lastFailedRevision,omitempty"`
+
+	// LastFailureMessage contains the error message from the last failure
+	// +optional
+	LastFailureMessage string `json:"lastFailureMessage,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 //+kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.ready",description="Control Plane Ready status"
+//+kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase",description="Control Plane Phase"
 //+kubebuilder:printcolumn:name="Version",type="string",JSONPath=".spec.version",description="Kubernetes version"
+//+kubebuilder:printcolumn:name="Endpoint",type="string",JSONPath=".spec.controlPlaneEndpoint.host",description="API Server Endpoint"
+//+kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // CAPTControlPlane is the Schema for the captcontrolplanes API
 type CAPTControlPlane struct {

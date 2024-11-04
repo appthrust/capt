@@ -20,10 +20,7 @@ import (
 )
 
 const (
-	// Timeouts
-	controlPlaneTimeout = 30 * time.Minute
-	vpcReadyTimeout     = 15 * time.Minute
-	requeueInterval     = 10 * time.Second
+	requeueInterval = 10 * time.Second
 )
 
 // CAPTControlPlaneReconciler reconciles a CAPTControlPlane object
@@ -42,6 +39,7 @@ type CAPTControlPlaneReconciler struct {
 
 func (r *CAPTControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
+	logger.Info("Reconciling CAPTControlPlane")
 
 	// Fetch the CAPTControlPlane instance
 	controlPlane := &controlplanev1beta1.CAPTControlPlane{}
@@ -61,6 +59,7 @@ func (r *CAPTControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 func (r *CAPTControlPlaneReconciler) reconcileNormal(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
+	logger.Info("Reconciling normal state")
 
 	// Get the referenced WorkspaceTemplate
 	workspaceTemplate := &infrastructurev1beta1.WorkspaceTemplate{}
@@ -73,82 +72,149 @@ func (r *CAPTControlPlaneReconciler) reconcileNormal(ctx context.Context, contro
 		return r.setFailedStatus(ctx, controlPlane, controlplanev1beta1.ReasonFailed, fmt.Sprintf("Failed to get WorkspaceTemplate: %v", err))
 	}
 
-	// Get the CAPTCluster instance
-	captCluster := &infrastructurev1beta1.CAPTCluster{}
-	if err := r.Get(ctx, types.NamespacedName{Name: controlPlane.Name, Namespace: controlPlane.Namespace}, captCluster); err != nil {
-		logger.Error(err, "Failed to get CAPTCluster")
-		return r.setFailedStatus(ctx, controlPlane, controlplanev1beta1.ReasonFailed, fmt.Sprintf("Failed to get CAPTCluster: %v", err))
-	}
+	// Try to find existing WorkspaceTemplateApply
+	workspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
+	var applyName string
 
-	// Check VPC readiness
-	vpcReady := false
-	if captCluster.Status.Ready {
-		vpcReady = true
+	if controlPlane.Spec.WorkspaceTemplateApplyName != "" {
+		// Use the name from spec if it exists
+		applyName = controlPlane.Spec.WorkspaceTemplateApplyName
+		logger.Info("Using existing WorkspaceTemplateApply name from spec", "name", applyName)
 	} else {
-		// Check VPC conditions
-		vpcCondition := meta.FindStatusCondition(captCluster.Status.Conditions, infrastructurev1beta1.VPCReadyCondition)
-		if vpcCondition != nil && vpcCondition.Status == metav1.ConditionTrue {
-			vpcReady = true
-		}
-	}
-
-	if !vpcReady {
-		// Get the last transition time for WaitingForVPC condition
-		var lastTransitionTime time.Time
-		if condition := meta.FindStatusCondition(controlPlane.Status.Conditions, controlplanev1beta1.ControlPlaneInitializedCondition); condition != nil {
-			lastTransitionTime = condition.LastTransitionTime.Time
-		} else {
-			lastTransitionTime = controlPlane.CreationTimestamp.Time
-		}
-
-		// Check if we've exceeded the VPC ready timeout
-		if time.Since(lastTransitionTime) > vpcReadyTimeout {
-			// Update status to indicate VPC timeout
-			meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
-				Type:               controlplanev1beta1.ControlPlaneInitializedCondition,
-				Status:             metav1.ConditionFalse,
-				LastTransitionTime: metav1.Now(),
-				Reason:             controlplanev1beta1.ReasonVPCReadyTimeout,
-				Message:            "Timed out waiting for VPC to be ready",
-			})
-			controlPlane.Status.Phase = "Creating"
-			if err := r.Status().Update(ctx, controlPlane); err != nil {
-				logger.Error(err, "Failed to update status")
+		// Try to find the existing apply with the legacy name
+		legacyName := "demo-eks-controlplane-apply"
+		err := r.Get(ctx, types.NamespacedName{Name: legacyName, Namespace: controlPlane.Namespace}, workspaceApply)
+		if err == nil {
+			applyName = legacyName
+			// Update the spec with the found name
+			patch := client.MergeFrom(controlPlane.DeepCopy())
+			controlPlane.Spec.WorkspaceTemplateApplyName = legacyName
+			if err := r.Patch(ctx, controlPlane, patch); err != nil {
+				logger.Error(err, "Failed to update WorkspaceTemplateApplyName in spec")
 				return ctrl.Result{}, err
 			}
-			// Requeue to continue checking VPC status
-			return ctrl.Result{RequeueAfter: requeueInterval}, nil
+			logger.Info("Found and using legacy WorkspaceTemplateApply", "name", legacyName)
+		} else {
+			// Create a new name if neither exists
+			applyName = fmt.Sprintf("%s-eks-controlplane-apply", controlPlane.Name)
+			logger.Info("Creating new WorkspaceTemplateApply", "name", applyName)
 		}
+	}
 
-		// Update status to indicate waiting for VPC
-		meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
-			Type:               controlplanev1beta1.ControlPlaneInitializedCondition,
-			Status:             metav1.ConditionFalse,
-			LastTransitionTime: metav1.Now(),
-			Reason:             controlplanev1beta1.ReasonWaitingForVPC,
-			Message:            "Waiting for VPC to be ready",
-		})
-		controlPlane.Status.Phase = "Creating"
-		if err := r.Status().Update(ctx, controlPlane); err != nil {
-			logger.Error(err, "Failed to update status")
+	// Get or create WorkspaceTemplateApply
+	err := r.Get(ctx, types.NamespacedName{Name: applyName, Namespace: controlPlane.Namespace}, workspaceApply)
+	if err != nil {
+		if client.IgnoreNotFound(err) != nil {
 			return ctrl.Result{}, err
 		}
-
-		return ctrl.Result{RequeueAfter: requeueInterval}, nil
+		// Create new WorkspaceTemplateApply
+		workspaceApply, err = r.createWorkspaceTemplateApply(ctx, controlPlane, workspaceTemplate, applyName)
+		if err != nil {
+			logger.Error(err, "Failed to create WorkspaceTemplateApply")
+			return r.setFailedStatus(ctx, controlPlane, controlplanev1beta1.ReasonFailed, fmt.Sprintf("Failed to create WorkspaceTemplateApply: %v", err))
+		}
+	} else {
+		// Update existing WorkspaceTemplateApply
+		workspaceApply, err = r.updateWorkspaceTemplateApply(ctx, controlPlane, workspaceTemplate, workspaceApply)
+		if err != nil {
+			logger.Error(err, "Failed to update WorkspaceTemplateApply")
+			return r.setFailedStatus(ctx, controlPlane, controlplanev1beta1.ReasonFailed, fmt.Sprintf("Failed to update WorkspaceTemplateApply: %v", err))
+		}
 	}
 
-	// Create or update WorkspaceTemplateApply
-	workspaceApply, err := r.reconcileWorkspaceTemplateApply(ctx, controlPlane, workspaceTemplate)
-	if err != nil {
-		logger.Error(err, "Failed to reconcile WorkspaceTemplateApply")
-		return r.setFailedStatus(ctx, controlPlane, controlplanev1beta1.ReasonFailed, fmt.Sprintf("Failed to reconcile WorkspaceTemplateApply: %v", err))
+	// Update status
+	return r.updateStatus(ctx, controlPlane, workspaceApply)
+}
+
+func (r *CAPTControlPlaneReconciler) createWorkspaceTemplateApply(
+	ctx context.Context,
+	controlPlane *controlplanev1beta1.CAPTControlPlane,
+	workspaceTemplate *infrastructurev1beta1.WorkspaceTemplate,
+	applyName string,
+) (*infrastructurev1beta1.WorkspaceTemplateApply, error) {
+	workspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      applyName,
+			Namespace: controlPlane.Namespace,
+		},
 	}
 
-	// Check workspace conditions
+	if err := ctrl.SetControllerReference(controlPlane, workspaceApply, r.Scheme); err != nil {
+		return nil, fmt.Errorf("failed to set controller reference: %w", err)
+	}
+
+	workspaceApply.Spec = r.generateWorkspaceTemplateApplySpec(controlPlane)
+
+	if err := r.Create(ctx, workspaceApply); err != nil {
+		return nil, err
+	}
+
+	return workspaceApply, nil
+}
+
+func (r *CAPTControlPlaneReconciler) updateWorkspaceTemplateApply(
+	ctx context.Context,
+	controlPlane *controlplanev1beta1.CAPTControlPlane,
+	workspaceTemplate *infrastructurev1beta1.WorkspaceTemplate,
+	workspaceApply *infrastructurev1beta1.WorkspaceTemplateApply,
+) (*infrastructurev1beta1.WorkspaceTemplateApply, error) {
+	workspaceApply.Spec = r.generateWorkspaceTemplateApplySpec(controlPlane)
+
+	if err := r.Update(ctx, workspaceApply); err != nil {
+		return nil, err
+	}
+
+	return workspaceApply, nil
+}
+
+func (r *CAPTControlPlaneReconciler) generateWorkspaceTemplateApplySpec(controlPlane *controlplanev1beta1.CAPTControlPlane) infrastructurev1beta1.WorkspaceTemplateApplySpec {
+	variables := map[string]string{
+		"cluster_name":       controlPlane.Name,
+		"kubernetes_version": controlPlane.Spec.Version,
+	}
+
+	if controlPlane.Spec.ControlPlaneConfig != nil {
+		if controlPlane.Spec.ControlPlaneConfig.EndpointAccess != nil {
+			variables["endpoint_public_access"] = fmt.Sprintf("%v", controlPlane.Spec.ControlPlaneConfig.EndpointAccess.Public)
+			variables["endpoint_private_access"] = fmt.Sprintf("%v", controlPlane.Spec.ControlPlaneConfig.EndpointAccess.Private)
+		}
+	}
+
+	if len(controlPlane.Spec.AdditionalTags) > 0 {
+		for k, v := range controlPlane.Spec.AdditionalTags {
+			variables[fmt.Sprintf("tags_%s", k)] = v
+		}
+	}
+
+	return infrastructurev1beta1.WorkspaceTemplateApplySpec{
+		TemplateRef: infrastructurev1beta1.WorkspaceTemplateReference{
+			Name:      controlPlane.Spec.WorkspaceTemplateRef.Name,
+			Namespace: controlPlane.Spec.WorkspaceTemplateRef.Namespace,
+		},
+		Variables: variables,
+		WaitForWorkspaces: []infrastructurev1beta1.WorkspaceReference{
+			{
+				Name:      fmt.Sprintf("%s-vpc", controlPlane.Name),
+				Namespace: controlPlane.Namespace,
+			},
+		},
+	}
+}
+
+func (r *CAPTControlPlaneReconciler) updateStatus(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane, workspaceApply *infrastructurev1beta1.WorkspaceTemplateApply) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
+	// Initialize WorkspaceTemplateStatus if not exists
+	if controlPlane.Status.WorkspaceTemplateStatus == nil {
+		controlPlane.Status.WorkspaceTemplateStatus = &controlplanev1beta1.WorkspaceTemplateStatus{}
+	}
+
+	// Update status based on WorkspaceTemplateApply conditions
 	var syncedCondition, readyCondition bool
 	var errorMessage string
 
 	for _, condition := range workspaceApply.Status.Conditions {
+		logger.Info("Checking condition", "type", condition.Type, "status", condition.Status)
 		if condition.Type == xpv1.TypeSynced {
 			syncedCondition = condition.Status == corev1.ConditionTrue
 			if !syncedCondition {
@@ -163,26 +229,7 @@ func (r *CAPTControlPlaneReconciler) reconcileNormal(ctx context.Context, contro
 		}
 	}
 
-	// Check if we've exceeded the overall timeout
-	if !readyCondition {
-		if !controlPlane.CreationTimestamp.IsZero() && time.Since(controlPlane.CreationTimestamp.Time) > controlPlaneTimeout {
-			// Update status to indicate control plane timeout
-			meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
-				Type:               controlplanev1beta1.ControlPlaneReadyCondition,
-				Status:             metav1.ConditionFalse,
-				LastTransitionTime: metav1.Now(),
-				Reason:             controlplanev1beta1.ReasonControlPlaneTimeout,
-				Message:            "Control plane creation timed out",
-			})
-			controlPlane.Status.Phase = "Creating"
-			if err := r.Status().Update(ctx, controlPlane); err != nil {
-				logger.Error(err, "Failed to update status")
-				return ctrl.Result{}, err
-			}
-			// Requeue to continue checking status
-			return ctrl.Result{RequeueAfter: requeueInterval}, nil
-		}
-	}
+	logger.Info("Status check", "applied", workspaceApply.Status.Applied, "synced", syncedCondition, "ready", readyCondition)
 
 	// Update status based on workspace conditions
 	if !workspaceApply.Status.Applied || !syncedCondition || !readyCondition {
@@ -194,7 +241,6 @@ func (r *CAPTControlPlaneReconciler) reconcileNormal(ctx context.Context, contro
 				Reason:             controlplanev1beta1.ReasonWorkspaceError,
 				Message:            errorMessage,
 			})
-			controlPlane.Status.Phase = "Creating"
 		} else {
 			meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
 				Type:               controlplanev1beta1.ControlPlaneReadyCondition,
@@ -203,8 +249,8 @@ func (r *CAPTControlPlaneReconciler) reconcileNormal(ctx context.Context, contro
 				Reason:             controlplanev1beta1.ReasonCreating,
 				Message:            "Control plane is being created",
 			})
-			controlPlane.Status.Phase = "Creating"
 		}
+		controlPlane.Status.Phase = "Creating"
 		controlPlane.Status.Ready = false
 		controlPlane.Status.Initialized = false
 		controlPlane.Status.WorkspaceTemplateStatus.Ready = false
@@ -230,85 +276,19 @@ func (r *CAPTControlPlaneReconciler) reconcileNormal(ctx context.Context, contro
 		controlPlane.Status.FailureMessage = nil
 	}
 
+	// Update WorkspaceTemplateStatus fields
+	if workspaceApply.Status.LastAppliedTime != nil {
+		controlPlane.Status.WorkspaceTemplateStatus.LastAppliedRevision = workspaceApply.Status.LastAppliedTime.String()
+	}
+
 	if err := r.Status().Update(ctx, controlPlane); err != nil {
 		logger.Error(err, "Failed to update status")
 		return ctrl.Result{}, err
 	}
 
+	logger.Info("Successfully updated status")
 	// Requeue to continue checking status
 	return ctrl.Result{RequeueAfter: requeueInterval}, nil
-}
-
-func (r *CAPTControlPlaneReconciler) reconcileWorkspaceTemplateApply(
-	ctx context.Context,
-	controlPlane *controlplanev1beta1.CAPTControlPlane,
-	_ *infrastructurev1beta1.WorkspaceTemplate,
-) (*infrastructurev1beta1.WorkspaceTemplateApply, error) {
-	// Create WorkspaceTemplateApply name based on controlPlane name
-	applyName := fmt.Sprintf("%s-apply", controlPlane.Name)
-
-	// Prepare WorkspaceTemplateApply
-	workspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
-	workspaceApply.Name = applyName
-	workspaceApply.Namespace = controlPlane.Namespace
-
-	// Set variables based on CAPTControlPlane spec
-	variables := map[string]string{
-		"cluster_name":       controlPlane.Name,
-		"kubernetes_version": controlPlane.Spec.Version,
-	}
-
-	// Add additional configuration if specified
-	if controlPlane.Spec.ControlPlaneConfig != nil {
-		if controlPlane.Spec.ControlPlaneConfig.EndpointAccess != nil {
-			variables["endpoint_public_access"] = fmt.Sprintf("%v", controlPlane.Spec.ControlPlaneConfig.EndpointAccess.Public)
-			variables["endpoint_private_access"] = fmt.Sprintf("%v", controlPlane.Spec.ControlPlaneConfig.EndpointAccess.Private)
-		}
-	}
-
-	// Add additional tags if specified
-	if len(controlPlane.Spec.AdditionalTags) > 0 {
-		for k, v := range controlPlane.Spec.AdditionalTags {
-			variables[fmt.Sprintf("tags_%s", k)] = v
-		}
-	}
-
-	// Convert WorkspaceTemplateReference
-	templateRef := infrastructurev1beta1.WorkspaceTemplateReference{
-		Name:      controlPlane.Spec.WorkspaceTemplateRef.Name,
-		Namespace: controlPlane.Spec.WorkspaceTemplateRef.Namespace,
-	}
-
-	// Set template reference and variables
-	workspaceApply.Spec.TemplateRef = templateRef
-	workspaceApply.Spec.Variables = variables
-
-	// Set wait for VPC workspace
-	workspaceApply.Spec.WaitForWorkspaces = []infrastructurev1beta1.WorkspaceReference{
-		{
-			Name:      fmt.Sprintf("%s-vpc", controlPlane.Name),
-			Namespace: controlPlane.Namespace,
-		},
-	}
-
-	// Create or update the WorkspaceTemplateApply
-	err := r.Get(ctx, types.NamespacedName{Name: applyName, Namespace: controlPlane.Namespace}, workspaceApply)
-	if err != nil {
-		if client.IgnoreNotFound(err) != nil {
-			return nil, err
-		}
-		// Create new WorkspaceTemplateApply
-		if err := r.Create(ctx, workspaceApply); err != nil {
-			return nil, err
-		}
-	} else {
-		// Update existing WorkspaceTemplateApply
-		if err := r.Update(ctx, workspaceApply); err != nil {
-			return nil, err
-		}
-	}
-
-	return workspaceApply, nil
 }
 
 func (r *CAPTControlPlaneReconciler) setFailedStatus(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane, reason, message string) (ctrl.Result, error) {
@@ -319,7 +299,7 @@ func (r *CAPTControlPlaneReconciler) setFailedStatus(ctx context.Context, contro
 		Reason:             reason,
 		Message:            message,
 	})
-	controlPlane.Status.Phase = "Creating"
+	controlPlane.Status.Phase = "Failed"
 	controlPlane.Status.Ready = false
 	controlPlane.Status.Initialized = false
 	if controlPlane.Status.WorkspaceTemplateStatus != nil {
@@ -339,7 +319,13 @@ func (r *CAPTControlPlaneReconciler) reconcileDelete(ctx context.Context, contro
 	logger.Info("Handling deletion of CAPTControlPlane")
 
 	// Find and delete associated WorkspaceTemplateApply
-	applyName := fmt.Sprintf("%s-apply", controlPlane.Name)
+	var applyName string
+	if controlPlane.Spec.WorkspaceTemplateApplyName != "" {
+		applyName = controlPlane.Spec.WorkspaceTemplateApplyName
+	} else {
+		applyName = fmt.Sprintf("%s-eks-controlplane-apply", controlPlane.Name)
+	}
+
 	workspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
 	err := r.Get(ctx, types.NamespacedName{
 		Name:      applyName,
@@ -362,5 +348,6 @@ func (r *CAPTControlPlaneReconciler) reconcileDelete(ctx context.Context, contro
 func (r *CAPTControlPlaneReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&controlplanev1beta1.CAPTControlPlane{}).
+		Owns(&infrastructurev1beta1.WorkspaceTemplateApply{}).
 		Complete(r)
 }

@@ -73,20 +73,24 @@ spec:
                 description: Variables are used to override or provide additional
                   variables to the workspace
                 type: object
-              waitForSecret:
-                description: WaitForSecret specifies a secret that must exist before
-                  creating the workspace
-                properties:
-                  name:
-                    description: Name of the secret.
-                    type: string
-                  namespace:
-                    description: Namespace of the secret.
-                    type: string
-                required:
-                - name
-                - namespace
-                type: object
+              waitForSecrets:
+                description: WaitForSecrets specifies a list of secrets that must
+                  exist before creating the workspace
+                items:
+                  description: A SecretReference is a reference to a secret in an
+                    arbitrary namespace.
+                  properties:
+                    name:
+                      description: Name of the secret.
+                      type: string
+                    namespace:
+                      description: Namespace of the secret.
+                      type: string
+                  required:
+                  - name
+                  - namespace
+                  type: object
+                type: array
               waitForWorkspaces:
                 description: WaitForWorkspaces specifies a list of workspaces that
                   must be ready before creating this workspace

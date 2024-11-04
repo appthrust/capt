@@ -20,6 +20,14 @@ rules:
   - list
   - watch
 - apiGroups:
+  - cluster.x-k8s.io
+  resources:
+  - clusters
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - controlplane.cluster.x-k8s.io
   resources:
   - captcontrolplanes
@@ -49,6 +57,9 @@ rules:
   - infrastructure.cluster.x-k8s.io
   resources:
   - captclusters
+  - captmachinedeployments
+  - captmachines
+  - captmachinesets
   - workspacetemplateapplies
   - workspacetemplates
   verbs:
@@ -63,6 +74,9 @@ rules:
   - infrastructure.cluster.x-k8s.io
   resources:
   - captclusters/finalizers
+  - captmachinedeployments/finalizers
+  - captmachines/finalizers
+  - captmachinesets/finalizers
   - workspacetemplateapplies/finalizers
   - workspacetemplates/finalizers
   verbs:
@@ -71,6 +85,9 @@ rules:
   - infrastructure.cluster.x-k8s.io
   resources:
   - captclusters/status
+  - captmachinedeployments/status
+  - captmachines/status
+  - captmachinesets/status
   - workspacetemplateapplies/status
   - workspacetemplates/status
   verbs:

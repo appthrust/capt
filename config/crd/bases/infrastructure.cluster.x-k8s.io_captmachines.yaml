@@ -4,33 +4,33 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.16.1
-  name: captclusters.infrastructure.cluster.x-k8s.io
+  name: captmachines.infrastructure.cluster.x-k8s.io
 spec:
   group: infrastructure.cluster.x-k8s.io
   names:
-    kind: CAPTCluster
-    listKind: CAPTClusterList
-    plural: captclusters
-    singular: captcluster
+    kind: CaptMachine
+    listKind: CaptMachineList
+    plural: captmachines
+    singular: captmachine
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .status.vpcId
-      name: VPC-ID
-      type: string
-    - jsonPath: .status.ready
-      name: READY
+    - description: Machine Ready status
+      jsonPath: .status.ready
+      name: Ready
       type: boolean
-    - jsonPath: .spec.controlPlaneEndpoint.host
-      name: ENDPOINT
+    - description: EC2 Instance ID
+      jsonPath: .status.instanceId
+      name: Instance ID
       type: string
-    - jsonPath: .metadata.creationTimestamp
-      name: AGE
-      type: date
+    - description: Node Group name
+      jsonPath: .spec.nodeGroupRef.name
+      name: Node Group
+      type: string
     name: v1beta1
     schema:
       openAPIV3Schema:
-        description: CAPTCluster is the Schema for the captclusters API
+        description: CaptMachine is the Schema for the captmachines API
         properties:
           apiVersion:
             description: |-
@@ -50,35 +50,40 @@ spec:
           metadata:
             type: object
           spec:
-            description: CAPTClusterSpec defines the desired state of CAPTCluster
+            description: CaptMachineSpec defines the desired state of CaptMachine
             properties:
-              controlPlaneEndpoint:
-                description: ControlPlaneEndpoint represents the endpoint used to
-                  communicate with the control plane.
-                properties:
-                  host:
-                    description: The hostname on which the API server is serving.
-                    type: string
-                  port:
-                    description: The port on which the API server is serving.
-                    format: int32
-                    type: integer
-                required:
-                - host
-                - port
+              instanceType:
+                description: InstanceType is the EC2 instance type to use for the
+                  node
+                type: string
+              labels:
+                additionalProperties:
+                  type: string
+                description: Labels is a map of kubernetes labels to apply to the
+                  node
                 type: object
-              existingVpcId:
-                description: |-
-                  ExistingVPCID is the ID of an existing VPC to use
-                  If specified, VPCTemplateRef must not be set
-                type: string
-              region:
-                description: Region is the AWS region where the cluster will be created
-                type: string
-              vpcTemplateRef:
-                description: |-
-                  VPCTemplateRef is a reference to a WorkspaceTemplate resource for VPC configuration
-                  If specified, a new VPC will be created using this template
+              nodeGroupRef:
+                description: NodeGroupRef is a reference to the NodeGroup this machine
+                  belongs to
+                properties:
+                  name:
+                    description: Name is the name of the NodeGroup
+                    type: string
+                  namespace:
+                    description: Namespace is the namespace of the NodeGroup
+                    type: string
+                required:
+                - name
+                - namespace
+                type: object
+              tags:
+                additionalProperties:
+                  type: string
+                description: Tags is a map of tags to apply to the node
+                type: object
+              workspaceTemplateRef:
+                description: WorkspaceTemplateRef is a reference to the WorkspaceTemplate
+                  used for creating the machine
                 properties:
                   name:
                     description: Name of the referenced WorkspaceTemplate
@@ -90,13 +95,15 @@ spec:
                 - name
                 type: object
             required:
-            - region
+            - instanceType
+            - nodeGroupRef
+            - workspaceTemplateRef
             type: object
           status:
-            description: CAPTClusterStatus defines the observed state of CAPTCluster
+            description: CaptMachineStatus defines the observed state of CaptMachine
             properties:
               conditions:
-                description: Conditions defines current service state of the CAPTCluster
+                description: Conditions defines current service state of the CaptMachine
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -152,26 +159,6 @@ spec:
                   - type
                   type: object
                 type: array
-              failureDomains:
-                additionalProperties:
-                  description: |-
-                    FailureDomainSpec is the Schema for Cluster API failure domains.
-                    It allows controllers to understand how many failure domains a cluster can optionally span across.
-                  properties:
-                    attributes:
-                      additionalProperties:
-                        type: string
-                      description: Attributes is a free form map of attributes an
-                        infrastructure provider might use or require.
-                      type: object
-                    controlPlane:
-                      description: ControlPlane determines if this failure domain
-                        is suitable for use by control plane machines.
-                      type: boolean
-                  type: object
-                description: FailureDomains is a list of failure domain objects synced
-                  from the infrastructure provider.
-                type: object
               failureMessage:
                 description: |-
                   FailureMessage indicates that there is a terminal problem reconciling the
@@ -183,18 +170,21 @@ spec:
                   state, and will be set to a token value suitable for programmatic
                   interpretation.
                 type: string
+              instanceId:
+                description: InstanceID is the ID of the EC2 instance
+                type: string
+              lastTransitionTime:
+                description: LastTransitionTime is the last time the Ready condition
+                  changed
+                format: date-time
+                type: string
+              privateIp:
+                description: PrivateIP is the private IP address of the machine
+                type: string
               ready:
-                description: Ready denotes that the cluster infrastructure is ready
+                description: Ready denotes that the machine is ready and joined to
+                  the node group
                 type: boolean
-              vpcId:
-                description: |-
-                  VPCID is the ID of the VPC being used
-                  This could be either a newly created VPC or an existing one
-                type: string
-              vpcWorkspaceName:
-                description: VPCWorkspaceName is the name of the associated VPC Terraform
-                  Workspace
-                type: string
             type: object
         type: object
     served: true

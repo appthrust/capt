@@ -24,9 +24,6 @@ const (
 	controlPlaneTimeout = 30 * time.Minute
 	vpcReadyTimeout     = 15 * time.Minute
 	requeueInterval     = 10 * time.Second
-
-	// Secret names
-	eksConnectionSecret = "eks-connection"
 )
 
 // CAPTControlPlaneReconciler reconciles a CAPTControlPlane object
@@ -130,16 +127,6 @@ func (r *CAPTControlPlaneReconciler) reconcileNormal(ctx context.Context, contro
 	if err := r.updateStatus(ctx, controlPlane, workspaceApply); err != nil {
 		logger.Error(err, "Failed to update status")
 		return ctrl.Result{}, err
-	}
-
-	// Check if EKS cluster is ready by checking for eks-connection secret
-	eksSecret := &corev1.Secret{}
-	if err := r.Get(ctx, types.NamespacedName{
-		Name:      eksConnectionSecret,
-		Namespace: controlPlane.Namespace,
-	}, eksSecret); err != nil {
-		logger.Info("Waiting for EKS cluster to be ready")
-		return ctrl.Result{RequeueAfter: requeueInterval}, nil
 	}
 
 	return ctrl.Result{}, nil

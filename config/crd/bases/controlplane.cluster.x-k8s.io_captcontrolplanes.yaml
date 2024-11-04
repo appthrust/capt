@@ -142,6 +142,11 @@ spec:
               version:
                 description: Version defines the desired Kubernetes version.
                 type: string
+              workspaceTemplateApplyName:
+                description: |-
+                  WorkspaceTemplateApplyName is the name of the WorkspaceTemplateApply used for this control plane.
+                  This field is managed by the controller and should not be modified manually.
+                type: string
               workspaceTemplateRef:
                 description: WorkspaceTemplateRef is a reference to the WorkspaceTemplate
                   used for creating the control plane.

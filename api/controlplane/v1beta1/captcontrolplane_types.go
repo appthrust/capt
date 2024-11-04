@@ -74,6 +74,11 @@ type CAPTControlPlaneSpec struct {
 	// ControlPlaneEndpoint represents the endpoint used to communicate with the control plane.
 	// +optional
 	ControlPlaneEndpoint clusterv1.APIEndpoint `json:"controlPlaneEndpoint,omitempty"`
+
+	// WorkspaceTemplateApplyName is the name of the WorkspaceTemplateApply used for this control plane.
+	// This field is managed by the controller and should not be modified manually.
+	// +optional
+	WorkspaceTemplateApplyName string `json:"workspaceTemplateApplyName,omitempty"`
 }
 
 // WorkspaceTemplateReference contains the reference to WorkspaceTemplate

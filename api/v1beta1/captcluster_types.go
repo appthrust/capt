@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 
 // CAPTClusterSpec defines the desired state of CAPTCluster
@@ -36,6 +37,10 @@ type CAPTClusterSpec struct {
 	// If specified, VPCTemplateRef must not be set
 	// +optional
 	ExistingVPCID string `json:"existingVpcId,omitempty"`
+
+	// ControlPlaneEndpoint represents the endpoint used to communicate with the control plane.
+	// +optional
+	ControlPlaneEndpoint clusterv1.APIEndpoint `json:"controlPlaneEndpoint"`
 }
 
 // CAPTClusterStatus defines the observed state of CAPTCluster
@@ -51,6 +56,21 @@ type CAPTClusterStatus struct {
 	// Ready denotes that the cluster infrastructure is ready
 	// +optional
 	Ready bool `json:"ready,omitempty"`
+
+	// FailureReason indicates that there is a terminal problem reconciling the
+	// state, and will be set to a token value suitable for programmatic
+	// interpretation.
+	// +optional
+	FailureReason *string `json:"failureReason,omitempty"`
+
+	// FailureMessage indicates that there is a terminal problem reconciling the
+	// state, and will be set to a descriptive error message.
+	// +optional
+	FailureMessage *string `json:"failureMessage,omitempty"`
+
+	// FailureDomains is a list of failure domain objects synced from the infrastructure provider.
+	// +optional
+	FailureDomains clusterv1.FailureDomains `json:"failureDomains,omitempty"`
 
 	// Conditions defines current service state of the CAPTCluster
 	// +optional
@@ -95,6 +115,7 @@ func (s *CAPTClusterSpec) ValidateVPCConfiguration() error {
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="VPC-ID",type="string",JSONPath=".status.vpcId"
 // +kubebuilder:printcolumn:name="READY",type="boolean",JSONPath=".status.ready"
+// +kubebuilder:printcolumn:name="ENDPOINT",type="string",JSONPath=".spec.controlPlaneEndpoint.host"
 // +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
 
 // CAPTCluster is the Schema for the captclusters API

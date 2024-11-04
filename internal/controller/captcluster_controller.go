@@ -18,17 +18,14 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	capierrors "sigs.k8s.io/cluster-api/errors"
 )
 
 const (
 	// requeueInterval is the interval to requeue when waiting for resources
 	requeueInterval = 10 * time.Second
 )
-
-// TODO: Add timeout handling for:
-// - VPC creation (overall process)
-// - Secret availability after workspace is ready
-// - Workspace readiness check
 
 // CAPTClusterReconciler reconciles a CAPTCluster object
 type CAPTClusterReconciler struct {
@@ -42,6 +39,7 @@ type CAPTClusterReconciler struct {
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplates,verbs=get;list;watch
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplateapplies,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
+// +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters,verbs=get;list;watch
 
 func (r *CAPTClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
@@ -57,10 +55,21 @@ func (r *CAPTClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	// Get owner Cluster
+	cluster := &clusterv1.Cluster{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: captCluster.Namespace, Name: captCluster.Name}, cluster); err != nil {
+		if !apierrors.IsNotFound(err) {
+			log.Error(err, "Failed to get owner Cluster")
+			return ctrl.Result{}, err
+		}
+		// Cluster not found, could be a standalone CAPTCluster
+		cluster = nil
+	}
+
 	// Validate VPC configuration
 	if err := captCluster.Spec.ValidateVPCConfiguration(); err != nil {
 		log.Error(err, "Invalid VPC configuration")
-		return ctrl.Result{}, err
+		return r.setFailedStatus(ctx, captCluster, "InvalidVPCConfig", err.Error())
 	}
 
 	// Handle finalizer
@@ -72,11 +81,63 @@ func (r *CAPTClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	result, err := r.reconcileVPC(ctx, captCluster)
 	if err != nil {
 		log.Error(err, "Failed to reconcile VPC")
-		return result, err
+		return r.setFailedStatus(ctx, captCluster, "VPCReconciliationFailed", err.Error())
+	}
+
+	// Update owner Cluster status if it exists
+	if cluster != nil {
+		if err := r.updateClusterStatus(ctx, cluster, captCluster); err != nil {
+			log.Error(err, "Failed to update Cluster status")
+			return ctrl.Result{}, err
+		}
 	}
 
 	log.Info("Successfully reconciled CAPTCluster", "name", captCluster.Name)
 	return result, nil
+}
+
+func (r *CAPTClusterReconciler) updateClusterStatus(ctx context.Context, cluster *clusterv1.Cluster, captCluster *infrastructurev1beta1.CAPTCluster) error {
+	// Update infrastructure ready status
+	cluster.Status.InfrastructureReady = captCluster.Status.Ready
+
+	// Update failure reason and message if present
+	if captCluster.Status.FailureReason != nil {
+		reason := capierrors.ClusterStatusError(*captCluster.Status.FailureReason)
+		cluster.Status.FailureReason = &reason
+	}
+	if captCluster.Status.FailureMessage != nil {
+		cluster.Status.FailureMessage = captCluster.Status.FailureMessage
+	}
+
+	// Update control plane endpoint if provided
+	if captCluster.Spec.ControlPlaneEndpoint.Host != "" {
+		cluster.Spec.ControlPlaneEndpoint = captCluster.Spec.ControlPlaneEndpoint
+	}
+
+	// Update failure domains if present
+	if len(captCluster.Status.FailureDomains) > 0 {
+		cluster.Status.FailureDomains = captCluster.Status.FailureDomains
+	}
+
+	return r.Status().Update(ctx, cluster)
+}
+
+func (r *CAPTClusterReconciler) setFailedStatus(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster, reason, message string) (ctrl.Result, error) {
+	meta.SetStatusCondition(&captCluster.Status.Conditions, metav1.Condition{
+		Type:               infrastructurev1beta1.VPCFailedCondition,
+		Status:             metav1.ConditionTrue,
+		LastTransitionTime: metav1.Now(),
+		Reason:             reason,
+		Message:            message,
+	})
+	captCluster.Status.Ready = false
+	captCluster.Status.FailureReason = &reason
+	captCluster.Status.FailureMessage = &message
+
+	if err := r.Status().Update(ctx, captCluster); err != nil {
+		return ctrl.Result{}, err
+	}
+	return ctrl.Result{}, fmt.Errorf(message)
 }
 
 func (r *CAPTClusterReconciler) reconcileVPC(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster) (ctrl.Result, error) {

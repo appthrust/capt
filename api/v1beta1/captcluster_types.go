@@ -41,6 +41,38 @@ type CAPTClusterSpec struct {
 	// ControlPlaneEndpoint represents the endpoint used to communicate with the control plane.
 	// +optional
 	ControlPlaneEndpoint clusterv1.APIEndpoint `json:"controlPlaneEndpoint"`
+
+	// WorkspaceTemplateApplyName is the name of the WorkspaceTemplateApply used for this cluster.
+	// This field is managed by the controller and should not be modified manually.
+	// +optional
+	WorkspaceTemplateApplyName string `json:"workspaceTemplateApplyName,omitempty"`
+}
+
+// CAPTClusterWorkspaceStatus contains the status of the WorkspaceTemplate
+type CAPTClusterWorkspaceStatus struct {
+	// Ready indicates if the WorkspaceTemplate is ready
+	// +optional
+	Ready bool `json:"ready"`
+
+	// LastAppliedRevision is the revision of the WorkspaceTemplate that was last applied
+	// +optional
+	LastAppliedRevision string `json:"lastAppliedRevision,omitempty"`
+
+	// LastFailedRevision is the revision of the WorkspaceTemplate that last failed
+	// +optional
+	LastFailedRevision string `json:"lastFailedRevision,omitempty"`
+
+	// LastFailureMessage contains the error message from the last failure
+	// +optional
+	LastFailureMessage string `json:"lastFailureMessage,omitempty"`
+
+	// WorkspaceName is the name of the associated workspace
+	// +optional
+	WorkspaceName string `json:"workspaceName,omitempty"`
+
+	// LastAppliedTime is the last time the template was applied
+	// +optional
+	LastAppliedTime *metav1.Time `json:"lastAppliedTime,omitempty"`
 }
 
 // CAPTClusterStatus defines the observed state of CAPTCluster
@@ -75,6 +107,10 @@ type CAPTClusterStatus struct {
 	// Conditions defines current service state of the CAPTCluster
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// WorkspaceTemplateStatus contains the status of the WorkspaceTemplate
+	// +optional
+	WorkspaceTemplateStatus *CAPTClusterWorkspaceStatus `json:"workspaceTemplateStatus,omitempty"`
 }
 
 const (

@@ -9,14 +9,18 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	controlplanev1beta1 "github.com/appthrust/capt/api/controlplane/v1beta1"
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	capierrors "sigs.k8s.io/cluster-api/errors"
 )
 
 const (
@@ -36,6 +40,7 @@ type CAPTControlPlaneReconciler struct {
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplateapplies,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=captclusters,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
+//+kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters,verbs=get;list;watch;update;patch
 
 func (r *CAPTControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
@@ -48,16 +53,53 @@ func (r *CAPTControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	// Get owner Cluster
+	cluster := &clusterv1.Cluster{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: controlPlane.Namespace, Name: controlPlane.Name}, cluster); err != nil {
+		if !apierrors.IsNotFound(err) {
+			logger.Error(err, "Failed to get owner Cluster")
+			return ctrl.Result{}, err
+		}
+		// Cluster not found, could be a standalone CAPTControlPlane
+		cluster = nil
+		return ctrl.Result{}, nil
+	}
+
 	// Handle deletion
 	if !controlPlane.DeletionTimestamp.IsZero() {
 		return r.reconcileDelete(ctx, controlPlane)
 	}
 
+	// Set owner reference if not already set
+	if err := r.setOwnerReference(ctx, controlPlane, cluster); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	// Handle normal reconciliation
-	return r.reconcileNormal(ctx, controlPlane)
+	return r.reconcileNormal(ctx, controlPlane, cluster)
 }
 
-func (r *CAPTControlPlaneReconciler) reconcileNormal(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane) (ctrl.Result, error) {
+func (r *CAPTControlPlaneReconciler) setOwnerReference(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane, cluster *clusterv1.Cluster) error {
+	if cluster == nil {
+		return nil
+	}
+
+	// Check if owner reference is already set
+	for _, ref := range controlPlane.OwnerReferences {
+		if ref.Kind == "Cluster" && ref.APIVersion == clusterv1.GroupVersion.String() {
+			return nil
+		}
+	}
+
+	// Set owner reference
+	if err := controllerutil.SetControllerReference(cluster, controlPlane, r.Scheme); err != nil {
+		return fmt.Errorf("failed to set owner reference: %v", err)
+	}
+
+	return r.Update(ctx, controlPlane)
+}
+
+func (r *CAPTControlPlaneReconciler) reconcileNormal(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane, cluster *clusterv1.Cluster) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling normal state")
 
@@ -69,7 +111,7 @@ func (r *CAPTControlPlaneReconciler) reconcileNormal(ctx context.Context, contro
 	}
 	if err := r.Get(ctx, templateNamespacedName, workspaceTemplate); err != nil {
 		logger.Error(err, "Failed to get WorkspaceTemplate")
-		return r.setFailedStatus(ctx, controlPlane, controlplanev1beta1.ReasonFailed, fmt.Sprintf("Failed to get WorkspaceTemplate: %v", err))
+		return r.setFailedStatus(ctx, controlPlane, cluster, controlplanev1beta1.ReasonFailed, fmt.Sprintf("Failed to get WorkspaceTemplate: %v", err))
 	}
 
 	// Try to find existing WorkspaceTemplateApply
@@ -81,24 +123,9 @@ func (r *CAPTControlPlaneReconciler) reconcileNormal(ctx context.Context, contro
 		applyName = controlPlane.Spec.WorkspaceTemplateApplyName
 		logger.Info("Using existing WorkspaceTemplateApply name from spec", "name", applyName)
 	} else {
-		// Try to find the existing apply with the legacy name
-		legacyName := "demo-eks-controlplane-apply"
-		err := r.Get(ctx, types.NamespacedName{Name: legacyName, Namespace: controlPlane.Namespace}, workspaceApply)
-		if err == nil {
-			applyName = legacyName
-			// Update the spec with the found name
-			patch := client.MergeFrom(controlPlane.DeepCopy())
-			controlPlane.Spec.WorkspaceTemplateApplyName = legacyName
-			if err := r.Patch(ctx, controlPlane, patch); err != nil {
-				logger.Error(err, "Failed to update WorkspaceTemplateApplyName in spec")
-				return ctrl.Result{}, err
-			}
-			logger.Info("Found and using legacy WorkspaceTemplateApply", "name", legacyName)
-		} else {
-			// Create a new name if neither exists
-			applyName = fmt.Sprintf("%s-eks-controlplane-apply", controlPlane.Name)
-			logger.Info("Creating new WorkspaceTemplateApply", "name", applyName)
-		}
+		// Create a new name
+		applyName = fmt.Sprintf("%s-eks-controlplane-apply", controlPlane.Name)
+		logger.Info("Creating new WorkspaceTemplateApply", "name", applyName)
 	}
 
 	// Get or create WorkspaceTemplateApply
@@ -111,19 +138,19 @@ func (r *CAPTControlPlaneReconciler) reconcileNormal(ctx context.Context, contro
 		workspaceApply, err = r.createWorkspaceTemplateApply(ctx, controlPlane, workspaceTemplate, applyName)
 		if err != nil {
 			logger.Error(err, "Failed to create WorkspaceTemplateApply")
-			return r.setFailedStatus(ctx, controlPlane, controlplanev1beta1.ReasonFailed, fmt.Sprintf("Failed to create WorkspaceTemplateApply: %v", err))
+			return r.setFailedStatus(ctx, controlPlane, cluster, controlplanev1beta1.ReasonFailed, fmt.Sprintf("Failed to create WorkspaceTemplateApply: %v", err))
 		}
 	} else {
 		// Update existing WorkspaceTemplateApply
 		workspaceApply, err = r.updateWorkspaceTemplateApply(ctx, controlPlane, workspaceTemplate, workspaceApply)
 		if err != nil {
 			logger.Error(err, "Failed to update WorkspaceTemplateApply")
-			return r.setFailedStatus(ctx, controlPlane, controlplanev1beta1.ReasonFailed, fmt.Sprintf("Failed to update WorkspaceTemplateApply: %v", err))
+			return r.setFailedStatus(ctx, controlPlane, cluster, controlplanev1beta1.ReasonFailed, fmt.Sprintf("Failed to update WorkspaceTemplateApply: %v", err))
 		}
 	}
 
 	// Update status
-	return r.updateStatus(ctx, controlPlane, workspaceApply)
+	return r.updateStatus(ctx, controlPlane, workspaceApply, cluster)
 }
 
 func (r *CAPTControlPlaneReconciler) createWorkspaceTemplateApply(
@@ -201,7 +228,7 @@ func (r *CAPTControlPlaneReconciler) generateWorkspaceTemplateApplySpec(controlP
 	}
 }
 
-func (r *CAPTControlPlaneReconciler) updateStatus(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane, workspaceApply *infrastructurev1beta1.WorkspaceTemplateApply) (ctrl.Result, error) {
+func (r *CAPTControlPlaneReconciler) updateStatus(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane, workspaceApply *infrastructurev1beta1.WorkspaceTemplateApply, cluster *clusterv1.Cluster) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	// Initialize WorkspaceTemplateStatus if not exists
@@ -281,9 +308,37 @@ func (r *CAPTControlPlaneReconciler) updateStatus(ctx context.Context, controlPl
 		controlPlane.Status.WorkspaceTemplateStatus.LastAppliedRevision = workspaceApply.Status.LastAppliedTime.String()
 	}
 
+	// Update CAPTControlPlane status
 	if err := r.Status().Update(ctx, controlPlane); err != nil {
-		logger.Error(err, "Failed to update status")
+		logger.Error(err, "Failed to update CAPTControlPlane status")
 		return ctrl.Result{}, err
+	}
+
+	// Update Cluster status if it exists
+	if cluster != nil {
+		patch := client.MergeFrom(cluster.DeepCopy())
+
+		// Update control plane ready status
+		cluster.Status.ControlPlaneReady = controlPlane.Status.Ready
+
+		// Update control plane endpoint if available
+		if controlPlane.Spec.ControlPlaneEndpoint.Host != "" {
+			cluster.Spec.ControlPlaneEndpoint = controlPlane.Spec.ControlPlaneEndpoint
+		}
+
+		// Update failure reason and message if present
+		if controlPlane.Status.FailureReason != nil {
+			reason := capierrors.ClusterStatusError(*controlPlane.Status.FailureReason)
+			cluster.Status.FailureReason = &reason
+		}
+		if controlPlane.Status.FailureMessage != nil {
+			cluster.Status.FailureMessage = controlPlane.Status.FailureMessage
+		}
+
+		if err := r.Status().Patch(ctx, cluster, patch); err != nil {
+			logger.Error(err, "Failed to update Cluster status")
+			return ctrl.Result{}, err
+		}
 	}
 
 	logger.Info("Successfully updated status")
@@ -291,7 +346,7 @@ func (r *CAPTControlPlaneReconciler) updateStatus(ctx context.Context, controlPl
 	return ctrl.Result{RequeueAfter: requeueInterval}, nil
 }
 
-func (r *CAPTControlPlaneReconciler) setFailedStatus(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane, reason, message string) (ctrl.Result, error) {
+func (r *CAPTControlPlaneReconciler) setFailedStatus(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane, cluster *clusterv1.Cluster, reason, message string) (ctrl.Result, error) {
 	meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
 		Type:               controlplanev1beta1.ControlPlaneReadyCondition,
 		Status:             metav1.ConditionFalse,
@@ -307,9 +362,23 @@ func (r *CAPTControlPlaneReconciler) setFailedStatus(ctx context.Context, contro
 		controlPlane.Status.WorkspaceTemplateStatus.LastFailureMessage = message
 	}
 
+	// Update CAPTControlPlane status
 	if err := r.Status().Update(ctx, controlPlane); err != nil {
 		return ctrl.Result{}, err
 	}
+
+	// Update Cluster status if it exists
+	if cluster != nil {
+		patch := client.MergeFrom(cluster.DeepCopy())
+		cluster.Status.ControlPlaneReady = false
+		clusterReason := capierrors.ClusterStatusError(reason)
+		cluster.Status.FailureReason = &clusterReason
+		cluster.Status.FailureMessage = &message
+		if err := r.Status().Patch(ctx, cluster, patch); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
 	// Requeue to continue checking status
 	return ctrl.Result{RequeueAfter: requeueInterval}, nil
 }

@@ -19,10 +19,21 @@ spec:
       jsonPath: .status.ready
       name: Ready
       type: string
+    - description: Control Plane Phase
+      jsonPath: .status.phase
+      name: Phase
+      type: string
     - description: Kubernetes version
       jsonPath: .spec.version
       name: Version
       type: string
+    - description: API Server Endpoint
+      jsonPath: .spec.controlPlaneEndpoint.host
+      name: Endpoint
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
     name: v1beta1
     schema:
       openAPIV3Schema:
@@ -96,41 +107,21 @@ spec:
                           type: string
                         type: array
                     type: object
-                  fargateProfiles:
-                    description: FargateProfiles defines the Fargate profiles to be
-                      created
-                    items:
-                      description: FargateProfile defines a Fargate profile
-                      properties:
-                        name:
-                          description: Name is the name of the Fargate profile
-                          type: string
-                        selectors:
-                          description: Selectors is a list of label selectors to use
-                            for pods
-                          items:
-                            description: FargateSelector defines the selectors for
-                              a Fargate profile
-                            properties:
-                              labels:
-                                additionalProperties:
-                                  type: string
-                                description: Labels is a map of Kubernetes labels
-                                  to match
-                                type: object
-                              namespace:
-                                description: Namespace is the Kubernetes namespace
-                                  to select
-                                type: string
-                            required:
-                            - namespace
-                            type: object
-                          type: array
-                      required:
-                      - name
-                      - selectors
-                      type: object
-                    type: array
+                type: object
+              controlPlaneEndpoint:
+                description: ControlPlaneEndpoint represents the endpoint used to
+                  communicate with the control plane.
+                properties:
+                  host:
+                    description: The hostname on which the API server is serving.
+                    type: string
+                  port:
+                    description: The port on which the API server is serving.
+                    format: int32
+                    type: integer
+                required:
+                - host
+                - port
                 type: object
               version:
                 description: Version defines the desired Kubernetes version.
@@ -226,6 +217,15 @@ spec:
               initialized:
                 description: Initialized denotes if the control plane has been initialized
                 type: boolean
+              phase:
+                description: |-
+                  Phase represents the current phase of the control plane
+                  Valid values are: "Creating", "Ready", "Failed"
+                enum:
+                - Creating
+                - Ready
+                - Failed
+                type: string
               ready:
                 description: Ready denotes that the control plane is ready
                 type: boolean
@@ -235,6 +235,14 @@ spec:
                   lastAppliedRevision:
                     description: LastAppliedRevision is the revision of the WorkspaceTemplate
                       that was last applied
+                    type: string
+                  lastFailedRevision:
+                    description: LastFailedRevision is the revision of the WorkspaceTemplate
+                      that last failed
+                    type: string
+                  lastFailureMessage:
+                    description: LastFailureMessage contains the error message from
+                      the last failure
                     type: string
                   outputs:
                     additionalProperties:

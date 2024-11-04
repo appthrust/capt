@@ -1,7 +1,7 @@
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: CaptMachineDeployment
 metadata:
-  name: eks-managed-node-deployment
+  name: worker-deployment
   namespace: default
 spec:
   replicas: 2
@@ -21,25 +21,22 @@ spec:
       labels:
         role: worker
     spec:
-      workspaceTemplateRef:
-        name: eks-nodegroup-template
+      nodeGroupRef:
+        name: managed-ng-1
         namespace: default
-      nodeGroupConfig:
-        name: "managed-ng-1"
-        instanceType: "t3.medium"
-        scaling:
-          minSize: 1
-          maxSize: 3
-          desiredSize: 2
-        labels:
-          role: worker
-        tags:
-          Environment: "dev"
+      workspaceTemplateRef:
+        name: machine-template
+        namespace: default
+      instanceType: "t3.medium"
+      labels:
+        role: worker
+      tags:
+        Environment: "dev"
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: WorkspaceTemplate
 metadata:
-  name: eks-nodegroup-template
+  name: machine-template
   namespace: default
 spec:
   template:
@@ -49,61 +46,62 @@ spec:
       forProvider:
         source: Inline
         module: |
-          module "eks_managed_node_group" {
-            source = "terraform-aws-modules/eks/aws//modules/eks-managed-node-group"
-            
-            name            = var.node_group_name
-            cluster_name    = var.cluster_name
-            cluster_version = var.cluster_version
-            
-            subnet_ids = var.subnet_ids
-            
-            min_size     = var.min_size
-            max_size     = var.max_size
-            desired_size = var.desired_size
-            
-            instance_types = [var.instance_type]
-            
-            labels = var.labels
-            tags   = var.tags
-          }
-
-          variable "node_group_name" {
-            type = string
-          }
-
-          variable "cluster_name" {
-            type = string
-          }
-
-          variable "cluster_version" {
-            type = string
-          }
-
-          variable "subnet_ids" {
-            type = list(string)
-          }
-
-          variable "min_size" {
-            type = number
-          }
-
-          variable "max_size" {
-            type = number
-          }
-
-          variable "desired_size" {
-            type = number
-          }
+          # Machine level configuration
+          # This template focuses on individual machine settings
 
           variable "instance_type" {
             type = string
           }
 
+          variable "node_group" {
+            type = string
+            description = "Reference to the node group this machine belongs to"
+          }
+
           variable "labels" {
             type = map(string)
+            default = {}
           }
 
           variable "tags" {
             type = map(string)
+            default = {}
+          }
+
+          # Machine configuration
+          # This will join the machine to the specified node group
+          data "aws_eks_node_group" "target" {
+            cluster_name    = var.cluster_name
+            node_group_name = var.node_group
+          }
+
+          resource "aws_instance" "machine" {
+            instance_type = var.instance_type
+            subnet_id     = data.aws_eks_node_group.target.subnet_ids[0]
+
+            # Use the node group's security groups and IAM role
+            vpc_security_group_ids = data.aws_eks_node_group.target.security_groups
+            iam_instance_profile   = data.aws_eks_node_group.target.node_role
+
+            tags = merge(var.tags, {
+              Name = "${var.node_group}-machine"
+              Role = "worker"
+            })
+
+            user_data = base64encode(<<-EOF
+              #!/bin/bash
+              /etc/eks/bootstrap.sh ${var.cluster_name} \
+                --node-labels ${join(",", [for k, v in var.labels : "${k}=${v}"])} \
+                --kubelet-extra-args "--node-labels=${join(",", [for k, v in var.labels : "${k}=${v}"])}"
+              EOF
+            )
+          }
+
+          # Output the instance details
+          output "instance_id" {
+            value = aws_instance.machine.id
+          }
+
+          output "private_ip" {
+            value = aws_instance.machine.private_ip
           }

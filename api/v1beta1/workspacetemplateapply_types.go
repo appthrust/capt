@@ -37,9 +37,9 @@ type WorkspaceTemplateApplySpec struct {
 	// +optional
 	Variables map[string]string `json:"variables,omitempty"`
 
-	// WaitForSecret specifies a secret that must exist before creating the workspace
+	// WaitForSecrets specifies a list of secrets that must exist before creating the workspace
 	// +optional
-	WaitForSecret *xpv1.SecretReference `json:"waitForSecret,omitempty"`
+	WaitForSecrets []xpv1.SecretReference `json:"waitForSecrets,omitempty"`
 
 	// WaitForWorkspaces specifies a list of workspaces that must be ready before creating this workspace
 	// +optional

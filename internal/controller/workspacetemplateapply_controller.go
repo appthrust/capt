@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
@@ -44,13 +45,13 @@ const (
 	errGetCreds                  = "cannot get credentials"
 	errGetTemplate               = "cannot get WorkspaceTemplate"
 	errCreateWorkspace           = "cannot create Workspace"
-	errWaitingForSecret          = "waiting for required secret"
+	errWaitingForSecrets         = "waiting for required secrets"
 	errGetWorkspace              = "cannot get Workspace"
 	errWaitingForWorkspace       = "waiting for required workspace"
 
 	// Event reasons
 	reasonCreatedWorkspace    = "CreatedWorkspace"
-	reasonWaitingForSecret    = "WaitingForSecret"
+	reasonWaitingForSecrets   = "WaitingForSecrets"
 	reasonWaitingForWorkspace = "WaitingForWorkspace"
 	reasonWaitingForSync      = "WaitingForSync"
 	reasonWaitingForReady     = "WaitingForReady"
@@ -111,6 +112,39 @@ func (r *workspaceTemplateApplyReconciler) waitForDependentWorkspaces(ctx contex
 	return nil
 }
 
+// waitForRequiredSecrets checks if all required secrets exist
+func (r *workspaceTemplateApplyReconciler) waitForRequiredSecrets(ctx context.Context, cr *v1beta1.WorkspaceTemplateApply) error {
+	if len(cr.Spec.WaitForSecrets) == 0 {
+		return nil
+	}
+
+	var missingSecrets []string
+	for _, secretRef := range cr.Spec.WaitForSecrets {
+		secret := &corev1.Secret{}
+		namespace := secretRef.Namespace
+		if namespace == "" {
+			namespace = cr.Namespace
+		}
+
+		err := r.client.Get(ctx, types.NamespacedName{
+			Name:      secretRef.Name,
+			Namespace: namespace,
+		}, secret)
+		if err != nil {
+			missingSecrets = append(missingSecrets, fmt.Sprintf("%s/%s", namespace, secretRef.Name))
+		}
+	}
+
+	if len(missingSecrets) > 0 {
+		message := fmt.Sprintf("Waiting for secrets: %s", strings.Join(missingSecrets, ", "))
+		r.log.Debug(errWaitingForSecrets, "missing", strings.Join(missingSecrets, ", "))
+		r.record.Event(cr, event.Normal(reasonWaitingForSecrets, message))
+		return fmt.Errorf("%s: %s", errWaitingForSecrets, message)
+	}
+
+	return nil
+}
+
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplateapplies,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplateapplies/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplateapplies/finalizers,verbs=update
@@ -150,6 +184,11 @@ func (r *workspaceTemplateApplyReconciler) Reconcile(ctx context.Context, req ct
 		return ctrl.Result{}, nil
 	}
 
+	// Check if we need to wait for secrets first
+	if err := r.waitForRequiredSecrets(ctx, cr); err != nil {
+		return ctrl.Result{RequeueAfter: requeueAfterSecret}, nil
+	}
+
 	// Get the referenced WorkspaceTemplate
 	template := &v1beta1.WorkspaceTemplate{}
 	if err := r.client.Get(ctx, types.NamespacedName{
@@ -163,20 +202,6 @@ func (r *workspaceTemplateApplyReconciler) Reconcile(ctx context.Context, req ct
 	// If already applied, check workspace status
 	if cr.Status.Applied {
 		return r.reconcileWorkspaceStatus(ctx, cr)
-	}
-
-	// Check if we need to wait for a secret
-	if cr.Spec.WaitForSecret != nil {
-		secret := &corev1.Secret{}
-		err := r.client.Get(ctx, types.NamespacedName{
-			Name:      cr.Spec.WaitForSecret.Name,
-			Namespace: cr.Spec.WaitForSecret.Namespace,
-		}, secret)
-		if err != nil {
-			log.Debug(errWaitingForSecret, "error", err)
-			r.record.Event(cr, event.Normal(reasonWaitingForSecret, "Waiting for secret "+cr.Spec.WaitForSecret.Name))
-			return ctrl.Result{RequeueAfter: requeueAfterSecret}, nil
-		}
 	}
 
 	// Check if we need to wait for workspaces

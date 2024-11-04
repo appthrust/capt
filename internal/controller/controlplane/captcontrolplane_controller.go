@@ -2,6 +2,7 @@ package controlplane
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -24,6 +25,9 @@ const (
 	controlPlaneTimeout = 30 * time.Minute
 	vpcReadyTimeout     = 15 * time.Minute
 	requeueInterval     = 10 * time.Second
+
+	// Secret names
+	eksConnectionSecret = "eks-connection"
 )
 
 // CAPTControlPlaneReconciler reconciles a CAPTControlPlane object
@@ -38,6 +42,7 @@ type CAPTControlPlaneReconciler struct {
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplates,verbs=get;list;watch
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplateapplies,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=captclusters,verbs=get;list;watch
+//+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
 func (r *CAPTControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
@@ -128,7 +133,144 @@ func (r *CAPTControlPlaneReconciler) reconcileNormal(ctx context.Context, contro
 		return ctrl.Result{}, err
 	}
 
+	// Check if EKS cluster is ready by checking for eks-connection secret
+	eksSecret := &corev1.Secret{}
+	if err := r.Get(ctx, types.NamespacedName{
+		Name:      eksConnectionSecret,
+		Namespace: controlPlane.Namespace,
+	}, eksSecret); err != nil {
+		logger.Info("Waiting for EKS cluster to be ready")
+		return ctrl.Result{RequeueAfter: requeueInterval}, nil
+	}
+
+	// Reconcile Fargate profiles
+	if err := r.reconcileFargateProfiles(ctx, controlPlane); err != nil {
+		logger.Error(err, "Failed to reconcile Fargate profiles")
+		return r.setFailedStatus(ctx, controlPlane, controlplanev1beta1.ReasonFargateProfileFailed, fmt.Sprintf("Failed to reconcile Fargate profiles: %v", err))
+	}
+
 	return ctrl.Result{}, nil
+}
+
+func (r *CAPTControlPlaneReconciler) reconcileFargateProfiles(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane) error {
+	logger := log.FromContext(ctx)
+
+	// Initialize FargateProfileStatuses if needed
+	if controlPlane.Status.FargateProfileStatuses == nil {
+		controlPlane.Status.FargateProfileStatuses = []controlplanev1beta1.FargateProfileStatus{}
+	}
+
+	// Process each Fargate profile
+	for _, profile := range controlPlane.Spec.AdditionalFargateProfiles {
+		// Check if profile already exists in status
+		var profileStatus *controlplanev1beta1.FargateProfileStatus
+		for i := range controlPlane.Status.FargateProfileStatuses {
+			if controlPlane.Status.FargateProfileStatuses[i].Name == profile.Name {
+				profileStatus = &controlPlane.Status.FargateProfileStatuses[i]
+				break
+			}
+		}
+
+		// If profile doesn't exist in status, create it
+		if profileStatus == nil {
+			controlPlane.Status.FargateProfileStatuses = append(controlPlane.Status.FargateProfileStatuses, controlplanev1beta1.FargateProfileStatus{
+				Name:                       profile.Name,
+				Ready:                      false,
+				WorkspaceTemplateApplyName: fmt.Sprintf("%s-%s-fargate-apply", controlPlane.Name, profile.Name),
+			})
+			profileStatus = &controlPlane.Status.FargateProfileStatuses[len(controlPlane.Status.FargateProfileStatuses)-1]
+		}
+
+		// Create or update WorkspaceTemplateApply for the profile
+		if err := r.reconcileFargateProfileWorkspaceApply(ctx, controlPlane, profile, profileStatus); err != nil {
+			return err
+		}
+
+		// Check WorkspaceTemplateApply status
+		workspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
+		if err := r.Get(ctx, types.NamespacedName{
+			Name:      profileStatus.WorkspaceTemplateApplyName,
+			Namespace: controlPlane.Namespace,
+		}, workspaceApply); err != nil {
+			return err
+		}
+
+		// Update profile status based on WorkspaceTemplateApply status
+		for _, condition := range workspaceApply.Status.Conditions {
+			if condition.Type == xpv1.TypeReady {
+				if condition.Status == corev1.ConditionTrue {
+					profileStatus.Ready = true
+					profileStatus.FailureReason = nil
+					profileStatus.FailureMessage = nil
+				} else {
+					profileStatus.Ready = false
+					reason := controlplanev1beta1.ReasonFargateProfileFailed
+					message := condition.Message
+					profileStatus.FailureReason = &reason
+					profileStatus.FailureMessage = &message
+					return fmt.Errorf("Fargate profile %s failed: %s", profile.Name, message)
+				}
+				break
+			}
+		}
+	}
+
+	return r.Status().Update(ctx, controlPlane)
+}
+
+func (r *CAPTControlPlaneReconciler) reconcileFargateProfileWorkspaceApply(
+	ctx context.Context,
+	controlPlane *controlplanev1beta1.CAPTControlPlane,
+	profile controlplanev1beta1.AdditionalFargateProfile,
+	status *controlplanev1beta1.FargateProfileStatus,
+) error {
+	// Convert selectors to JSON
+	selectorsJSON, err := json.Marshal(profile.Selectors)
+	if err != nil {
+		return fmt.Errorf("failed to marshal selectors: %v", err)
+	}
+
+	// Create WorkspaceTemplateApply for the Fargate profile
+	workspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      status.WorkspaceTemplateApplyName,
+			Namespace: controlPlane.Namespace,
+		},
+		Spec: infrastructurev1beta1.WorkspaceTemplateApplySpec{
+			TemplateRef: infrastructurev1beta1.WorkspaceTemplateReference{
+				Name:      profile.WorkspaceTemplateRef.Name,
+				Namespace: profile.WorkspaceTemplateRef.Namespace,
+			},
+			WaitForSecrets: []xpv1.SecretReference{
+				{
+					Name:      eksConnectionSecret,
+					Namespace: controlPlane.Namespace,
+				},
+				{
+					Name:      "vpc-connection",
+					Namespace: controlPlane.Namespace,
+				},
+			},
+			Variables: map[string]string{
+				"cluster_name": controlPlane.Name,
+				"profile_name": profile.Name,
+				"selectors":    string(selectorsJSON),
+			},
+		},
+	}
+
+	// Create or update the WorkspaceTemplateApply
+	err = r.Get(ctx, types.NamespacedName{
+		Name:      status.WorkspaceTemplateApplyName,
+		Namespace: controlPlane.Namespace,
+	}, workspaceApply)
+	if err != nil {
+		if client.IgnoreNotFound(err) != nil {
+			return err
+		}
+		return r.Create(ctx, workspaceApply)
+	}
+	return r.Update(ctx, workspaceApply)
 }
 
 func (r *CAPTControlPlaneReconciler) reconcileWorkspaceTemplateApply(
@@ -313,6 +455,21 @@ func (r *CAPTControlPlaneReconciler) setFailedStatus(ctx context.Context, contro
 func (r *CAPTControlPlaneReconciler) reconcileDelete(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Handling deletion of CAPTControlPlane")
+
+	// Delete all Fargate profile WorkspaceTemplateApplies
+	for _, status := range controlPlane.Status.FargateProfileStatuses {
+		workspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
+		err := r.Get(ctx, types.NamespacedName{
+			Name:      status.WorkspaceTemplateApplyName,
+			Namespace: controlPlane.Namespace,
+		}, workspaceApply)
+		if err == nil {
+			if err := r.Delete(ctx, workspaceApply); err != nil {
+				logger.Error(err, "Failed to delete Fargate profile WorkspaceTemplateApply")
+				return ctrl.Result{}, err
+			}
+		}
+	}
 
 	// Find and delete associated WorkspaceTemplateApply
 	applyName := fmt.Sprintf("%s-apply", controlPlane.Name)

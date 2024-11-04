@@ -18,15 +18,6 @@ const (
 
 	// ControlPlaneCreatingCondition indicates the control plane is being created
 	ControlPlaneCreatingCondition = "Creating"
-
-	// FargateProfileReadyCondition indicates a Fargate profile is ready
-	FargateProfileReadyCondition = "FargateProfileReady"
-
-	// FargateProfileCreatingCondition indicates a Fargate profile is being created
-	FargateProfileCreatingCondition = "FargateProfileCreating"
-
-	// FargateProfileFailedCondition indicates a Fargate profile creation has failed
-	FargateProfileFailedCondition = "FargateProfileFailed"
 )
 
 // Condition Reasons
@@ -51,15 +42,6 @@ const (
 
 	// ReasonWorkspaceError indicates an error with the workspace
 	ReasonWorkspaceError = "WorkspaceError"
-
-	// ReasonFargateProfileCreating indicates a Fargate profile is being created
-	ReasonFargateProfileCreating = "FargateProfileCreating"
-
-	// ReasonFargateProfileReady indicates a Fargate profile is ready
-	ReasonFargateProfileReady = "FargateProfileReady"
-
-	// ReasonFargateProfileFailed indicates a Fargate profile creation has failed
-	ReasonFargateProfileFailed = "FargateProfileFailed"
 )
 
 // CAPTControlPlaneSpec defines the desired state of CAPTControlPlane
@@ -83,10 +65,6 @@ type CAPTControlPlaneSpec struct {
 	// ControlPlaneEndpoint represents the endpoint used to communicate with the control plane.
 	// +optional
 	ControlPlaneEndpoint clusterv1.APIEndpoint `json:"controlPlaneEndpoint,omitempty"`
-
-	// AdditionalFargateProfiles defines additional Fargate profiles to be created
-	// +optional
-	AdditionalFargateProfiles []AdditionalFargateProfile `json:"additionalFargateProfiles,omitempty"`
 }
 
 // WorkspaceTemplateReference contains the reference to WorkspaceTemplate
@@ -141,33 +119,6 @@ type Addon struct {
 	ConfigurationValues string `json:"configurationValues,omitempty"`
 }
 
-// AdditionalFargateProfile defines an additional Fargate profile to be created
-type AdditionalFargateProfile struct {
-	// Name is the name of the Fargate profile
-	// +kubebuilder:validation:Required
-	Name string `json:"name"`
-
-	// Selectors is a list of label selectors to use for pods
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinItems=1
-	Selectors []FargateSelector `json:"selectors"`
-
-	// WorkspaceTemplateRef is a reference to the WorkspaceTemplate used for creating the Fargate profile
-	// +kubebuilder:validation:Required
-	WorkspaceTemplateRef WorkspaceTemplateReference `json:"workspaceTemplateRef"`
-}
-
-// FargateSelector defines the selectors for a Fargate profile
-type FargateSelector struct {
-	// Namespace is the Kubernetes namespace to select
-	// +kubebuilder:validation:Required
-	Namespace string `json:"namespace"`
-
-	// Labels is a map of Kubernetes labels to match
-	// +optional
-	Labels map[string]string `json:"labels,omitempty"`
-}
-
 // CAPTControlPlaneStatus defines the observed state of CAPTControlPlane
 type CAPTControlPlaneStatus struct {
 	// Ready denotes that the control plane is ready
@@ -181,10 +132,6 @@ type CAPTControlPlaneStatus struct {
 	// WorkspaceTemplateStatus contains the status of the WorkspaceTemplate
 	// +optional
 	WorkspaceTemplateStatus *WorkspaceTemplateStatus `json:"workspaceTemplateStatus,omitempty"`
-
-	// FargateProfileStatuses contains the status of additional Fargate profiles
-	// +optional
-	FargateProfileStatuses []FargateProfileStatus `json:"fargateProfileStatuses,omitempty"`
 
 	// FailureReason indicates that there is a terminal problem reconciling the
 	// state, and will be set to a token value suitable for programmatic
@@ -206,26 +153,6 @@ type CAPTControlPlaneStatus struct {
 	// Conditions defines current service state of the CAPTControlPlane.
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
-}
-
-// FargateProfileStatus contains the status of a Fargate profile
-type FargateProfileStatus struct {
-	// Name is the name of the Fargate profile
-	Name string `json:"name"`
-
-	// Ready indicates if the Fargate profile is ready
-	Ready bool `json:"ready"`
-
-	// WorkspaceTemplateApplyName is the name of the WorkspaceTemplateApply resource
-	WorkspaceTemplateApplyName string `json:"workspaceTemplateApplyName"`
-
-	// FailureReason indicates that there is a problem with the Fargate profile
-	// +optional
-	FailureReason *string `json:"failureReason,omitempty"`
-
-	// FailureMessage provides more detail about the failure
-	// +optional
-	FailureMessage *string `json:"failureMessage,omitempty"`
 }
 
 // WorkspaceTemplateStatus contains the status of the WorkspaceTemplate

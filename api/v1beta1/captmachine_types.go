@@ -22,83 +22,55 @@ import (
 
 // CaptMachineSpec defines the desired state of CaptMachine
 type CaptMachineSpec struct {
-	// WorkspaceTemplateRef is a reference to the WorkspaceTemplate used for creating the node group
+	// NodeGroupRef is a reference to the NodeGroup this machine belongs to
+	// +kubebuilder:validation:Required
+	NodeGroupRef NodeGroupReference `json:"nodeGroupRef"`
+
+	// WorkspaceTemplateRef is a reference to the WorkspaceTemplate used for creating the machine
 	// +kubebuilder:validation:Required
 	WorkspaceTemplateRef WorkspaceTemplateReference `json:"workspaceTemplateRef"`
 
-	// NodeGroupConfig contains the configuration for the managed node group
-	// +kubebuilder:validation:Required
-	NodeGroupConfig NodeGroupConfig `json:"nodeGroupConfig"`
-}
-
-// NodeGroupConfig defines the configuration for the managed node group
-type NodeGroupConfig struct {
-	// Name is the name of the managed node group
-	// +kubebuilder:validation:Required
-	Name string `json:"name"`
-
-	// InstanceType is the EC2 instance type to use for the nodes
+	// InstanceType is the EC2 instance type to use for the node
 	// +kubebuilder:validation:Required
 	InstanceType string `json:"instanceType"`
 
-	// Scaling defines the scaling configuration for the node group
-	// +kubebuilder:validation:Required
-	Scaling ScalingConfig `json:"scaling"`
-
-	// UpdateConfig defines the update configuration for the node group
-	// +optional
-	UpdateConfig *UpdateConfig `json:"updateConfig,omitempty"`
-
-	// Labels is a map of kubernetes labels to apply to the nodes
+	// Labels is a map of kubernetes labels to apply to the node
 	// +optional
 	Labels map[string]string `json:"labels,omitempty"`
 
-	// Tags is a map of tags to apply to the node group
+	// Tags is a map of tags to apply to the node
 	// +optional
 	Tags map[string]string `json:"tags,omitempty"`
 }
 
-// ScalingConfig defines the scaling configuration for the node group
-type ScalingConfig struct {
-	// MinSize is the minimum size of the node group
-	// +kubebuilder:validation:Minimum=0
-	MinSize int32 `json:"minSize"`
+// NodeGroupReference contains the information necessary to let you specify a NodeGroup
+type NodeGroupReference struct {
+	// Name is the name of the NodeGroup
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
 
-	// MaxSize is the maximum size of the node group
-	// +kubebuilder:validation:Minimum=1
-	MaxSize int32 `json:"maxSize"`
-
-	// DesiredSize is the desired size of the node group
-	// +kubebuilder:validation:Minimum=0
-	DesiredSize int32 `json:"desiredSize"`
-}
-
-// UpdateConfig defines the update configuration for the node group
-type UpdateConfig struct {
-	// MaxUnavailablePercentage is the maximum percentage of nodes that can be unavailable during an update
-	// +optional
-	// +kubebuilder:validation:Minimum=0
-	// +kubebuilder:validation:Maximum=100
-	MaxUnavailablePercentage *int32 `json:"maxUnavailablePercentage,omitempty"`
+	// Namespace is the namespace of the NodeGroup
+	// +kubebuilder:validation:Required
+	Namespace string `json:"namespace"`
 }
 
 // CaptMachineStatus defines the observed state of CaptMachine
 type CaptMachineStatus struct {
-	// Ready denotes that the node group is ready
+	// Ready denotes that the machine is ready and joined to the node group
 	// +optional
 	Ready bool `json:"ready"`
 
-	// CurrentSize is the current size of the node group
+	// InstanceID is the ID of the EC2 instance
 	// +optional
-	CurrentSize *int32 `json:"currentSize,omitempty"`
+	InstanceID *string `json:"instanceId,omitempty"`
 
-	// LastScalingTime is the last time the node group was scaled
+	// PrivateIP is the private IP address of the machine
 	// +optional
-	LastScalingTime *metav1.Time `json:"lastScalingTime,omitempty"`
+	PrivateIP *string `json:"privateIp,omitempty"`
 
-	// LastUpdateTime is the last time the node group was updated
+	// LastTransitionTime is the last time the Ready condition changed
 	// +optional
-	LastUpdateTime *metav1.Time `json:"lastUpdateTime,omitempty"`
+	LastTransitionTime *metav1.Time `json:"lastTransitionTime,omitempty"`
 
 	// Conditions defines current service state of the CaptMachine
 	// +optional
@@ -119,7 +91,8 @@ type CaptMachineStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 //+kubebuilder:printcolumn:name="Ready",type="boolean",JSONPath=".status.ready",description="Machine Ready status"
-//+kubebuilder:printcolumn:name="Current Size",type="integer",JSONPath=".status.currentSize",description="Current number of nodes"
+//+kubebuilder:printcolumn:name="Instance ID",type="string",JSONPath=".status.instanceId",description="EC2 Instance ID"
+//+kubebuilder:printcolumn:name="Node Group",type="string",JSONPath=".spec.nodeGroupRef.name",description="Node Group name"
 
 // CaptMachine is the Schema for the captmachines API
 type CaptMachine struct {

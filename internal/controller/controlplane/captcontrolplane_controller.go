@@ -50,11 +50,6 @@ func (r *CAPTControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// Check overall timeout
-	if !controlPlane.CreationTimestamp.IsZero() && time.Since(controlPlane.CreationTimestamp.Time) > controlPlaneTimeout {
-		return r.setFailedStatus(ctx, controlPlane, controlplanev1beta1.ReasonControlPlaneTimeout, "Control plane creation timed out")
-	}
-
 	// Handle deletion
 	if !controlPlane.DeletionTimestamp.IsZero() {
 		return r.reconcileDelete(ctx, controlPlane)
@@ -85,8 +80,19 @@ func (r *CAPTControlPlaneReconciler) reconcileNormal(ctx context.Context, contro
 		return r.setFailedStatus(ctx, controlPlane, controlplanev1beta1.ReasonFailed, fmt.Sprintf("Failed to get CAPTCluster: %v", err))
 	}
 
-	// Check VPC readiness with timeout
-	if !captCluster.Status.Ready {
+	// Check VPC readiness
+	vpcReady := false
+	if captCluster.Status.Ready {
+		vpcReady = true
+	} else {
+		// Check VPC conditions
+		vpcCondition := meta.FindStatusCondition(captCluster.Status.Conditions, infrastructurev1beta1.VPCReadyCondition)
+		if vpcCondition != nil && vpcCondition.Status == metav1.ConditionTrue {
+			vpcReady = true
+		}
+	}
+
+	if !vpcReady {
 		// Get the last transition time for WaitingForVPC condition
 		var lastTransitionTime time.Time
 		if condition := meta.FindStatusCondition(controlPlane.Status.Conditions, controlplanev1beta1.ControlPlaneInitializedCondition); condition != nil {
@@ -95,8 +101,23 @@ func (r *CAPTControlPlaneReconciler) reconcileNormal(ctx context.Context, contro
 			lastTransitionTime = controlPlane.CreationTimestamp.Time
 		}
 
+		// Check if we've exceeded the VPC ready timeout
 		if time.Since(lastTransitionTime) > vpcReadyTimeout {
-			return r.setFailedStatus(ctx, controlPlane, controlplanev1beta1.ReasonVPCReadyTimeout, "Timed out waiting for VPC to be ready")
+			// Update status to indicate VPC timeout
+			meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
+				Type:               controlplanev1beta1.ControlPlaneInitializedCondition,
+				Status:             metav1.ConditionFalse,
+				LastTransitionTime: metav1.Now(),
+				Reason:             controlplanev1beta1.ReasonVPCReadyTimeout,
+				Message:            "Timed out waiting for VPC to be ready",
+			})
+			controlPlane.Status.Phase = "Creating"
+			if err := r.Status().Update(ctx, controlPlane); err != nil {
+				logger.Error(err, "Failed to update status")
+				return ctrl.Result{}, err
+			}
+			// Requeue to continue checking VPC status
+			return ctrl.Result{RequeueAfter: requeueInterval}, nil
 		}
 
 		// Update status to indicate waiting for VPC
@@ -123,13 +144,99 @@ func (r *CAPTControlPlaneReconciler) reconcileNormal(ctx context.Context, contro
 		return r.setFailedStatus(ctx, controlPlane, controlplanev1beta1.ReasonFailed, fmt.Sprintf("Failed to reconcile WorkspaceTemplateApply: %v", err))
 	}
 
-	// Update status based on WorkspaceTemplateApply status
-	if err := r.updateStatus(ctx, controlPlane, workspaceApply); err != nil {
+	// Check workspace conditions
+	var syncedCondition, readyCondition bool
+	var errorMessage string
+
+	for _, condition := range workspaceApply.Status.Conditions {
+		if condition.Type == xpv1.TypeSynced {
+			syncedCondition = condition.Status == corev1.ConditionTrue
+			if !syncedCondition {
+				errorMessage = condition.Message
+			}
+		}
+		if condition.Type == xpv1.TypeReady {
+			readyCondition = condition.Status == corev1.ConditionTrue
+			if !readyCondition {
+				errorMessage = condition.Message
+			}
+		}
+	}
+
+	// Check if we've exceeded the overall timeout
+	if !readyCondition {
+		if !controlPlane.CreationTimestamp.IsZero() && time.Since(controlPlane.CreationTimestamp.Time) > controlPlaneTimeout {
+			// Update status to indicate control plane timeout
+			meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
+				Type:               controlplanev1beta1.ControlPlaneReadyCondition,
+				Status:             metav1.ConditionFalse,
+				LastTransitionTime: metav1.Now(),
+				Reason:             controlplanev1beta1.ReasonControlPlaneTimeout,
+				Message:            "Control plane creation timed out",
+			})
+			controlPlane.Status.Phase = "Creating"
+			if err := r.Status().Update(ctx, controlPlane); err != nil {
+				logger.Error(err, "Failed to update status")
+				return ctrl.Result{}, err
+			}
+			// Requeue to continue checking status
+			return ctrl.Result{RequeueAfter: requeueInterval}, nil
+		}
+	}
+
+	// Update status based on workspace conditions
+	if !workspaceApply.Status.Applied || !syncedCondition || !readyCondition {
+		if errorMessage != "" {
+			meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
+				Type:               controlplanev1beta1.ControlPlaneReadyCondition,
+				Status:             metav1.ConditionFalse,
+				LastTransitionTime: metav1.Now(),
+				Reason:             controlplanev1beta1.ReasonWorkspaceError,
+				Message:            errorMessage,
+			})
+			controlPlane.Status.Phase = "Creating"
+		} else {
+			meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
+				Type:               controlplanev1beta1.ControlPlaneReadyCondition,
+				Status:             metav1.ConditionFalse,
+				LastTransitionTime: metav1.Now(),
+				Reason:             controlplanev1beta1.ReasonCreating,
+				Message:            "Control plane is being created",
+			})
+			controlPlane.Status.Phase = "Creating"
+		}
+		controlPlane.Status.Ready = false
+		controlPlane.Status.Initialized = false
+		controlPlane.Status.WorkspaceTemplateStatus.Ready = false
+		if errorMessage != "" {
+			controlPlane.Status.WorkspaceTemplateStatus.LastFailureMessage = errorMessage
+			if workspaceApply.Status.LastAppliedTime != nil {
+				controlPlane.Status.WorkspaceTemplateStatus.LastFailedRevision = workspaceApply.Status.LastAppliedTime.String()
+			}
+		}
+	} else {
+		meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
+			Type:               controlplanev1beta1.ControlPlaneReadyCondition,
+			Status:             metav1.ConditionTrue,
+			LastTransitionTime: metav1.Now(),
+			Reason:             controlplanev1beta1.ReasonReady,
+			Message:            "Control plane is ready",
+		})
+		controlPlane.Status.Phase = "Ready"
+		controlPlane.Status.Ready = true
+		controlPlane.Status.Initialized = true
+		controlPlane.Status.WorkspaceTemplateStatus.Ready = true
+		controlPlane.Status.FailureReason = nil
+		controlPlane.Status.FailureMessage = nil
+	}
+
+	if err := r.Status().Update(ctx, controlPlane); err != nil {
 		logger.Error(err, "Failed to update status")
 		return ctrl.Result{}, err
 	}
 
-	return ctrl.Result{}, nil
+	// Requeue to continue checking status
+	return ctrl.Result{RequeueAfter: requeueInterval}, nil
 }
 
 func (r *CAPTControlPlaneReconciler) reconcileWorkspaceTemplateApply(
@@ -204,102 +311,17 @@ func (r *CAPTControlPlaneReconciler) reconcileWorkspaceTemplateApply(
 	return workspaceApply, nil
 }
 
-func (r *CAPTControlPlaneReconciler) updateStatus(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane, workspaceApply *infrastructurev1beta1.WorkspaceTemplateApply) error {
-	// Initialize status if needed
-	if controlPlane.Status.WorkspaceTemplateStatus == nil {
-		controlPlane.Status.WorkspaceTemplateStatus = &controlplanev1beta1.WorkspaceTemplateStatus{}
-	}
-
-	// Update workspace template status
-	controlPlane.Status.WorkspaceTemplateStatus.State = workspaceApply.Status.WorkspaceName
-	if workspaceApply.Status.LastAppliedTime != nil {
-		controlPlane.Status.WorkspaceTemplateStatus.LastAppliedRevision = workspaceApply.Status.LastAppliedTime.String()
-	}
-
-	// Check workspace conditions
-	var syncedCondition, readyCondition bool
-	var errorMessage string
-
-	for _, condition := range workspaceApply.Status.Conditions {
-		switch condition.Type {
-		case xpv1.TypeSynced:
-			syncedCondition = condition.Status == corev1.ConditionTrue
-			if !syncedCondition {
-				errorMessage = condition.Message
-			}
-		case xpv1.TypeReady:
-			readyCondition = condition.Status == corev1.ConditionTrue
-			if !readyCondition {
-				errorMessage = condition.Message
-			}
-		}
-	}
-
-	// Update status based on workspace conditions
-	if !workspaceApply.Status.Applied || !syncedCondition || !readyCondition {
-		if errorMessage != "" {
-			meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
-				Type:               controlplanev1beta1.ControlPlaneFailedCondition,
-				Status:             metav1.ConditionTrue,
-				LastTransitionTime: metav1.Now(),
-				Reason:             controlplanev1beta1.ReasonWorkspaceError,
-				Message:            errorMessage,
-			})
-			controlPlane.Status.Phase = "Failed"
-			failureReason := controlplanev1beta1.ReasonWorkspaceError
-			controlPlane.Status.FailureReason = &failureReason
-			controlPlane.Status.FailureMessage = &errorMessage
-		} else {
-			meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
-				Type:               controlplanev1beta1.ControlPlaneReadyCondition,
-				Status:             metav1.ConditionFalse,
-				LastTransitionTime: metav1.Now(),
-				Reason:             controlplanev1beta1.ReasonCreating,
-				Message:            "Control plane is being created",
-			})
-			controlPlane.Status.Phase = "Creating"
-		}
-		controlPlane.Status.Ready = false
-		controlPlane.Status.Initialized = false
-		controlPlane.Status.WorkspaceTemplateStatus.Ready = false
-		if errorMessage != "" {
-			controlPlane.Status.WorkspaceTemplateStatus.LastFailureMessage = errorMessage
-			if workspaceApply.Status.LastAppliedTime != nil {
-				controlPlane.Status.WorkspaceTemplateStatus.LastFailedRevision = workspaceApply.Status.LastAppliedTime.String()
-			}
-		}
-	} else {
-		meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
-			Type:               controlplanev1beta1.ControlPlaneReadyCondition,
-			Status:             metav1.ConditionTrue,
-			LastTransitionTime: metav1.Now(),
-			Reason:             controlplanev1beta1.ReasonReady,
-			Message:            "Control plane is ready",
-		})
-		controlPlane.Status.Phase = "Ready"
-		controlPlane.Status.Ready = true
-		controlPlane.Status.Initialized = true
-		controlPlane.Status.WorkspaceTemplateStatus.Ready = true
-		controlPlane.Status.FailureReason = nil
-		controlPlane.Status.FailureMessage = nil
-	}
-
-	return r.Status().Update(ctx, controlPlane)
-}
-
 func (r *CAPTControlPlaneReconciler) setFailedStatus(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane, reason, message string) (ctrl.Result, error) {
 	meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
-		Type:               controlplanev1beta1.ControlPlaneFailedCondition,
-		Status:             metav1.ConditionTrue,
+		Type:               controlplanev1beta1.ControlPlaneReadyCondition,
+		Status:             metav1.ConditionFalse,
 		LastTransitionTime: metav1.Now(),
 		Reason:             reason,
 		Message:            message,
 	})
-	controlPlane.Status.Phase = "Failed"
+	controlPlane.Status.Phase = "Creating"
 	controlPlane.Status.Ready = false
 	controlPlane.Status.Initialized = false
-	controlPlane.Status.FailureReason = &reason
-	controlPlane.Status.FailureMessage = &message
 	if controlPlane.Status.WorkspaceTemplateStatus != nil {
 		controlPlane.Status.WorkspaceTemplateStatus.Ready = false
 		controlPlane.Status.WorkspaceTemplateStatus.LastFailureMessage = message
@@ -308,7 +330,8 @@ func (r *CAPTControlPlaneReconciler) setFailedStatus(ctx context.Context, contro
 	if err := r.Status().Update(ctx, controlPlane); err != nil {
 		return ctrl.Result{}, err
 	}
-	return ctrl.Result{}, fmt.Errorf(message)
+	// Requeue to continue checking status
+	return ctrl.Result{RequeueAfter: requeueInterval}, nil
 }
 
 func (r *CAPTControlPlaneReconciler) reconcileDelete(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane) (ctrl.Result, error) {

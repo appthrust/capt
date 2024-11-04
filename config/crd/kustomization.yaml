@@ -6,6 +6,9 @@ resources:
 - bases/infrastructure.cluster.x-k8s.io_workspacetemplates.yaml
 - bases/infrastructure.cluster.x-k8s.io_workspacetemplateapplies.yaml
 - bases/controlplane.cluster.x-k8s.io_captcontrolplanes.yaml
+- bases/infrastructure.cluster.x-k8s.io_captmachines.yaml
+- bases/infrastructure.cluster.x-k8s.io_captmachinesets.yaml
+- bases/infrastructure.cluster.x-k8s.io_captmachinedeployments.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

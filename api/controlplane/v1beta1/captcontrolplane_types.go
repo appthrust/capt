@@ -20,6 +20,15 @@ const (
 	ControlPlaneCreatingCondition = "Creating"
 )
 
+// Default timeout values
+const (
+	// DefaultControlPlaneTimeout is the default timeout for control plane creation
+	DefaultControlPlaneTimeout = 30
+
+	// DefaultVPCReadyTimeout is the default timeout for VPC ready check
+	DefaultVPCReadyTimeout = 15
+)
+
 // Condition Reasons
 const (
 	// ReasonCreating indicates the control plane is being created
@@ -78,6 +87,21 @@ type WorkspaceTemplateReference struct {
 	Namespace string `json:"namespace,omitempty"`
 }
 
+// TimeoutConfig defines timeout settings for various operations
+type TimeoutConfig struct {
+	// ControlPlaneTimeout is the timeout in minutes for control plane creation
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:default=30
+	ControlPlaneTimeout *int `json:"controlPlaneTimeout,omitempty"`
+
+	// VPCReadyTimeout is the timeout in minutes for VPC ready check
+	// +optional
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:default=15
+	VPCReadyTimeout *int `json:"vpcReadyTimeout,omitempty"`
+}
+
 // ControlPlaneConfig contains EKS-specific configuration
 type ControlPlaneConfig struct {
 	// EndpointAccess defines the access configuration for the API server endpoint
@@ -87,6 +111,10 @@ type ControlPlaneConfig struct {
 	// Addons defines the EKS addons to be installed
 	// +optional
 	Addons []Addon `json:"addons,omitempty"`
+
+	// Timeouts defines timeout settings for various operations
+	// +optional
+	Timeouts *TimeoutConfig `json:"timeouts,omitempty"`
 }
 
 // EndpointAccess defines the access configuration for the API server endpoint
@@ -180,6 +208,26 @@ type WorkspaceTemplateStatus struct {
 	// LastFailureMessage contains the error message from the last failure
 	// +optional
 	LastFailureMessage string `json:"lastFailureMessage,omitempty"`
+}
+
+// GetControlPlaneTimeout returns the control plane timeout in minutes
+func (c *CAPTControlPlane) GetControlPlaneTimeout() int {
+	if c.Spec.ControlPlaneConfig != nil &&
+		c.Spec.ControlPlaneConfig.Timeouts != nil &&
+		c.Spec.ControlPlaneConfig.Timeouts.ControlPlaneTimeout != nil {
+		return *c.Spec.ControlPlaneConfig.Timeouts.ControlPlaneTimeout
+	}
+	return DefaultControlPlaneTimeout
+}
+
+// GetVPCReadyTimeout returns the VPC ready timeout in minutes
+func (c *CAPTControlPlane) GetVPCReadyTimeout() int {
+	if c.Spec.ControlPlaneConfig != nil &&
+		c.Spec.ControlPlaneConfig.Timeouts != nil &&
+		c.Spec.ControlPlaneConfig.Timeouts.VPCReadyTimeout != nil {
+		return *c.Spec.ControlPlaneConfig.Timeouts.VPCReadyTimeout
+	}
+	return DefaultVPCReadyTimeout
 }
 
 //+kubebuilder:object:root=true

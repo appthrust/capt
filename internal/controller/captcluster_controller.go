@@ -39,7 +39,7 @@ type CAPTClusterReconciler struct {
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplates,verbs=get;list;watch
 // +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplateapplies,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
-// +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters,verbs=get;list;watch
+// +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters,verbs=get;list;watch;update;patch
 
 func (r *CAPTClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
@@ -65,12 +65,23 @@ func (r *CAPTClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 		// Cluster not found, could be a standalone CAPTCluster
 		cluster = nil
+		return ctrl.Result{}, nil
+	}
+
+	// Handle deletion
+	if !captCluster.DeletionTimestamp.IsZero() {
+		return r.reconcileDelete(ctx, captCluster)
+	}
+
+	// Set owner reference if not already set
+	if err := r.setOwnerReference(ctx, captCluster, cluster); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	// Validate VPC configuration
 	if err := captCluster.Spec.ValidateVPCConfiguration(); err != nil {
 		logger.Error(err, "Invalid VPC configuration")
-		return r.setFailedStatus(ctx, captCluster, "InvalidVPCConfig", err.Error())
+		return r.setFailedStatus(ctx, captCluster, cluster, "InvalidVPCConfig", err.Error())
 	}
 
 	// Handle finalizer
@@ -79,25 +90,130 @@ func (r *CAPTClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Handle VPC configuration
-	result, err := r.reconcileVPC(ctx, captCluster)
+	result, err := r.reconcileVPC(ctx, captCluster, cluster)
 	if err != nil {
 		logger.Error(err, "Failed to reconcile VPC")
-		return r.setFailedStatus(ctx, captCluster, "VPCReconciliationFailed", err.Error())
-	}
-
-	// Update owner Cluster status if it exists
-	if cluster != nil {
-		if err := r.updateClusterStatus(ctx, cluster, captCluster); err != nil {
-			logger.Error(err, "Failed to update Cluster status")
-			return ctrl.Result{}, err
-		}
+		return r.setFailedStatus(ctx, captCluster, cluster, "VPCReconciliationFailed", err.Error())
 	}
 
 	logger.Info("Successfully reconciled CAPTCluster", "name", captCluster.Name)
 	return result, nil
 }
 
-func (r *CAPTClusterReconciler) reconcileVPC(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster) (ctrl.Result, error) {
+func (r *CAPTClusterReconciler) setOwnerReference(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster, cluster *clusterv1.Cluster) error {
+	if cluster == nil {
+		return nil
+	}
+
+	// Check if owner reference is already set
+	for _, ref := range captCluster.OwnerReferences {
+		if ref.Kind == "Cluster" && ref.APIVersion == clusterv1.GroupVersion.String() {
+			return nil
+		}
+	}
+
+	// Set owner reference
+	if err := controllerutil.SetControllerReference(cluster, captCluster, r.Scheme); err != nil {
+		return fmt.Errorf("failed to set owner reference: %v", err)
+	}
+
+	return r.Update(ctx, captCluster)
+}
+
+func (r *CAPTClusterReconciler) updateStatus(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster, cluster *clusterv1.Cluster) error {
+	// Update CAPTCluster status
+	if err := r.Status().Update(ctx, captCluster); err != nil {
+		return fmt.Errorf("failed to update CAPTCluster status: %v", err)
+	}
+
+	// Update Cluster status if it exists
+	if cluster != nil {
+		patch := client.MergeFrom(cluster.DeepCopy())
+
+		// Update infrastructure ready status
+		cluster.Status.InfrastructureReady = captCluster.Status.Ready
+
+		// Update control plane endpoint
+		if captCluster.Spec.ControlPlaneEndpoint.Host != "" {
+			cluster.Spec.ControlPlaneEndpoint = captCluster.Spec.ControlPlaneEndpoint
+		}
+
+		// Update failure reason and message if present
+		if captCluster.Status.FailureReason != nil {
+			reason := capierrors.ClusterStatusError(*captCluster.Status.FailureReason)
+			cluster.Status.FailureReason = &reason
+		}
+		if captCluster.Status.FailureMessage != nil {
+			cluster.Status.FailureMessage = captCluster.Status.FailureMessage
+		}
+
+		// Update failure domains if present
+		if len(captCluster.Status.FailureDomains) > 0 {
+			cluster.Status.FailureDomains = captCluster.Status.FailureDomains
+		}
+
+		// Update phase if both infrastructure and control plane are ready
+		if cluster.Status.InfrastructureReady && cluster.Status.ControlPlaneReady {
+			cluster.Status.Phase = string(clusterv1.ClusterPhaseProvisioned)
+		}
+
+		if err := r.Status().Patch(ctx, cluster, patch); err != nil {
+			return fmt.Errorf("failed to update Cluster status: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func (r *CAPTClusterReconciler) setFailedStatus(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster, cluster *clusterv1.Cluster, reason, message string) (ctrl.Result, error) {
+	meta.SetStatusCondition(&captCluster.Status.Conditions, metav1.Condition{
+		Type:               infrastructurev1beta1.VPCFailedCondition,
+		Status:             metav1.ConditionTrue,
+		LastTransitionTime: metav1.Now(),
+		Reason:             reason,
+		Message:            message,
+	})
+	captCluster.Status.Ready = false
+	captCluster.Status.FailureReason = &reason
+	captCluster.Status.FailureMessage = &message
+
+	if captCluster.Status.WorkspaceTemplateStatus != nil {
+		captCluster.Status.WorkspaceTemplateStatus.Ready = false
+		captCluster.Status.WorkspaceTemplateStatus.LastFailureMessage = message
+	}
+
+	if err := r.updateStatus(ctx, captCluster, cluster); err != nil {
+		return ctrl.Result{}, err
+	}
+	return ctrl.Result{}, fmt.Errorf(message)
+}
+
+func (r *CAPTClusterReconciler) reconcileDelete(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	logger.Info("Handling deletion of CAPTCluster")
+
+	// Find and delete associated WorkspaceTemplateApply
+	if captCluster.Spec.WorkspaceTemplateApplyName != "" {
+		workspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
+		err := r.Get(ctx, types.NamespacedName{
+			Name:      captCluster.Spec.WorkspaceTemplateApplyName,
+			Namespace: captCluster.Namespace,
+		}, workspaceApply)
+
+		if err == nil {
+			// WorkspaceTemplateApply exists, delete it
+			if err := r.Delete(ctx, workspaceApply); err != nil {
+				logger.Error(err, "Failed to delete WorkspaceTemplateApply")
+				return ctrl.Result{}, err
+			}
+			logger.Info("Successfully deleted WorkspaceTemplateApply")
+		}
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func (r *CAPTClusterReconciler) reconcileVPC(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster, cluster *clusterv1.Cluster) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	if captCluster.Spec.ExistingVPCID != "" {
@@ -111,7 +227,11 @@ func (r *CAPTClusterReconciler) reconcileVPC(ctx context.Context, captCluster *i
 			Reason:             infrastructurev1beta1.ReasonExistingVPCUsed,
 			Message:            "Using existing VPC",
 		})
-		return ctrl.Result{}, r.Status().Update(ctx, captCluster)
+
+		if err := r.updateStatus(ctx, captCluster, cluster); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
 	}
 
 	// Create new VPC using template
@@ -246,8 +366,8 @@ func (r *CAPTClusterReconciler) reconcileVPC(ctx context.Context, captCluster *i
 				}
 			}
 
-			if err := r.Status().Update(ctx, captCluster); err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to update CAPTCluster status: %v", err)
+			if err := r.updateStatus(ctx, captCluster, cluster); err != nil {
+				return ctrl.Result{}, err
 			}
 			return ctrl.Result{RequeueAfter: requeueInterval}, nil
 		}
@@ -288,61 +408,12 @@ func (r *CAPTClusterReconciler) reconcileVPC(ctx context.Context, captCluster *i
 		captCluster.Status.WorkspaceTemplateStatus.Ready = true
 		captCluster.Status.WorkspaceTemplateStatus.LastAppliedRevision = workspaceApply.Status.LastAppliedTime.String()
 
-		if err := r.Status().Update(ctx, captCluster); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to update CAPTCluster status: %v", err)
+		if err := r.updateStatus(ctx, captCluster, cluster); err != nil {
+			return ctrl.Result{}, err
 		}
 	}
 
 	return ctrl.Result{}, nil
-}
-
-func (r *CAPTClusterReconciler) updateClusterStatus(ctx context.Context, cluster *clusterv1.Cluster, captCluster *infrastructurev1beta1.CAPTCluster) error {
-	// Update infrastructure ready status
-	cluster.Status.InfrastructureReady = captCluster.Status.Ready
-
-	// Update failure reason and message if present
-	if captCluster.Status.FailureReason != nil {
-		reason := capierrors.ClusterStatusError(*captCluster.Status.FailureReason)
-		cluster.Status.FailureReason = &reason
-	}
-	if captCluster.Status.FailureMessage != nil {
-		cluster.Status.FailureMessage = captCluster.Status.FailureMessage
-	}
-
-	// Update control plane endpoint if provided
-	if captCluster.Spec.ControlPlaneEndpoint.Host != "" {
-		cluster.Spec.ControlPlaneEndpoint = captCluster.Spec.ControlPlaneEndpoint
-	}
-
-	// Update failure domains if present
-	if len(captCluster.Status.FailureDomains) > 0 {
-		cluster.Status.FailureDomains = captCluster.Status.FailureDomains
-	}
-
-	return r.Status().Update(ctx, cluster)
-}
-
-func (r *CAPTClusterReconciler) setFailedStatus(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster, reason, message string) (ctrl.Result, error) {
-	meta.SetStatusCondition(&captCluster.Status.Conditions, metav1.Condition{
-		Type:               infrastructurev1beta1.VPCFailedCondition,
-		Status:             metav1.ConditionTrue,
-		LastTransitionTime: metav1.Now(),
-		Reason:             reason,
-		Message:            message,
-	})
-	captCluster.Status.Ready = false
-	captCluster.Status.FailureReason = &reason
-	captCluster.Status.FailureMessage = &message
-
-	if captCluster.Status.WorkspaceTemplateStatus != nil {
-		captCluster.Status.WorkspaceTemplateStatus.Ready = false
-		captCluster.Status.WorkspaceTemplateStatus.LastFailureMessage = message
-	}
-
-	if err := r.Status().Update(ctx, captCluster); err != nil {
-		return ctrl.Result{}, err
-	}
-	return ctrl.Result{}, fmt.Errorf(message)
 }
 
 // SetupWithManager sets up the controller with the Manager.

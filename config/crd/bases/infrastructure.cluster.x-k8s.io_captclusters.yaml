@@ -89,6 +89,11 @@ spec:
                 required:
                 - name
                 type: object
+              workspaceTemplateApplyName:
+                description: |-
+                  WorkspaceTemplateApplyName is the name of the WorkspaceTemplateApply used for this cluster.
+                  This field is managed by the controller and should not be modified manually.
+                type: string
             required:
             - region
             type: object
@@ -195,6 +200,33 @@ spec:
                 description: VPCWorkspaceName is the name of the associated VPC Terraform
                   Workspace
                 type: string
+              workspaceTemplateStatus:
+                description: WorkspaceTemplateStatus contains the status of the WorkspaceTemplate
+                properties:
+                  lastAppliedRevision:
+                    description: LastAppliedRevision is the revision of the WorkspaceTemplate
+                      that was last applied
+                    type: string
+                  lastAppliedTime:
+                    description: LastAppliedTime is the last time the template was
+                      applied
+                    format: date-time
+                    type: string
+                  lastFailedRevision:
+                    description: LastFailedRevision is the revision of the WorkspaceTemplate
+                      that last failed
+                    type: string
+                  lastFailureMessage:
+                    description: LastFailureMessage contains the error message from
+                      the last failure
+                    type: string
+                  ready:
+                    description: Ready indicates if the WorkspaceTemplate is ready
+                    type: boolean
+                  workspaceName:
+                    description: WorkspaceName is the name of the associated workspace
+                    type: string
+                type: object
             type: object
         type: object
     served: true

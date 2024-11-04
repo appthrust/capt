@@ -42,16 +42,17 @@ type CAPTClusterReconciler struct {
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters,verbs=get;list;watch
 
 func (r *CAPTClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := log.FromContext(ctx)
+	logger := log.FromContext(ctx)
+	logger.Info("Reconciling CAPTCluster")
 
 	// Fetch the CAPTCluster instance
 	captCluster := &infrastructurev1beta1.CAPTCluster{}
 	if err := r.Get(ctx, req.NamespacedName, captCluster); err != nil {
 		if apierrors.IsNotFound(err) {
-			log.Info("CAPTCluster resource not found. Ignoring since object must be deleted.")
+			logger.Info("CAPTCluster resource not found. Ignoring since object must be deleted.")
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get CAPTCluster")
+		logger.Error(err, "Failed to get CAPTCluster")
 		return ctrl.Result{}, err
 	}
 
@@ -59,7 +60,7 @@ func (r *CAPTClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	cluster := &clusterv1.Cluster{}
 	if err := r.Get(ctx, types.NamespacedName{Namespace: captCluster.Namespace, Name: captCluster.Name}, cluster); err != nil {
 		if !apierrors.IsNotFound(err) {
-			log.Error(err, "Failed to get owner Cluster")
+			logger.Error(err, "Failed to get owner Cluster")
 			return ctrl.Result{}, err
 		}
 		// Cluster not found, could be a standalone CAPTCluster
@@ -68,7 +69,7 @@ func (r *CAPTClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	// Validate VPC configuration
 	if err := captCluster.Spec.ValidateVPCConfiguration(); err != nil {
-		log.Error(err, "Invalid VPC configuration")
+		logger.Error(err, "Invalid VPC configuration")
 		return r.setFailedStatus(ctx, captCluster, "InvalidVPCConfig", err.Error())
 	}
 
@@ -80,20 +81,219 @@ func (r *CAPTClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Handle VPC configuration
 	result, err := r.reconcileVPC(ctx, captCluster)
 	if err != nil {
-		log.Error(err, "Failed to reconcile VPC")
+		logger.Error(err, "Failed to reconcile VPC")
 		return r.setFailedStatus(ctx, captCluster, "VPCReconciliationFailed", err.Error())
 	}
 
 	// Update owner Cluster status if it exists
 	if cluster != nil {
 		if err := r.updateClusterStatus(ctx, cluster, captCluster); err != nil {
-			log.Error(err, "Failed to update Cluster status")
+			logger.Error(err, "Failed to update Cluster status")
 			return ctrl.Result{}, err
 		}
 	}
 
-	log.Info("Successfully reconciled CAPTCluster", "name", captCluster.Name)
+	logger.Info("Successfully reconciled CAPTCluster", "name", captCluster.Name)
 	return result, nil
+}
+
+func (r *CAPTClusterReconciler) reconcileVPC(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
+	if captCluster.Spec.ExistingVPCID != "" {
+		// Use existing VPC
+		captCluster.Status.VPCID = captCluster.Spec.ExistingVPCID
+		captCluster.Status.Ready = true
+		meta.SetStatusCondition(&captCluster.Status.Conditions, metav1.Condition{
+			Type:               infrastructurev1beta1.VPCReadyCondition,
+			Status:             metav1.ConditionTrue,
+			LastTransitionTime: metav1.Now(),
+			Reason:             infrastructurev1beta1.ReasonExistingVPCUsed,
+			Message:            "Using existing VPC",
+		})
+		return ctrl.Result{}, r.Status().Update(ctx, captCluster)
+	}
+
+	// Create new VPC using template
+	if captCluster.Spec.VPCTemplateRef != nil {
+		// Get the referenced WorkspaceTemplate
+		vpcTemplate := &infrastructurev1beta1.WorkspaceTemplate{}
+		templateName := types.NamespacedName{
+			Name:      captCluster.Spec.VPCTemplateRef.Name,
+			Namespace: captCluster.Namespace,
+		}
+		if err := r.Get(ctx, templateName, vpcTemplate); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to get VPC WorkspaceTemplate: %v", err)
+		}
+
+		// Try to find existing WorkspaceTemplateApply
+		workspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
+		var applyName string
+
+		if captCluster.Spec.WorkspaceTemplateApplyName != "" {
+			// Use the name from spec if it exists
+			applyName = captCluster.Spec.WorkspaceTemplateApplyName
+			logger.Info("Using existing WorkspaceTemplateApply name from spec", "name", applyName)
+		} else {
+			// Create a new name
+			applyName = fmt.Sprintf("%s-vpc", captCluster.Name)
+			logger.Info("Creating new WorkspaceTemplateApply", "name", applyName)
+		}
+
+		// Get or create WorkspaceTemplateApply
+		err := r.Get(ctx, types.NamespacedName{Name: applyName, Namespace: captCluster.Namespace}, workspaceApply)
+		if err != nil {
+			if client.IgnoreNotFound(err) != nil {
+				return ctrl.Result{}, err
+			}
+			// Create new WorkspaceTemplateApply
+			workspaceApply = &infrastructurev1beta1.WorkspaceTemplateApply{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      applyName,
+					Namespace: captCluster.Namespace,
+				},
+				Spec: infrastructurev1beta1.WorkspaceTemplateApplySpec{
+					TemplateRef: *captCluster.Spec.VPCTemplateRef,
+					Variables: map[string]string{
+						"name":        fmt.Sprintf("%s-vpc", captCluster.Name),
+						"environment": "production", // TODO: Make this configurable
+					},
+				},
+			}
+
+			// Set owner reference
+			if err := controllerutil.SetControllerReference(captCluster, workspaceApply, r.Scheme); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to set owner reference: %v", err)
+			}
+
+			if err := r.Create(ctx, workspaceApply); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to create WorkspaceTemplateApply: %v", err)
+			}
+
+			// Update WorkspaceTemplateApplyName in Spec
+			patch := client.MergeFrom(captCluster.DeepCopy())
+			captCluster.Spec.WorkspaceTemplateApplyName = applyName
+			if err := r.Patch(ctx, captCluster, patch); err != nil {
+				logger.Error(err, "Failed to update WorkspaceTemplateApplyName in spec")
+				return ctrl.Result{}, err
+			}
+		} else {
+			// Update existing WorkspaceTemplateApply if needed
+			workspaceApply.Spec = infrastructurev1beta1.WorkspaceTemplateApplySpec{
+				TemplateRef: *captCluster.Spec.VPCTemplateRef,
+				Variables: map[string]string{
+					"name":        fmt.Sprintf("%s-vpc", captCluster.Name),
+					"environment": "production", // TODO: Make this configurable
+				},
+			}
+			if err := r.Update(ctx, workspaceApply); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to update WorkspaceTemplateApply: %v", err)
+			}
+		}
+
+		// Initialize WorkspaceTemplateStatus if not exists
+		if captCluster.Status.WorkspaceTemplateStatus == nil {
+			captCluster.Status.WorkspaceTemplateStatus = &infrastructurev1beta1.CAPTClusterWorkspaceStatus{}
+		}
+
+		// Update status based on WorkspaceTemplateApply conditions
+		var syncedCondition, readyCondition bool
+		var errorMessage string
+
+		for _, condition := range workspaceApply.Status.Conditions {
+			logger.Info("Checking condition", "type", condition.Type, "status", condition.Status)
+			if condition.Type == xpv1.TypeSynced {
+				syncedCondition = condition.Status == corev1.ConditionTrue
+				if !syncedCondition {
+					errorMessage = condition.Message
+				}
+			}
+			if condition.Type == xpv1.TypeReady {
+				readyCondition = condition.Status == corev1.ConditionTrue
+				if !readyCondition {
+					errorMessage = condition.Message
+				}
+			}
+		}
+
+		logger.Info("Status check", "applied", workspaceApply.Status.Applied, "synced", syncedCondition, "ready", readyCondition)
+
+		// Update status based on workspace conditions
+		if !workspaceApply.Status.Applied || !syncedCondition || !readyCondition {
+			if errorMessage != "" {
+				meta.SetStatusCondition(&captCluster.Status.Conditions, metav1.Condition{
+					Type:               infrastructurev1beta1.VPCReadyCondition,
+					Status:             metav1.ConditionFalse,
+					LastTransitionTime: metav1.Now(),
+					Reason:             infrastructurev1beta1.ReasonVPCCreationFailed,
+					Message:            errorMessage,
+				})
+			} else {
+				meta.SetStatusCondition(&captCluster.Status.Conditions, metav1.Condition{
+					Type:               infrastructurev1beta1.VPCReadyCondition,
+					Status:             metav1.ConditionFalse,
+					LastTransitionTime: metav1.Now(),
+					Reason:             infrastructurev1beta1.ReasonVPCCreating,
+					Message:            "VPC is being created",
+				})
+			}
+			captCluster.Status.Ready = false
+			captCluster.Status.WorkspaceTemplateStatus.Ready = false
+			if errorMessage != "" {
+				captCluster.Status.WorkspaceTemplateStatus.LastFailureMessage = errorMessage
+				if workspaceApply.Status.LastAppliedTime != nil {
+					captCluster.Status.WorkspaceTemplateStatus.LastFailedRevision = workspaceApply.Status.LastAppliedTime.String()
+				}
+			}
+
+			if err := r.Status().Update(ctx, captCluster); err != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to update CAPTCluster status: %v", err)
+			}
+			return ctrl.Result{RequeueAfter: requeueInterval}, nil
+		}
+
+		// Get VPC ID from secret if available
+		if vpcTemplate.Spec.WriteConnectionSecretToRef != nil {
+			secret := &corev1.Secret{}
+			secretName := types.NamespacedName{
+				Name:      vpcTemplate.Spec.WriteConnectionSecretToRef.Name,
+				Namespace: vpcTemplate.Spec.WriteConnectionSecretToRef.Namespace,
+			}
+			if err := r.Get(ctx, secretName, secret); err != nil {
+				if apierrors.IsNotFound(err) {
+					// Secret not found yet, requeue
+					return ctrl.Result{RequeueAfter: requeueInterval}, nil
+				}
+				return ctrl.Result{}, fmt.Errorf("failed to get VPC connection secret: %v", err)
+			}
+
+			vpcID, ok := secret.Data["vpc_id"]
+			if !ok {
+				// vpc_id not found yet, requeue
+				return ctrl.Result{RequeueAfter: requeueInterval}, nil
+			}
+
+			captCluster.Status.VPCID = string(vpcID)
+		}
+
+		// VPC is ready
+		meta.SetStatusCondition(&captCluster.Status.Conditions, metav1.Condition{
+			Type:               infrastructurev1beta1.VPCReadyCondition,
+			Status:             metav1.ConditionTrue,
+			LastTransitionTime: metav1.Now(),
+			Reason:             infrastructurev1beta1.ReasonVPCCreated,
+			Message:            "VPC has been successfully created",
+		})
+		captCluster.Status.Ready = true
+		captCluster.Status.WorkspaceTemplateStatus.Ready = true
+		captCluster.Status.WorkspaceTemplateStatus.LastAppliedRevision = workspaceApply.Status.LastAppliedTime.String()
+
+		if err := r.Status().Update(ctx, captCluster); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to update CAPTCluster status: %v", err)
+		}
+	}
+
+	return ctrl.Result{}, nil
 }
 
 func (r *CAPTClusterReconciler) updateClusterStatus(ctx context.Context, cluster *clusterv1.Cluster, captCluster *infrastructurev1beta1.CAPTCluster) error {
@@ -134,176 +334,21 @@ func (r *CAPTClusterReconciler) setFailedStatus(ctx context.Context, captCluster
 	captCluster.Status.FailureReason = &reason
 	captCluster.Status.FailureMessage = &message
 
+	if captCluster.Status.WorkspaceTemplateStatus != nil {
+		captCluster.Status.WorkspaceTemplateStatus.Ready = false
+		captCluster.Status.WorkspaceTemplateStatus.LastFailureMessage = message
+	}
+
 	if err := r.Status().Update(ctx, captCluster); err != nil {
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, fmt.Errorf(message)
 }
 
-func (r *CAPTClusterReconciler) reconcileVPC(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster) (ctrl.Result, error) {
-	if captCluster.Spec.ExistingVPCID != "" {
-		// Use existing VPC
-		captCluster.Status.VPCID = captCluster.Spec.ExistingVPCID
-		captCluster.Status.Ready = true
-		meta.SetStatusCondition(&captCluster.Status.Conditions, metav1.Condition{
-			Type:               infrastructurev1beta1.VPCReadyCondition,
-			Status:             metav1.ConditionTrue,
-			LastTransitionTime: metav1.Now(),
-			Reason:             infrastructurev1beta1.ReasonExistingVPCUsed,
-			Message:            "Using existing VPC",
-		})
-		return ctrl.Result{}, r.Status().Update(ctx, captCluster)
-	}
-
-	// Create new VPC using template
-	if captCluster.Spec.VPCTemplateRef != nil {
-		// Get the referenced WorkspaceTemplate
-		vpcTemplate := &infrastructurev1beta1.WorkspaceTemplate{}
-		templateName := types.NamespacedName{
-			Name:      captCluster.Spec.VPCTemplateRef.Name,
-			Namespace: captCluster.Namespace,
-		}
-		if err := r.Get(ctx, templateName, vpcTemplate); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to get VPC WorkspaceTemplate: %v", err)
-		}
-
-		// Create or update WorkspaceTemplateApply for VPC
-		vpcApply := &infrastructurev1beta1.WorkspaceTemplateApply{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      fmt.Sprintf("%s-vpc", captCluster.Name),
-				Namespace: captCluster.Namespace,
-			},
-			Spec: infrastructurev1beta1.WorkspaceTemplateApplySpec{
-				TemplateRef: *captCluster.Spec.VPCTemplateRef,
-				Variables: map[string]string{
-					"name":        fmt.Sprintf("%s-vpc", captCluster.Name),
-					"environment": "production", // TODO: Make this configurable
-				},
-			},
-		}
-
-		// Set owner reference
-		if err := controllerutil.SetControllerReference(captCluster, vpcApply, r.Scheme); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set owner reference: %v", err)
-		}
-
-		if err := r.Create(ctx, vpcApply); err != nil {
-			if !apierrors.IsAlreadyExists(err) {
-				return ctrl.Result{}, fmt.Errorf("failed to create VPC WorkspaceTemplateApply: %v", err)
-			}
-			// Update existing WorkspaceTemplateApply
-			existing := &infrastructurev1beta1.WorkspaceTemplateApply{}
-			if err := r.Get(ctx, types.NamespacedName{Name: vpcApply.Name, Namespace: vpcApply.Namespace}, existing); err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to get existing VPC WorkspaceTemplateApply: %v", err)
-			}
-			existing.Spec = vpcApply.Spec
-			if err := r.Update(ctx, existing); err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to update VPC WorkspaceTemplateApply: %v", err)
-			}
-			vpcApply = existing
-		}
-
-		// Update status with VPC workspace name
-		captCluster.Status.VPCWorkspaceName = vpcApply.Name
-
-		// Check if WorkspaceTemplateApply is ready
-		if !vpcApply.Status.Applied {
-			// Initial apply not completed yet
-			meta.SetStatusCondition(&captCluster.Status.Conditions, metav1.Condition{
-				Type:               infrastructurev1beta1.VPCReadyCondition,
-				Status:             metav1.ConditionFalse,
-				LastTransitionTime: metav1.Now(),
-				Reason:             infrastructurev1beta1.ReasonVPCCreating,
-				Message:            "Initializing VPC creation",
-			})
-			captCluster.Status.Ready = false
-			if err := r.Status().Update(ctx, captCluster); err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to update CAPTCluster status: %v", err)
-			}
-			return ctrl.Result{RequeueAfter: requeueInterval}, nil
-		}
-
-		// Check workspace conditions
-		syncedCondition := false
-		readyCondition := false
-		var message string
-
-		for _, condition := range vpcApply.Status.Conditions {
-			switch condition.Type {
-			case xpv1.TypeSynced:
-				syncedCondition = condition.Status == corev1.ConditionTrue
-				if !syncedCondition {
-					message = condition.Message
-				}
-			case xpv1.TypeReady:
-				readyCondition = condition.Status == corev1.ConditionTrue
-				if !readyCondition {
-					message = condition.Message
-				}
-			}
-		}
-
-		if !syncedCondition || !readyCondition {
-			// Workspace not ready yet
-			meta.SetStatusCondition(&captCluster.Status.Conditions, metav1.Condition{
-				Type:               infrastructurev1beta1.VPCReadyCondition,
-				Status:             metav1.ConditionFalse,
-				LastTransitionTime: metav1.Now(),
-				Reason:             infrastructurev1beta1.ReasonVPCCreating,
-				Message:            message,
-			})
-			captCluster.Status.Ready = false
-			if err := r.Status().Update(ctx, captCluster); err != nil {
-				return ctrl.Result{}, fmt.Errorf("failed to update CAPTCluster status: %v", err)
-			}
-			return ctrl.Result{RequeueAfter: requeueInterval}, nil
-		}
-
-		// Get VPC ID from secret
-		if vpcTemplate.Spec.WriteConnectionSecretToRef != nil {
-			secret := &corev1.Secret{}
-			secretName := types.NamespacedName{
-				Name:      vpcTemplate.Spec.WriteConnectionSecretToRef.Name,
-				Namespace: vpcTemplate.Spec.WriteConnectionSecretToRef.Namespace,
-			}
-			if err := r.Get(ctx, secretName, secret); err != nil {
-				if apierrors.IsNotFound(err) {
-					// Secret not found yet, requeue
-					return ctrl.Result{RequeueAfter: requeueInterval}, nil
-				}
-				return ctrl.Result{}, fmt.Errorf("failed to get VPC connection secret: %v", err)
-			}
-
-			vpcID, ok := secret.Data["vpc_id"]
-			if !ok {
-				// vpc_id not found yet, requeue
-				return ctrl.Result{RequeueAfter: requeueInterval}, nil
-			}
-
-			captCluster.Status.VPCID = string(vpcID)
-		}
-
-		// VPC is ready and VPC ID is available
-		meta.SetStatusCondition(&captCluster.Status.Conditions, metav1.Condition{
-			Type:               infrastructurev1beta1.VPCReadyCondition,
-			Status:             metav1.ConditionTrue,
-			LastTransitionTime: metav1.Now(),
-			Reason:             infrastructurev1beta1.ReasonVPCCreated,
-			Message:            "VPC has been successfully created",
-		})
-		captCluster.Status.Ready = true
-
-		if err := r.Status().Update(ctx, captCluster); err != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to update CAPTCluster status: %v", err)
-		}
-	}
-
-	return ctrl.Result{}, nil
-}
-
 // SetupWithManager sets up the controller with the Manager.
 func (r *CAPTClusterReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&infrastructurev1beta1.CAPTCluster{}).
+		Owns(&infrastructurev1beta1.WorkspaceTemplateApply{}).
 		Complete(r)
 }

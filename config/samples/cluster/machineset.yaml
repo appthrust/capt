@@ -1,0 +1,101 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: CaptMachineSet
+metadata:
+  name: eks-managed-node-set
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      role: worker
+  template:
+    metadata:
+      labels:
+        role: worker
+    spec:
+      workspaceTemplateRef:
+        name: eks-nodegroup-template
+        namespace: default
+      nodeGroupConfig:
+        name: "managed-ng-1"
+        instanceType: "t3.medium"
+        scaling:
+          minSize: 1
+          maxSize: 3
+          desiredSize: 2
+        labels:
+          role: worker
+        tags:
+          Environment: "dev"
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplate
+metadata:
+  name: eks-nodegroup-template
+  namespace: default
+spec:
+  template:
+    spec:
+      providerConfigRef:
+        name: aws-provider
+      forProvider:
+        source: Inline
+        module: |
+          module "eks_managed_node_group" {
+            source = "terraform-aws-modules/eks/aws//modules/eks-managed-node-group"
+            
+            name            = var.node_group_name
+            cluster_name    = var.cluster_name
+            cluster_version = var.cluster_version
+            
+            subnet_ids = var.subnet_ids
+            
+            min_size     = var.min_size
+            max_size     = var.max_size
+            desired_size = var.desired_size
+            
+            instance_types = [var.instance_type]
+            
+            labels = var.labels
+            tags   = var.tags
+          }
+
+          variable "node_group_name" {
+            type = string
+          }
+
+          variable "cluster_name" {
+            type = string
+          }
+
+          variable "cluster_version" {
+            type = string
+          }
+
+          variable "subnet_ids" {
+            type = list(string)
+          }
+
+          variable "min_size" {
+            type = number
+          }
+
+          variable "max_size" {
+            type = number
+          }
+
+          variable "desired_size" {
+            type = number
+          }
+
+          variable "instance_type" {
+            type = string
+          }
+
+          variable "labels" {
+            type = map(string)
+          }
+
+          variable "tags" {
+            type = map(string)
+          }

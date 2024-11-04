@@ -37,6 +37,7 @@ import (
 	"github.com/appthrust/capt/internal/controller"
 	controlplanecontroller "github.com/appthrust/capt/internal/controller/controlplane"
 	"github.com/crossplane/crossplane-runtime/pkg/logging"
+	tfv1beta1 "github.com/upbound/provider-terraform/apis/v1beta1"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -49,6 +50,7 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(infrastructurev1beta1.AddToScheme(scheme))
 	utilruntime.Must(controlplanev1beta1.AddToScheme(scheme))
+	utilruntime.Must(tfv1beta1.SchemeBuilder.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 

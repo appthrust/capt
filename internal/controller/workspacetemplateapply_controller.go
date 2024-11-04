@@ -254,6 +254,14 @@ func (r *workspaceTemplateApplyReconciler) reconcileWorkspaceStatus(ctx context.
 		return ctrl.Result{}, err
 	}
 
+	// Copy conditions from workspace to WorkspaceTemplateApply
+	cr.Status.Conditions = workspace.Status.Conditions
+
+	// Update status
+	if err := r.client.Status().Update(ctx, cr); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	// Check if workspace is synced
 	syncedCondition := FindStatusCondition(workspace.Status.Conditions, xpv1.TypeSynced)
 	if syncedCondition == nil || syncedCondition.Status != corev1.ConditionTrue {

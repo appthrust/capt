@@ -107,6 +107,22 @@ spec:
                           type: string
                         type: array
                     type: object
+                  timeouts:
+                    description: Timeouts defines timeout settings for various operations
+                    properties:
+                      controlPlaneTimeout:
+                        default: 30
+                        description: ControlPlaneTimeout is the timeout in minutes
+                          for control plane creation
+                        minimum: 1
+                        type: integer
+                      vpcReadyTimeout:
+                        default: 15
+                        description: VPCReadyTimeout is the timeout in minutes for
+                          VPC ready check
+                        minimum: 1
+                        type: integer
+                    type: object
                 type: object
               controlPlaneEndpoint:
                 description: ControlPlaneEndpoint represents the endpoint used to

@@ -1,0 +1,248 @@
+# EKS Control Plane WorkspaceTemplate
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplate
+metadata:
+  name: eks-controlplane-template
+  namespace: default
+spec:
+  template:
+    metadata:
+      description: "Template for creating EKS Control Plane"
+      version: "1.0.0"
+      tags:
+        provider: "aws"
+        resource: "eks"
+        environment: "dev"
+    spec:
+      writeConnectionSecretToRef:
+        name: eks-connection
+        namespace: default
+      providerConfigRef:
+        name: aws-provider-for-eks-test
+      forProvider:
+        source: Inline
+        enableTerraformCLILogging: true
+        env:
+          - name: HELM_REPOSITORY_CACHE
+            value: /tmp/.helmcache
+        vars:
+          - key: cluster_name
+            value: "demo-cluster"
+          - key: kubernetes_version
+            value: "1.31"
+        varFiles:
+          - source: SecretKey
+            format: HCL
+            secretKeyRef:
+              namespace: default
+              name: vpc-connection
+              key: vpc_config
+        module: |
+          module "eks" {
+            source  = "terraform-aws-modules/eks/aws"
+            version = "~> 20.11"
+
+            cluster_name                   = var.cluster_name
+            cluster_version                = var.kubernetes_version
+            cluster_endpoint_public_access = true
+
+            vpc_id     = var.vpc_id
+            subnet_ids = var.private_subnets
+
+            # Security groups are managed separately
+            create_cluster_security_group = false
+            create_node_security_group    = false
+
+            enable_cluster_creator_admin_permissions = true
+
+            tags = {
+              Environment = "dev"
+              Terraform   = "true"
+              "karpenter.sh/discovery" = var.cluster_name
+            }
+          }
+
+          module "eks_blueprints_addons" {
+            source  = "aws-ia/eks-blueprints-addons/aws"
+            version = "~> 1.16"
+
+            cluster_name      = module.eks.cluster_name
+            cluster_endpoint  = module.eks.cluster_endpoint
+            cluster_version   = module.eks.cluster_version
+            oidc_provider_arn = module.eks.oidc_provider_arn
+
+            eks_addons = {
+              coredns = {
+                configuration_values = jsonencode({
+                  computeType = "Fargate"
+                  resources = {
+                    limits = {
+                      cpu = "0.25"
+                      memory = "256M"
+                    }
+                    requests = {
+                      cpu = "0.25"
+                      memory = "256M"
+                    }
+                  }
+                })
+              }
+              vpc-cni    = {}
+              kube-proxy = {}
+            }
+
+            enable_karpenter = true
+
+            karpenter = {
+              helm_config = {
+                cacheDir = "/tmp/.helmcache"
+              }
+            }
+
+            karpenter_node = {
+              iam_role_use_name_prefix = false
+            }
+
+            tags = {
+              Environment = "dev"
+              Terraform   = "true"
+            }
+          }
+
+          resource "aws_eks_access_entry" "karpenter_node_access_entry" {
+            cluster_name      = module.eks.cluster_name
+            principal_arn     = module.eks_blueprints_addons.karpenter.node_iam_role_arn
+            kubernetes_groups = []
+            type             = "EC2_LINUX"
+
+            lifecycle {
+              ignore_changes = [
+                kubernetes_groups
+              ]
+            }
+          }
+
+          variable "cluster_name" {
+            type        = string
+            description = "Name of the EKS cluster"
+          }
+
+          variable "kubernetes_version" {
+            type        = string
+            description = "Kubernetes version for the EKS cluster"
+          }
+
+          variable "vpc_id" {
+            type        = string
+            description = "ID of the VPC where EKS cluster will be created"
+          }
+
+          variable "private_subnets" {
+            type        = list(string)
+            description = "List of private subnet IDs for EKS cluster"
+          }
+
+          output "cluster_endpoint" {
+            description = "Endpoint for EKS control plane"
+            value       = module.eks.cluster_endpoint
+          }
+
+          output "cluster_name" {
+            description = "The name of the EKS cluster"
+            value       = module.eks.cluster_name
+          }
+
+          output "cluster_certificate_authority_data" {
+            description = "Base64 encoded certificate data required to communicate with the cluster"
+            value       = module.eks.cluster_certificate_authority_data
+            sensitive   = true
+          }
+
+          output "oidc_provider" {
+            description = "The OpenID Connect identity provider (issuer URL without leading https://)"
+            value       = module.eks.oidc_provider
+          }
+
+          output "oidc_provider_arn" {
+            description = "The ARN of the OIDC Provider"
+            value       = module.eks.oidc_provider_arn
+          }
+
+          output "pod_execution_role_arn" {
+            description = "The ARN of the pod execution role for Fargate profiles"
+            value       = module.eks.fargate_profile_pod_execution_role_arn
+          }
+
+          output "kubeconfig" {
+            description = "Kubeconfig in YAML format"
+            sensitive   = true
+            value = <<-EOT
+          apiVersion: v1
+          clusters:
+          - cluster:
+              certificate-authority-data: ${module.eks.cluster_certificate_authority_data}
+              server: ${module.eks.cluster_endpoint}
+            name: ${module.eks.cluster_name}.ap-northeast-1.eksctl.io
+          contexts:
+          - context:
+              cluster: ${module.eks.cluster_name}.ap-northeast-1.eksctl.io
+              user: rancher-installer@${module.eks.cluster_name}.ap-northeast-1.eksctl.io
+            name: rancher-installer@${module.eks.cluster_name}.ap-northeast-1.eksctl.io
+          current-context: rancher-installer@${module.eks.cluster_name}.ap-northeast-1.eksctl.io
+          kind: Config
+          preferences: {}
+          users:
+          - name: rancher-installer@${module.eks.cluster_name}.ap-northeast-1.eksctl.io
+            user:
+              exec:
+                apiVersion: client.authentication.k8s.io/v1beta1
+                args:
+                - eks
+                - get-token
+                - --output
+                - json
+                - --cluster-name
+                - ${module.eks.cluster_name}
+                - --region
+                - ${data.aws_region.current.name}
+                command: aws
+                env:
+                - name: AWS_STS_REGIONAL_ENDPOINTS
+                  value: regional
+                provideClusterInfo: false
+          EOT
+          }
+          data "aws_region" "current" {}
+---
+# EKS Control Plane WorkspaceTemplateApply
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplateApply
+metadata:
+  name: demo-eks-controlplane-apply
+  namespace: default
+spec:
+  templateRef:
+    name: eks-controlplane-template
+    namespace: default
+  waitForSecret:
+    name: vpc-connection
+    namespace: default
+---
+# CAPTControlPlane
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: CAPTControlPlane
+metadata:
+  name: demo-cluster
+  namespace: default
+spec:
+  version: "1.31"
+  workspaceTemplateRef:
+    name: eks-controlplane-template
+    namespace: default
+  controlPlaneConfig:
+    endpointAccess:
+      public: true
+      private: true
+  additionalTags:
+    Environment: "dev"
+    ManagedBy: "capt"

@@ -1,17 +1,17 @@
-# Fargate Profile WorkspaceTemplate
+# Additional Fargate Profile WorkspaceTemplate
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: WorkspaceTemplate
 metadata:
-  name: eks-fargate-template
+  name: eks-fargate-profile-template
   namespace: default
 spec:
   template:
     metadata:
-      description: "Template for creating EKS Fargate Profiles"
+      description: "Template for creating additional EKS Fargate Profile"
       version: "1.0.0"
       tags:
         provider: "aws"
-        resource: "fargate"
+        resource: "eks-fargate"
         environment: "dev"
     spec:
       writeConnectionSecretToRef:
@@ -21,89 +21,98 @@ spec:
         name: aws-provider-for-eks-test
       forProvider:
         source: Inline
-        vars:
-          - key: cluster_name
-            value: "demo-cluster"
         varFiles:
           - source: SecretKey
             format: HCL
             secretKeyRef:
               namespace: default
-              name: eks-connection
-              key: cluster_config
+              name: vpc-connection
+              key: vpc_config
         module: |
+          data "aws_eks_cluster" "cluster" {
+            name = var.cluster_name
+          }
+
+          resource "aws_eks_fargate_profile" "this" {
+            cluster_name           = data.aws_eks_cluster.cluster.name
+            fargate_profile_name   = var.profile_name
+            pod_execution_role_arn = data.aws_eks_cluster.cluster.role_arn
+            subnet_ids            = var.private_subnets # From vpc-connection
+
+            dynamic "selector" {
+              for_each = var.selectors
+              content {
+                namespace = selector.value.namespace
+                labels   = lookup(selector.value, "labels", {})
+              }
+            }
+
+            tags = var.tags
+          }
+
           variable "cluster_name" {
             type        = string
             description = "Name of the EKS cluster"
           }
 
-          variable "cluster_id" {
+          variable "profile_name" {
             type        = string
-            description = "ID of the EKS cluster"
+            description = "Name of the Fargate profile"
           }
 
-          variable "subnet_ids" {
+          variable "private_subnets" {
             type        = list(string)
-            description = "List of subnet IDs for Fargate profiles"
+            description = "List of private subnet IDs from VPC"
           }
 
-          variable "pod_execution_role_arn" {
-            type        = string
-            description = "ARN of the IAM role for Fargate pod execution"
+          variable "selectors" {
+            type = list(object({
+              namespace = string
+              labels    = optional(map(string))
+            }))
+            description = "Pod selectors for the Fargate profile"
           }
 
-          resource "aws_eks_fargate_profile" "kube_system" {
-            cluster_name           = var.cluster_name
-            fargate_profile_name   = "kube-system"
-            pod_execution_role_arn = var.pod_execution_role_arn
-            subnet_ids            = var.subnet_ids
-
-            selector {
-              namespace = "kube-system"
-            }
-
-            tags = {
-              Environment = "dev"
-              Terraform   = "true"
-            }
+          variable "tags" {
+            type        = map(string)
+            description = "Tags to apply to the Fargate profile"
+            default     = {}
           }
 
-          resource "aws_eks_fargate_profile" "karpenter" {
-            cluster_name           = var.cluster_name
-            fargate_profile_name   = "karpenter"
-            pod_execution_role_arn = var.pod_execution_role_arn
-            subnet_ids            = var.subnet_ids
-
-            selector {
-              namespace = "karpenter"
-            }
-
-            tags = {
-              Environment = "dev"
-              Terraform   = "true"
-            }
-          }
-
-          output "kube_system_profile_arn" {
-            description = "ARN of the kube-system Fargate profile"
-            value       = aws_eks_fargate_profile.kube_system.arn
-          }
-
-          output "karpenter_profile_arn" {
-            description = "ARN of the karpenter Fargate profile"
-            value       = aws_eks_fargate_profile.karpenter.arn
+          output "fargate_profile_arn" {
+            description = "ARN of the Fargate Profile"
+            value       = aws_eks_fargate_profile.this.arn
           }
 ---
-# Fargate Profile WorkspaceTemplateApply
+# Example WorkspaceTemplateApply for additional Fargate Profile
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: WorkspaceTemplateApply
 metadata:
-  name: demo-fargate-apply
+  name: demo-cluster-monitoring-fargate-apply # {cluster-name}-{profile-name}-fargate-apply
   namespace: default
 spec:
   templateRef:
-    name: eks-fargate-template
+    name: eks-fargate-profile-template
     namespace: default
-  waitForSecret:
-    name: eks-connection
-    namespace: default
+  waitForSecrets:
+    - name: eks-connection
+      namespace: default
+    - name: vpc-connection
+      namespace: default
+  variables:
+    cluster_name: demo-cluster
+    profile_name: monitoring
+    selectors: |
+      [
+        {
+          "namespace": "monitoring",
+          "labels": {
+            "workload-type": "fargate"
+          }
+        }
+      ]
+    tags: |
+      {
+        "Environment": "dev",
+        "ManagedBy": "capt"
+      }

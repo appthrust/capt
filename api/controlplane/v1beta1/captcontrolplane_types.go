@@ -1,19 +1,3 @@
-/*
-Copyright 2024.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package v1beta1
 
 import (
@@ -34,6 +18,15 @@ const (
 
 	// ControlPlaneCreatingCondition indicates the control plane is being created
 	ControlPlaneCreatingCondition = "Creating"
+
+	// FargateProfileReadyCondition indicates a Fargate profile is ready
+	FargateProfileReadyCondition = "FargateProfileReady"
+
+	// FargateProfileCreatingCondition indicates a Fargate profile is being created
+	FargateProfileCreatingCondition = "FargateProfileCreating"
+
+	// FargateProfileFailedCondition indicates a Fargate profile creation has failed
+	FargateProfileFailedCondition = "FargateProfileFailed"
 )
 
 // Condition Reasons
@@ -58,6 +51,15 @@ const (
 
 	// ReasonWorkspaceError indicates an error with the workspace
 	ReasonWorkspaceError = "WorkspaceError"
+
+	// ReasonFargateProfileCreating indicates a Fargate profile is being created
+	ReasonFargateProfileCreating = "FargateProfileCreating"
+
+	// ReasonFargateProfileReady indicates a Fargate profile is ready
+	ReasonFargateProfileReady = "FargateProfileReady"
+
+	// ReasonFargateProfileFailed indicates a Fargate profile creation has failed
+	ReasonFargateProfileFailed = "FargateProfileFailed"
 )
 
 // CAPTControlPlaneSpec defines the desired state of CAPTControlPlane
@@ -81,6 +83,10 @@ type CAPTControlPlaneSpec struct {
 	// ControlPlaneEndpoint represents the endpoint used to communicate with the control plane.
 	// +optional
 	ControlPlaneEndpoint clusterv1.APIEndpoint `json:"controlPlaneEndpoint,omitempty"`
+
+	// AdditionalFargateProfiles defines additional Fargate profiles to be created
+	// +optional
+	AdditionalFargateProfiles []AdditionalFargateProfile `json:"additionalFargateProfiles,omitempty"`
 }
 
 // WorkspaceTemplateReference contains the reference to WorkspaceTemplate
@@ -103,10 +109,6 @@ type ControlPlaneConfig struct {
 	// Addons defines the EKS addons to be installed
 	// +optional
 	Addons []Addon `json:"addons,omitempty"`
-
-	// FargateProfiles defines the Fargate profiles to be created
-	// +optional
-	FargateProfiles []FargateProfile `json:"fargateProfiles,omitempty"`
 }
 
 // EndpointAccess defines the access configuration for the API server endpoint
@@ -139,15 +141,20 @@ type Addon struct {
 	ConfigurationValues string `json:"configurationValues,omitempty"`
 }
 
-// FargateProfile defines a Fargate profile
-type FargateProfile struct {
+// AdditionalFargateProfile defines an additional Fargate profile to be created
+type AdditionalFargateProfile struct {
 	// Name is the name of the Fargate profile
 	// +kubebuilder:validation:Required
 	Name string `json:"name"`
 
 	// Selectors is a list of label selectors to use for pods
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinItems=1
 	Selectors []FargateSelector `json:"selectors"`
+
+	// WorkspaceTemplateRef is a reference to the WorkspaceTemplate used for creating the Fargate profile
+	// +kubebuilder:validation:Required
+	WorkspaceTemplateRef WorkspaceTemplateReference `json:"workspaceTemplateRef"`
 }
 
 // FargateSelector defines the selectors for a Fargate profile
@@ -175,6 +182,10 @@ type CAPTControlPlaneStatus struct {
 	// +optional
 	WorkspaceTemplateStatus *WorkspaceTemplateStatus `json:"workspaceTemplateStatus,omitempty"`
 
+	// FargateProfileStatuses contains the status of additional Fargate profiles
+	// +optional
+	FargateProfileStatuses []FargateProfileStatus `json:"fargateProfileStatuses,omitempty"`
+
 	// FailureReason indicates that there is a terminal problem reconciling the
 	// state, and will be set to a token value suitable for programmatic
 	// interpretation.
@@ -193,13 +204,28 @@ type CAPTControlPlaneStatus struct {
 	Phase string `json:"phase,omitempty"`
 
 	// Conditions defines current service state of the CAPTControlPlane.
-	// Known condition types are:
-	// - "Ready"
-	// - "Initialized"
-	// - "Failed"
-	// - "Creating"
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+// FargateProfileStatus contains the status of a Fargate profile
+type FargateProfileStatus struct {
+	// Name is the name of the Fargate profile
+	Name string `json:"name"`
+
+	// Ready indicates if the Fargate profile is ready
+	Ready bool `json:"ready"`
+
+	// WorkspaceTemplateApplyName is the name of the WorkspaceTemplateApply resource
+	WorkspaceTemplateApplyName string `json:"workspaceTemplateApplyName"`
+
+	// FailureReason indicates that there is a problem with the Fargate profile
+	// +optional
+	FailureReason *string `json:"failureReason,omitempty"`
+
+	// FailureMessage provides more detail about the failure
+	// +optional
+	FailureMessage *string `json:"failureMessage,omitempty"`
 }
 
 // WorkspaceTemplateStatus contains the status of the WorkspaceTemplate

@@ -55,6 +55,21 @@ spec:
 
             enable_cluster_creator_admin_permissions = true
 
+            # Default Fargate profiles
+            fargate_profiles = {
+              karpenter = {
+                selectors = [
+                  { namespace = "karpenter" }
+                ]
+              }
+              kube_system = {
+                name = "kube-system"
+                selectors = [
+                  { namespace = "kube-system" }
+                ]
+              }
+            }
+
             tags = {
               Environment = "dev"
               Terraform   = "true"
@@ -70,6 +85,9 @@ spec:
             cluster_endpoint  = module.eks.cluster_endpoint
             cluster_version   = module.eks.cluster_version
             oidc_provider_arn = module.eks.oidc_provider_arn
+
+            # Wait for Fargate profiles to be ready
+            create_delay_dependencies = [for prof in module.eks.fargate_profiles : prof.fargate_profile_arn]
 
             eks_addons = {
               coredns = {

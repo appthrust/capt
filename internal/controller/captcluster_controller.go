@@ -20,11 +20,18 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	capierrors "sigs.k8s.io/cluster-api/errors"
+	"sigs.k8s.io/cluster-api/util/conditions"
 )
 
 const (
 	// requeueInterval is the interval to requeue when waiting for resources
 	requeueInterval = 10 * time.Second
+
+	// ControlPlaneInitializedCondition represents the condition type for control plane initialization
+	ControlPlaneInitializedCondition clusterv1.ConditionType = "ControlPlaneInitialized"
+
+	// InfrastructureReadyCondition represents the condition type for infrastructure readiness
+	InfrastructureReadyCondition clusterv1.ConditionType = "InfrastructureReady"
 )
 
 // CAPTClusterReconciler reconciles a CAPTCluster object
@@ -164,6 +171,29 @@ func (r *CAPTClusterReconciler) updateStatus(ctx context.Context, captCluster *i
 		if len(captCluster.Status.FailureDomains) > 0 {
 			cluster.Status.FailureDomains = captCluster.Status.FailureDomains
 			logger.Info("Updated failure domains", "count", len(captCluster.Status.FailureDomains))
+		}
+
+		// Update conditions when infrastructure is ready
+		if captCluster.Status.Ready {
+			// Set ControlPlaneInitialized condition
+			conditions.Set(cluster, &clusterv1.Condition{
+				Type:               ControlPlaneInitializedCondition,
+				Status:             corev1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
+				Reason:             "ControlPlaneInitialized",
+				Message:            "Control plane has been initialized",
+			})
+			logger.Info("Set ControlPlaneInitialized condition to True")
+
+			// Set InfrastructureReady condition
+			conditions.Set(cluster, &clusterv1.Condition{
+				Type:               InfrastructureReadyCondition,
+				Status:             corev1.ConditionTrue,
+				LastTransitionTime: metav1.Now(),
+				Reason:             "InfrastructureReady",
+				Message:            "Infrastructure is ready",
+			})
+			logger.Info("Set InfrastructureReady condition to True")
 		}
 
 		// Note: We don't update the Phase here as it's managed by the Control Plane controller
@@ -420,6 +450,7 @@ func (r *CAPTClusterReconciler) reconcileVPC(ctx context.Context, captCluster *i
 			Reason:             infrastructurev1beta1.ReasonVPCCreated,
 			Message:            "VPC has been successfully created",
 		})
+
 		captCluster.Status.Ready = true
 		captCluster.Status.WorkspaceTemplateStatus.Ready = true
 		captCluster.Status.WorkspaceTemplateStatus.LastAppliedRevision = workspaceApply.Status.LastAppliedTime.String()

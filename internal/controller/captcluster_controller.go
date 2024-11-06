@@ -150,12 +150,6 @@ func (r *CAPTClusterReconciler) updateStatus(ctx context.Context, captCluster *i
 		cluster.Status.InfrastructureReady = captCluster.Status.Ready
 		logger.Info("Set InfrastructureReady", "value", cluster.Status.InfrastructureReady)
 
-		// Update control plane endpoint
-		if captCluster.Spec.ControlPlaneEndpoint.Host != "" {
-			cluster.Spec.ControlPlaneEndpoint = captCluster.Spec.ControlPlaneEndpoint
-			logger.Info("Updated control plane endpoint", "host", captCluster.Spec.ControlPlaneEndpoint.Host)
-		}
-
 		// Update failure reason and message if present
 		if captCluster.Status.FailureReason != nil {
 			reason := capierrors.ClusterStatusError(*captCluster.Status.FailureReason)

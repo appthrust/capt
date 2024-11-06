@@ -4,6 +4,25 @@
 
 This document describes the design and implementation details of endpoint management in the CAPTControlPlane controller. The endpoint management system is responsible for retrieving and propagating EKS cluster endpoint information from Terraform-managed resources to Cluster API resources.
 
+## Design Decision
+
+The CAPTControlPlane is solely responsible for managing the ControlPlaneEndpoint. This decision is based on the following principles:
+
+1. **Single Responsibility**
+   - The endpoint is a fundamental attribute of the Control Plane
+   - Control Plane controller has direct access to Terraform resources containing endpoint information
+   - This aligns with the principle that each component should have a single, well-defined responsibility
+
+2. **Information Flow**
+   - Natural flow: Terraform → Control Plane → Cluster
+   - Cluster acts as a consumer of endpoint information
+   - This maintains a clear, unidirectional flow of information
+
+3. **Implementation Consistency**
+   - Aligns with CAPI patterns and best practices
+   - Simplifies the management and debugging of endpoint-related issues
+   - Reduces duplication and potential inconsistencies
+
 ## Architecture
 
 ### Component Interaction
@@ -32,10 +51,14 @@ CAPTControlPlane
      - status.atProvider.outputs
      - writeConnectionSecretToRef
 
-3. **Endpoint Package**
-   - Dedicated package for endpoint management
-   - Uses unstructured.Unstructured for flexible resource access
-   - Implements fallback mechanism for endpoint retrieval
+3. **CAPTControlPlane**
+   - Primary owner of endpoint information
+   - Manages endpoint retrieval and propagation
+   - Updates Cluster resource with endpoint information
+
+4. **Cluster**
+   - Consumer of endpoint information
+   - Receives endpoint updates from CAPTControlPlane
 
 ## Implementation Details
 
@@ -141,6 +164,7 @@ The controller updates multiple resources:
 1. **Separation of Concerns**
    - Endpoint management logic is isolated in a dedicated package
    - Clear responsibility boundaries
+   - CAPTCluster should not maintain its own copy of the endpoint
 
 2. **Resource Access**
    - Use of unstructured.Unstructured for flexible resource access
@@ -171,18 +195,22 @@ This helps in:
 
 ## Future Improvements
 
-1. **Caching**
+1. **API Cleanup**
+   - Remove ControlPlaneEndpoint from CaptClusterSpec
+   - Update related documentation and examples
+
+2. **Caching**
    - Implement caching for frequently accessed resources
    - Add cache invalidation strategies
 
-2. **Retry Mechanism**
+3. **Retry Mechanism**
    - Add retry logic for transient failures
    - Implement exponential backoff
 
-3. **Metrics**
+4. **Metrics**
    - Add metrics for endpoint retrieval success/failure
    - Track timing information
 
-4. **Validation**
+5. **Validation**
    - Add endpoint format validation
    - Implement health checks

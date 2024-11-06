@@ -12,6 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
+	"github.com/appthrust/capt/internal/controller/controlplane/endpoint"
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -255,8 +256,10 @@ func (r *CAPTClusterReconciler) reconcileDelete(ctx context.Context, captCluster
 
 func (r *CAPTClusterReconciler) reconcileVPC(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster, cluster *clusterv1.Cluster) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
+	logger.Info("Starting VPC reconciliation", "clusterName", captCluster.Name)
 
 	if captCluster.Spec.ExistingVPCID != "" {
+		logger.Info("Using existing VPC", "vpcId", captCluster.Spec.ExistingVPCID)
 		// Use existing VPC
 		captCluster.Status.VPCID = captCluster.Spec.ExistingVPCID
 		captCluster.Status.Ready = true
@@ -276,6 +279,8 @@ func (r *CAPTClusterReconciler) reconcileVPC(ctx context.Context, captCluster *i
 
 	// Create new VPC using template
 	if captCluster.Spec.VPCTemplateRef != nil {
+		logger.Info("Creating new VPC using template", "templateRef", captCluster.Spec.VPCTemplateRef)
+
 		// Get the referenced WorkspaceTemplate
 		vpcTemplate := &infrastructurev1beta1.WorkspaceTemplate{}
 		templateName := types.NamespacedName{
@@ -283,6 +288,7 @@ func (r *CAPTClusterReconciler) reconcileVPC(ctx context.Context, captCluster *i
 			Namespace: captCluster.Namespace,
 		}
 		if err := r.Get(ctx, templateName, vpcTemplate); err != nil {
+			logger.Error(err, "Failed to get VPC WorkspaceTemplate")
 			return ctrl.Result{}, fmt.Errorf("failed to get VPC WorkspaceTemplate: %v", err)
 		}
 
@@ -323,10 +329,12 @@ func (r *CAPTClusterReconciler) reconcileVPC(ctx context.Context, captCluster *i
 
 			// Set owner reference
 			if err := controllerutil.SetControllerReference(captCluster, workspaceApply, r.Scheme); err != nil {
+				logger.Error(err, "Failed to set owner reference")
 				return ctrl.Result{}, fmt.Errorf("failed to set owner reference: %v", err)
 			}
 
 			if err := r.Create(ctx, workspaceApply); err != nil {
+				logger.Error(err, "Failed to create WorkspaceTemplateApply")
 				return ctrl.Result{}, fmt.Errorf("failed to create WorkspaceTemplateApply: %v", err)
 			}
 
@@ -347,6 +355,7 @@ func (r *CAPTClusterReconciler) reconcileVPC(ctx context.Context, captCluster *i
 				},
 			}
 			if err := r.Update(ctx, workspaceApply); err != nil {
+				logger.Error(err, "Failed to update WorkspaceTemplateApply")
 				return ctrl.Result{}, fmt.Errorf("failed to update WorkspaceTemplateApply: %v", err)
 			}
 		}
@@ -412,28 +421,30 @@ func (r *CAPTClusterReconciler) reconcileVPC(ctx context.Context, captCluster *i
 			return ctrl.Result{RequeueAfter: requeueInterval}, nil
 		}
 
-		// Get VPC ID from secret if available
-		if vpcTemplate.Spec.WriteConnectionSecretToRef != nil {
-			secret := &corev1.Secret{}
-			secretName := types.NamespacedName{
-				Name:      vpcTemplate.Spec.WriteConnectionSecretToRef.Name,
-				Namespace: vpcTemplate.Spec.WriteConnectionSecretToRef.Namespace,
-			}
-			if err := r.Get(ctx, secretName, secret); err != nil {
-				if apierrors.IsNotFound(err) {
-					// Secret not found yet, requeue
-					return ctrl.Result{RequeueAfter: requeueInterval}, nil
-				}
-				return ctrl.Result{}, fmt.Errorf("failed to get VPC connection secret: %v", err)
-			}
+		// Get VPC ID from workspace outputs
+		if workspaceApply.Status.WorkspaceName != "" {
+			logger.Info("Attempting to get VPC ID from workspace",
+				"workspaceApplyName", workspaceApply.Name,
+				"workspaceName", workspaceApply.Status.WorkspaceName)
 
-			vpcID, ok := secret.Data["vpc_id"]
-			if !ok {
-				// vpc_id not found yet, requeue
+			vpcID, err := endpoint.GetVPCIDFromWorkspace(ctx, r.Client, workspaceApply.Status.WorkspaceName)
+			if err != nil {
+				logger.Error(err, "Failed to get VPC ID from workspace")
 				return ctrl.Result{RequeueAfter: requeueInterval}, nil
 			}
 
-			captCluster.Status.VPCID = string(vpcID)
+			logger.Info("Retrieved VPC ID from workspace", "vpcId", vpcID)
+
+			if vpcID != "" {
+				captCluster.Status.VPCID = vpcID
+				logger.Info("Set VPC ID in status", "vpcId", vpcID)
+			} else {
+				logger.Info("VPC ID not found in workspace outputs, requeueing")
+				return ctrl.Result{RequeueAfter: requeueInterval}, nil
+			}
+		} else {
+			logger.Info("WorkspaceName not set in WorkspaceTemplateApply status", "workspaceApplyName", workspaceApply.Name)
+			return ctrl.Result{RequeueAfter: requeueInterval}, nil
 		}
 
 		// VPC is ready
@@ -448,6 +459,11 @@ func (r *CAPTClusterReconciler) reconcileVPC(ctx context.Context, captCluster *i
 		captCluster.Status.Ready = true
 		captCluster.Status.WorkspaceTemplateStatus.Ready = true
 		captCluster.Status.WorkspaceTemplateStatus.LastAppliedRevision = workspaceApply.Status.LastAppliedTime.String()
+
+		logger.Info("Updating final status",
+			"ready", captCluster.Status.Ready,
+			"vpcId", captCluster.Status.VPCID,
+			"workspaceTemplateStatus", captCluster.Status.WorkspaceTemplateStatus)
 
 		if err := r.updateStatus(ctx, captCluster, cluster); err != nil {
 			return ctrl.Result{}, err

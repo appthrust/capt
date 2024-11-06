@@ -233,6 +233,14 @@ func (r *CAPTClusterReconciler) reconcileDelete(ctx context.Context, captCluster
 	logger := log.FromContext(ctx)
 	logger.Info("Handling deletion of CAPTCluster")
 
+	// Check if VPC should be retained
+	if captCluster.Spec.RetainVPCOnDelete && captCluster.Spec.VPCTemplateRef != nil {
+		logger.Info("RetainVPCOnDelete is true, skipping VPC deletion",
+			"vpcId", captCluster.Status.VPCID,
+			"workspaceTemplateApplyName", captCluster.Spec.WorkspaceTemplateApplyName)
+		return ctrl.Result{}, nil
+	}
+
 	// Find and delete associated WorkspaceTemplateApply
 	if captCluster.Spec.WorkspaceTemplateApplyName != "" {
 		workspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{}

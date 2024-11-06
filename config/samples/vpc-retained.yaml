@@ -1,0 +1,11 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: CAPTCluster
+metadata:
+  name: example-retained-vpc
+  namespace: default
+spec:
+  region: ap-northeast-1
+  vpcTemplateRef:
+    name: vpc-template
+    namespace: default
+  retainVpcOnDelete: true  # VPCを維持する設定

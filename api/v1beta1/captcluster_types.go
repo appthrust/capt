@@ -38,6 +38,12 @@ type CAPTClusterSpec struct {
 	// +optional
 	ExistingVPCID string `json:"existingVpcId,omitempty"`
 
+	// RetainVPCOnDelete specifies whether to retain the VPC when the parent cluster is deleted
+	// This is useful when the VPC is shared among multiple projects
+	// This field is only effective when VPCTemplateRef is set
+	// +optional
+	RetainVPCOnDelete bool `json:"retainVpcOnDelete,omitempty"`
+
 	// WorkspaceTemplateApplyName is the name of the WorkspaceTemplateApply used for this cluster.
 	// This field is managed by the controller and should not be modified manually.
 	// +optional
@@ -139,6 +145,9 @@ func (s *CAPTClusterSpec) ValidateVPCConfiguration() error {
 	}
 	if s.VPCTemplateRef == nil && s.ExistingVPCID == "" {
 		return fmt.Errorf("must specify either VPCTemplateRef or ExistingVPCID")
+	}
+	if s.RetainVPCOnDelete && s.VPCTemplateRef == nil {
+		return fmt.Errorf("retainVpcOnDelete can only be set when VPCTemplateRef is specified")
 	}
 	return nil
 }

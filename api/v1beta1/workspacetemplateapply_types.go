@@ -51,6 +51,13 @@ type WorkspaceTemplateApplySpec struct {
 	RetainWorkspaceOnDelete bool `json:"retainWorkspaceOnDelete,omitempty"`
 }
 
+// ValidateConfiguration validates the WorkspaceTemplateApplySpec configuration
+func (s *WorkspaceTemplateApplySpec) ValidateConfiguration() error {
+	// 現時点では特別なバリデーションは必要ないが、
+	// 将来的に必要になった場合のために関数を用意しておく
+	return nil
+}
+
 // WorkspaceTemplateReference contains the reference to a WorkspaceTemplate
 type WorkspaceTemplateReference struct {
 	// Name of the referenced WorkspaceTemplate

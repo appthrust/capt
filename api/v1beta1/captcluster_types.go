@@ -38,10 +38,6 @@ type CAPTClusterSpec struct {
 	// +optional
 	ExistingVPCID string `json:"existingVpcId,omitempty"`
 
-	// ControlPlaneEndpoint represents the endpoint used to communicate with the control plane.
-	// +optional
-	ControlPlaneEndpoint clusterv1.APIEndpoint `json:"controlPlaneEndpoint"`
-
 	// WorkspaceTemplateApplyName is the name of the WorkspaceTemplateApply used for this cluster.
 	// This field is managed by the controller and should not be modified manually.
 	// +optional
@@ -151,7 +147,6 @@ func (s *CAPTClusterSpec) ValidateVPCConfiguration() error {
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="VPC-ID",type="string",JSONPath=".status.vpcId"
 // +kubebuilder:printcolumn:name="READY",type="boolean",JSONPath=".status.ready"
-// +kubebuilder:printcolumn:name="ENDPOINT",type="string",JSONPath=".spec.controlPlaneEndpoint.host"
 // +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
 
 // CAPTCluster is the Schema for the captclusters API

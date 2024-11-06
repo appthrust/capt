@@ -21,9 +21,6 @@ spec:
     - jsonPath: .status.ready
       name: READY
       type: boolean
-    - jsonPath: .spec.controlPlaneEndpoint.host
-      name: ENDPOINT
-      type: string
     - jsonPath: .metadata.creationTimestamp
       name: AGE
       type: date
@@ -52,21 +49,6 @@ spec:
           spec:
             description: CAPTClusterSpec defines the desired state of CAPTCluster
             properties:
-              controlPlaneEndpoint:
-                description: ControlPlaneEndpoint represents the endpoint used to
-                  communicate with the control plane.
-                properties:
-                  host:
-                    description: The hostname on which the API server is serving.
-                    type: string
-                  port:
-                    description: The port on which the API server is serving.
-                    format: int32
-                    type: integer
-                required:
-                - host
-                - port
-                type: object
               existingVpcId:
                 description: |-
                   ExistingVPCID is the ID of an existing VPC to use

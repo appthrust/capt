@@ -108,3 +108,11 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - tf.upbound.io
+  resources:
+  - workspaces
+  verbs:
+  - get
+  - list
+  - watch

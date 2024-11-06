@@ -14,6 +14,7 @@ import (
 
 	controlplanev1beta1 "github.com/appthrust/capt/api/controlplane/v1beta1"
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
+	"github.com/appthrust/capt/internal/controller/controlplane/endpoint"
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -41,6 +42,7 @@ type CAPTControlPlaneReconciler struct {
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=captclusters,verbs=get;list;watch
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 //+kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters,verbs=get;list;watch;update;patch
+//+kubebuilder:rbac:groups=tf.upbound.io,resources=workspaces,verbs=get;list;watch
 
 func (r *CAPTControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
@@ -301,6 +303,36 @@ func (r *CAPTControlPlaneReconciler) updateStatus(ctx context.Context, controlPl
 		controlPlane.Status.WorkspaceTemplateStatus.Ready = true
 		controlPlane.Status.FailureReason = nil
 		controlPlane.Status.FailureMessage = nil
+
+		// Get endpoint from Workspace
+		if workspaceApply.Status.WorkspaceName != "" {
+			if apiEndpoint, err := endpoint.GetEndpointFromWorkspace(ctx, r.Client, workspaceApply.Status.WorkspaceName); err != nil {
+				logger.Error(err, "Failed to get endpoint from Workspace")
+			} else if apiEndpoint != nil {
+				// Update CAPTControlPlane endpoint
+				patchBase := controlPlane.DeepCopy()
+				controlPlane.Spec.ControlPlaneEndpoint = *apiEndpoint
+
+				if err := r.Patch(ctx, controlPlane, client.MergeFrom(patchBase)); err != nil {
+					logger.Error(err, "Failed to patch CAPTControlPlane endpoint")
+				} else {
+					logger.Info("Successfully patched CAPTControlPlane endpoint")
+
+					// Update owner cluster endpoint if it exists
+					if cluster != nil {
+						patchBase := cluster.DeepCopy()
+						cluster.Spec.ControlPlaneEndpoint = controlPlane.Spec.ControlPlaneEndpoint
+						if err := r.Patch(ctx, cluster, client.MergeFrom(patchBase)); err != nil {
+							logger.Error(err, "Failed to patch Cluster endpoint")
+						} else {
+							logger.Info("Successfully patched Cluster endpoint")
+						}
+					}
+				}
+			}
+		} else {
+			logger.Info("WorkspaceName not set in WorkspaceTemplateApply status")
+		}
 	}
 
 	// Update WorkspaceTemplateStatus fields
@@ -312,44 +344,6 @@ func (r *CAPTControlPlaneReconciler) updateStatus(ctx context.Context, controlPl
 	if err := r.Status().Update(ctx, controlPlane); err != nil {
 		logger.Error(err, "Failed to update CAPTControlPlane status")
 		return ctrl.Result{}, err
-	}
-
-	// Update Cluster status if it exists
-	if cluster != nil {
-		oldPhase := cluster.Status.Phase
-		patch := client.MergeFrom(cluster.DeepCopy())
-
-		// Update control plane ready status
-		cluster.Status.ControlPlaneReady = controlPlane.Status.Ready
-
-		// Update control plane endpoint if available
-		if controlPlane.Spec.ControlPlaneEndpoint.Host != "" {
-			cluster.Spec.ControlPlaneEndpoint = controlPlane.Spec.ControlPlaneEndpoint
-		}
-
-		// Update failure reason and message if present
-		if controlPlane.Status.FailureReason != nil {
-			reason := capierrors.ClusterStatusError(*controlPlane.Status.FailureReason)
-			cluster.Status.FailureReason = &reason
-		}
-		if controlPlane.Status.FailureMessage != nil {
-			cluster.Status.FailureMessage = controlPlane.Status.FailureMessage
-		}
-
-		// Update phase based on control plane status
-		if !cluster.Status.ControlPlaneReady {
-			cluster.Status.Phase = string(clusterv1.ClusterPhaseProvisioning)
-		} else if cluster.Status.ControlPlaneReady && cluster.Status.InfrastructureReady {
-			cluster.Status.Phase = string(clusterv1.ClusterPhaseProvisioned)
-		}
-
-		logger.Info("Phase transition", "from", oldPhase, "to", cluster.Status.Phase)
-
-		if err := r.Status().Patch(ctx, cluster, patch); err != nil {
-			logger.Error(err, "Failed to update Cluster status")
-			return ctrl.Result{}, err
-		}
-		logger.Info("Successfully updated cluster status")
 	}
 
 	logger.Info("Successfully updated status")

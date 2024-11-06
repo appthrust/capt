@@ -57,6 +57,12 @@ spec:
               region:
                 description: Region is the AWS region where the cluster will be created
                 type: string
+              retainVpcOnDelete:
+                description: |-
+                  RetainVPCOnDelete specifies whether to retain the VPC when the parent cluster is deleted
+                  This is useful when the VPC is shared among multiple projects
+                  This field is only effective when VPCTemplateRef is set
+                type: boolean
               vpcTemplateRef:
                 description: |-
                   VPCTemplateRef is a reference to a WorkspaceTemplate resource for VPC configuration

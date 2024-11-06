@@ -1,0 +1,16 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplateApply
+metadata:
+  name: retained-vpc
+spec:
+  # Workspaceを保持する設定
+  retainWorkspaceOnDelete: true
+  
+  # VPC WorkspaceTemplateの参照
+  templateRef:
+    name: vpc-template
+  
+  # VPC作成に必要な変数
+  variables:
+    name: retained-vpc
+    environment: production

@@ -22,6 +22,8 @@
 
 ### API設計
 
+#### CaptCluster
+
 ```go
 type CaptClusterSpec struct {
     // RetainVPCOnDelete specifies whether to retain the VPC when the parent cluster is deleted
@@ -32,27 +34,54 @@ type CaptClusterSpec struct {
 }
 ```
 
+#### WorkspaceTemplateApply
+
+```go
+type WorkspaceTemplateApplySpec struct {
+    // RetainWorkspaceOnDelete specifies whether to retain the Workspace when this WorkspaceTemplateApply is deleted
+    // This is useful when the Workspace manages shared resources that should outlive this WorkspaceTemplateApply
+    // +optional
+    RetainWorkspaceOnDelete bool `json:"retainWorkspaceOnDelete,omitempty"`
+}
+```
+
 ### 設計上の考慮点
 
 1. **明示的な設定**
-   - デフォルトではfalse（VPCは削除される）
-   - 明示的にtrueを設定した場合のみVPCが維持される
+   - CaptCluster: デフォルトではfalse（VPCは削除される）
+   - WorkspaceTemplateApply: デフォルトではfalse（Workspaceは削除される）
+   - 明示的にtrueを設定した場合のみリソースが維持される
 
 2. **適用範囲の制限**
-   - VPCTemplateRefを使用する場合のみ有効
-   - ExistingVPCIDを使用する場合は無関係
+   - CaptCluster: VPCTemplateRefを使用する場合のみ有効
+   - WorkspaceTemplateApply: すべてのケースで有効
 
 3. **バリデーション**
    - RetainVPCOnDeleteはVPCTemplateRefが設定されている場合のみ有効
    - 不正な組み合わせは早期に検出される
 
+### WorkspaceTemplateApplyの保持機能
+
+1. **設計の背景**
+   - WorkspaceTemplateApplyの削除時に、関連するWorkspaceも自動的に削除される現在の動作
+   - この動作は共有リソース（VPCなど）の保持が必要なケースで問題となる
+
+2. **新しい設計方針**
+   - WorkspaceTemplateApplyに直接Workspace保持設定を追加
+   - 親リソースの設定に依存せず、各WorkspaceTemplateApplyで個別に制御可能
+
+3. **利点**
+   - 柔軟性：各WorkspaceTemplateApplyで個別に制御可能
+   - 明確性：リソースの保持意図が明示的に記述される
+   - 再利用性：同じWorkspaceTemplateを使用する異なるユースケースで、異なる保持戦略を適用可能
+
 ### 実装の重要ポイント
 
 1. **削除処理の制御**
 ```go
-func (r *CAPTClusterReconciler) reconcileDelete(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster) (ctrl.Result, error) {
-    if captCluster.Spec.RetainVPCOnDelete && captCluster.Spec.VPCTemplateRef != nil {
-        // VPCを維持する場合は、WorkspaceTemplateApplyを削除しない
+func (r *workspaceTemplateApplyReconciler) reconcileDelete(ctx context.Context, workspaceApply *infrastructurev1beta1.WorkspaceTemplateApply) (ctrl.Result, error) {
+    if workspaceApply.Spec.RetainWorkspaceOnDelete {
+        // Workspaceを維持する場合は、削除処理をスキップ
         return ctrl.Result{}, nil
     }
     // 通常の削除処理
@@ -62,19 +91,19 @@ func (r *CAPTClusterReconciler) reconcileDelete(ctx context.Context, captCluster
 
 2. **バリデーション**
 ```go
-func (s *CAPTClusterSpec) ValidateVPCConfiguration() error {
-    if s.RetainVPCOnDelete && s.VPCTemplateRef == nil {
-        return fmt.Errorf("retainVpcOnDelete can only be set when VPCTemplateRef is specified")
-    }
-    ...
+func (s *WorkspaceTemplateApplySpec) ValidateConfiguration() error {
+    // 必要に応じてバリデーションを追加
+    return nil
 }
 ```
 
 3. **ログ記録**
-   - VPCの維持/削除の判断を明確に記録
+   - リソースの維持/削除の判断を明確に記録
    - トラブルシューティングを容易にする
 
 ## Usage Example
+
+### VPC保持の設定
 
 ```yaml
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
@@ -88,14 +117,27 @@ spec:
   retainVpcOnDelete: true  # VPCを維持する設定
 ```
 
+### Workspace保持の設定
+
+```yaml
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplateApply
+metadata:
+  name: shared-vpc
+spec:
+  templateRef:
+    name: vpc-template
+  retainWorkspaceOnDelete: true  # Workspaceを保持する設定
+```
+
 ## Lessons Learned
 
 1. **機能の分離**
-   - VPCの維持/削除の制御は、他の設定と独立して管理する必要がある
+   - リソースの維持/削除の制御は、各リソースレベルで独立して管理する必要がある
    - これにより、設定の意図が明確になり、誤用を防ぐことができる
 
 2. **明示的な設定の重要性**
-   - デフォルトでは安全側（VPCを削除）に倒す
+   - デフォルトでは安全側（リソースを削除）に倒す
    - 維持が必要な場合は明示的な設定を要求する
 
 3. **バリデーションの重要性**
@@ -113,11 +155,11 @@ spec:
    - 共通のパターンとして抽象化を検討
 
 2. **モニタリング**
-   - VPCの維持/削除の決定を監視可能にする
+   - リソースの維持/削除の決定を監視可能にする
    - メトリクスの収集を検討
 
 3. **ライフサイクル管理**
-   - 維持されたVPCの管理方法
+   - 維持されたリソースの管理方法
    - クリーンアップポリシーの検討
 
 ## References

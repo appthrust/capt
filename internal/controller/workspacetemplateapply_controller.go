@@ -48,9 +48,12 @@ const (
 	errWaitingForSecrets         = "waiting for required secrets"
 	errGetWorkspace              = "cannot get Workspace"
 	errWaitingForWorkspace       = "waiting for required workspace"
+	errDeleteWorkspace           = "cannot delete Workspace"
 
 	// Event reasons
 	reasonCreatedWorkspace    = "CreatedWorkspace"
+	reasonRetainedWorkspace   = "RetainedWorkspace"
+	reasonDeletedWorkspace    = "DeletedWorkspace"
 	reasonWaitingForSecrets   = "WaitingForSecrets"
 	reasonWaitingForWorkspace = "WaitingForWorkspace"
 	reasonWaitingForSync      = "WaitingForSync"
@@ -181,7 +184,7 @@ func (r *workspaceTemplateApplyReconciler) Reconcile(ctx context.Context, req ct
 	}
 
 	if meta.WasDeleted(cr) {
-		return ctrl.Result{}, nil
+		return r.reconcileDelete(ctx, cr)
 	}
 
 	// Check if we need to wait for secrets first
@@ -242,6 +245,41 @@ func (r *workspaceTemplateApplyReconciler) Reconcile(ctx context.Context, req ct
 
 	r.record.Event(cr, event.Normal(reasonCreatedWorkspace, "Created Workspace from template"))
 	return ctrl.Result{RequeueAfter: requeueAfterStatus}, nil
+}
+
+func (r *workspaceTemplateApplyReconciler) reconcileDelete(ctx context.Context, cr *v1beta1.WorkspaceTemplateApply) (ctrl.Result, error) {
+	log := r.log.WithValues("request", cr.Name)
+	log.Debug("Reconciling deletion")
+
+	// If RetainWorkspaceOnDelete is true, skip workspace deletion
+	if cr.Spec.RetainWorkspaceOnDelete {
+		log.Info("RetainWorkspaceOnDelete is true, skipping workspace deletion",
+			"workspaceName", cr.Status.WorkspaceName)
+		r.record.Event(cr, event.Normal(reasonRetainedWorkspace,
+			fmt.Sprintf("Retained workspace %s as specified", cr.Status.WorkspaceName)))
+		return ctrl.Result{}, nil
+	}
+
+	// Delete associated workspace if it exists
+	if cr.Status.WorkspaceName != "" {
+		workspace := &tfv1beta1.Workspace{}
+		err := r.client.Get(ctx, types.NamespacedName{
+			Name:      cr.Status.WorkspaceName,
+			Namespace: cr.Namespace,
+		}, workspace)
+
+		if err == nil {
+			// Workspace exists, delete it
+			if err := r.client.Delete(ctx, workspace); err != nil {
+				log.Debug(errDeleteWorkspace, "error", err)
+				return ctrl.Result{}, fmt.Errorf("%s: %w", errDeleteWorkspace, err)
+			}
+			r.record.Event(cr, event.Normal(reasonDeletedWorkspace,
+				fmt.Sprintf("Deleted workspace %s", cr.Status.WorkspaceName)))
+		}
+	}
+
+	return ctrl.Result{}, nil
 }
 
 func (r *workspaceTemplateApplyReconciler) reconcileWorkspaceStatus(ctx context.Context, cr *v1beta1.WorkspaceTemplateApply) (ctrl.Result, error) {

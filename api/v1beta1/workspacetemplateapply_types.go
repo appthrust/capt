@@ -44,6 +44,11 @@ type WorkspaceTemplateApplySpec struct {
 	// WaitForWorkspaces specifies a list of workspaces that must be ready before creating this workspace
 	// +optional
 	WaitForWorkspaces []WorkspaceReference `json:"waitForWorkspaces,omitempty"`
+
+	// RetainWorkspaceOnDelete specifies whether to retain the Workspace when this WorkspaceTemplateApply is deleted
+	// This is useful when the Workspace manages shared resources that should outlive this WorkspaceTemplateApply
+	// +optional
+	RetainWorkspaceOnDelete bool `json:"retainWorkspaceOnDelete,omitempty"`
 }
 
 // WorkspaceTemplateReference contains the reference to a WorkspaceTemplate

@@ -55,6 +55,11 @@ spec:
           spec:
             description: WorkspaceTemplateApplySpec defines the desired state of WorkspaceTemplateApply
             properties:
+              retainWorkspaceOnDelete:
+                description: |-
+                  RetainWorkspaceOnDelete specifies whether to retain the Workspace when this WorkspaceTemplateApply is deleted
+                  This is useful when the Workspace manages shared resources that should outlive this WorkspaceTemplateApply
+                type: boolean
               templateRef:
                 description: TemplateRef references the WorkspaceTemplate to be applied
                 properties:

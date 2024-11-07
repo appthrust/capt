@@ -1,114 +1,198 @@
-# capt
-// TODO(user): Add simple overview of use/purpose
+# CAPT (Cluster API Provider Terraform)
 
-## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+CAPT is a Cluster API provider that leverages Terraform to create and manage EKS clusters on AWS. It uses Crossplane's Terraform Provider to manage infrastructure components through Kubernetes-native resources.
 
-## Getting Started
+## Overview
 
-### Prerequisites
-- go version v1.22.0+
-- docker version 17.03+.
-- kubectl version v1.11.3+.
-- Access to a Kubernetes v1.11.3+ cluster.
+CAPT implements a modular approach to EKS cluster management where each infrastructure component (VPC, Control Plane) is managed through its own WorkspaceTemplate. This design enables:
 
-### To Deploy on the cluster
-**Build and push your image to the location specified by `IMG`:**
+- Clear separation of concerns between infrastructure components
+- Reusable infrastructure templates
+- Secure configuration management through Kubernetes secrets
+- Terraform-based state management and drift detection
 
-```sh
-make docker-build docker-push IMG=<some-registry>/capt:tag
+## Architecture
+
+The cluster creation is divided into three main components:
+
+1. VPC Infrastructure
+2. EKS Control Plane
+3. Cluster Configuration
+
+Each component is managed independently through WorkspaceTemplates:
+
+```mermaid
+graph TD
+    A[Cluster] --> B[CAPTCluster]
+    A --> C[CAPTControlPlane]
+    B --> D[VPC WorkspaceTemplate]
+    C --> E[EKS WorkspaceTemplate]
+    D --> F[VPC Infrastructure]
+    E --> G[EKS Control Plane]
+    E --> H[EKS Blueprints Addons]
 ```
 
-**NOTE:** This image ought to be published in the personal registry you specified.
-And it is required to have access to pull the image from the working environment.
-Make sure you have the proper permission to the registry if the above commands don’t work.
+## Key Benefits
 
-**Install the CRDs into the cluster:**
+### 1. Declarative Infrastructure Management
+- Version control and tagging for clear configuration management
+- State tracking for configuration drift detection
+- Utilization of standard Terraform modules
 
-```sh
-make install
+### 2. Robust Dependency Management
+- Explicit dependency definition between components (e.g., VPC and EKS)
+- Secure configuration propagation through secrets
+- Independent lifecycle management for each component
+
+### 3. Secure Configuration Management
+- Secure handling of sensitive information through Kubernetes secrets
+- Automatic OIDC authentication and IAM role configuration
+- Centralized security group and network policy management
+- Secure configuration migration between environments
+
+### 4. High Operability and Reusability
+- Reusable infrastructure templates
+- Customization through environment-specific variables and tags
+- Automatic management of Helm charts and EKS addons
+- Compatibility with existing Terraform modules
+
+### 5. Modern Kubernetes Feature Integration
+- Automatic Fargate profile configuration
+- Efficient node scaling with Karpenter
+- Integrated EKS addon management
+- Extensibility through Custom Resource Definitions (CRDs)
+
+## Prerequisites
+
+- Kubernetes cluster (v1.19+)
+- Cluster API (v1.0+)
+- AWS credentials with appropriate permissions
+- Crossplane with Terraform Provider installed
+
+## Installation
+
+1. Install the CRDs:
+```bash
+kubectl apply -f config/crd/bases
 ```
 
-**Deploy the Manager to the cluster with the image specified by `IMG`:**
-
-```sh
-make deploy IMG=<some-registry>/capt:tag
+2. Deploy the controller:
+```bash
+kubectl apply -f config/default
 ```
 
-> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
-privileges or be logged in as admin.
-
-**Create instances of your solution**
-You can apply the samples (examples) from the config/sample:
-
-```sh
-kubectl apply -k config/samples/
+3. Configure AWS credentials:
+```bash
+kubectl apply -f crossplane-terraform-config/aws-creds-secre-sample.yaml
+kubectl apply -f crossplane-terraform-config/provider-config.yaml
 ```
 
->**NOTE**: Ensure that the samples has default values to test it out.
+## Usage
 
-### To Uninstall
-**Delete the instances (CRs) from the cluster:**
+### 1. Create VPC Infrastructure
 
-```sh
-kubectl delete -k config/samples/
+```yaml
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplateApply
+metadata:
+  name: demo-vpc-apply
+spec:
+  templateRef:
+    name: vpc-template
+  variables:
+    name: demo-cluster-vpc
 ```
 
-**Delete the APIs(CRDs) from the cluster:**
+### 2. Create EKS Control Plane
 
-```sh
-make uninstall
+```yaml
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: CAPTControlPlane
+metadata:
+  name: demo-cluster
+spec:
+  version: "1.31"
+  workspaceTemplateRef:
+    name: eks-controlplane-template
 ```
 
-**UnDeploy the controller from the cluster:**
+### 3. Apply Cluster Configuration
 
-```sh
-make undeploy
+```yaml
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: demo-cluster
+spec:
+  clusterNetwork:
+    services:
+      cidrBlocks: ["10.96.0.0/12"]
+    pods:
+      cidrBlocks: ["192.168.0.0/16"]
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: CAPTCluster
+    name: demo-cluster
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    kind: CAPTControlPlane
+    name: demo-cluster
 ```
 
-## Project Distribution
+## Best Practices
 
-Following are the steps to build the installer and distribute this project to users.
+### 1. Resource Management
+- Manage related resources in the same namespace
+- Use consistent naming conventions
+- Define clear dependencies between components
+- Regular configuration drift checks
 
-1. Build the installer for the image built and published in the registry:
+### 2. Security
+- Manage sensitive information as secrets
+- Follow the principle of least privilege for IAM configuration
+- Proper security group configuration
+- Implement secure network policies
 
-```sh
-make build-installer IMG=<some-registry>/capt:tag
-```
+### 3. Operations
+- Separate configurations per environment
+- Utilize version control effectively
+- Monitor and manage component lifecycles
+- Regular security and compliance audits
 
-NOTE: The makefile target mentioned above generates an 'install.yaml'
-file in the dist directory. This file contains all the resources built
-with Kustomize, which are necessary to install this project without
-its dependencies.
+### 4. Template Management
+- Document template purposes and requirements
+- Version templates appropriately
+- Implement proper tagging strategies
+- Maintain backward compatibility
 
-2. Using the installer
+## Features
 
-Users can just run kubectl apply -f <URL for YAML BUNDLE> to install the project, i.e.:
+### WorkspaceTemplate Management
+- Infrastructure as code using Terraform
+- Version control and metadata tracking
+- Secure secret management
+- Reusable infrastructure templates
 
-```sh
-kubectl apply -f https://raw.githubusercontent.com/<org>/capt/<tag or branch>/dist/install.yaml
-```
+### VPC Configuration
+- Multi-AZ deployment
+- Public and private subnets
+- NAT Gateway configuration
+- EKS and Karpenter integration
+
+### EKS Control Plane
+- Fargate profiles for system workloads
+- EKS Blueprints addons integration
+- CoreDNS, VPC-CNI, and Kube-proxy configuration
+- Karpenter setup for node management
 
 ## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
 
-**NOTE:** Run `make help` for more information on all potential `make` targets
-
-More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
+1. Fork the repository
+2. Create a feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
 ## License
 
-Copyright 2024.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
+This project is licensed under the Apache License 2.0 - see the LICENSE file for details.

@@ -63,7 +63,7 @@ func (r *CAPTControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 		// Cluster not found, could be a standalone CAPTControlPlane
 		cluster = nil
-		return ctrl.Result{}, nil
+		logger.Info("No owner Cluster found, proceeding with standalone CAPTControlPlane")
 	}
 
 	// Handle deletion
@@ -71,9 +71,11 @@ func (r *CAPTControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return r.reconcileDelete(ctx, controlPlane)
 	}
 
-	// Set owner reference if not already set
-	if err := r.setOwnerReference(ctx, controlPlane, cluster); err != nil {
-		return ctrl.Result{}, err
+	// Set owner reference if cluster exists and reference not already set
+	if cluster != nil {
+		if err := r.setOwnerReference(ctx, controlPlane, cluster); err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
 	// Handle normal reconciliation
@@ -232,6 +234,10 @@ func (r *CAPTControlPlaneReconciler) generateWorkspaceTemplateApplySpec(controlP
 				Namespace: controlPlane.Namespace,
 			},
 		},
+		WriteConnectionSecretToRef: &xpv1.SecretReference{
+			Name:      fmt.Sprintf("%s-eks-connection", controlPlane.Name),
+			Namespace: controlPlane.Namespace,
+		},
 	}
 }
 
@@ -308,37 +314,6 @@ func (r *CAPTControlPlaneReconciler) updateStatus(ctx context.Context, controlPl
 		controlPlane.Status.WorkspaceTemplateStatus.Ready = true
 		controlPlane.Status.FailureReason = nil
 		controlPlane.Status.FailureMessage = nil
-
-		// TODO: Remove when endpoint is implemented
-		// Get endpoint from Workspace
-		// if workspaceApply.Status.WorkspaceName != "" {
-		// 	if apiEndpoint, err := endpoint.GetEndpointFromWorkspace(ctx, r.Client, workspaceApply.Status.WorkspaceName); err != nil {
-		// 		logger.Error(err, "Failed to get endpoint from Workspace")
-		// 	} else if apiEndpoint != nil {
-		// 		// Update CAPTControlPlane endpoint
-		// 		patchBase := controlPlane.DeepCopy()
-		// 		controlPlane.Spec.ControlPlaneEndpoint = *apiEndpoint
-
-		// 		if err := r.Patch(ctx, controlPlane, client.MergeFrom(patchBase)); err != nil {
-		// 			logger.Error(err, "Failed to patch CAPTControlPlane endpoint")
-		// 		} else {
-		// 			logger.Info("Successfully patched CAPTControlPlane endpoint")
-
-		// 			// Update owner cluster endpoint if it exists
-		// 			if cluster != nil {
-		// 				patchBase := cluster.DeepCopy()
-		// 				cluster.Spec.ControlPlaneEndpoint = controlPlane.Spec.ControlPlaneEndpoint
-		// 				if err := r.Patch(ctx, cluster, client.MergeFrom(patchBase)); err != nil {
-		// 					logger.Error(err, "Failed to patch Cluster endpoint")
-		// 				} else {
-		// 					logger.Info("Successfully patched Cluster endpoint")
-		// 				}
-		// 			}
-		// 		}
-		// 	}
-		// } else {
-		// 	logger.Info("WorkspaceName not set in WorkspaceTemplateApply status")
-		// }
 	}
 
 	// Update WorkspaceTemplateStatus fields

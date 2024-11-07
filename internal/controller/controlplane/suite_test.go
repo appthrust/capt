@@ -18,22 +18,26 @@ package controlplane
 
 import (
 	"context"
-	"fmt"
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	apiextensions "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	controlplanev1beta1 "github.com/appthrust/capt/api/controlplane/v1beta1"
+	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -59,16 +63,10 @@ var _ = BeforeSuite(func() {
 
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "..", "..", "config", "crd", "bases"),
+		},
 		ErrorIfCRDPathMissing: true,
-
-		// The BinaryAssetsDirectory is only required if you want to run the tests directly
-		// without call the makefile target test. If not informed it will look for the
-		// default path defined in controller-runtime which is /usr/local/kubebuilder/.
-		// Note that you must have the required binaries setup under the bin directory to perform
-		// the tests directly. When we run make test it will be setup and used automatically.
-		BinaryAssetsDirectory: filepath.Join("..", "..", "..", "bin", "k8s",
-			fmt.Sprintf("1.31.0-%s-%s", runtime.GOOS, runtime.GOARCH)),
 	}
 
 	var err error
@@ -77,7 +75,19 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
 
+	err = apiextensions.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
+	err = apiextensionsv1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
 	err = controlplanev1beta1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
+	err = infrastructurev1beta1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
+	err = clusterv1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	// +kubebuilder:scaffold:scheme
@@ -86,6 +96,69 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
 
+	// Install Cluster API CRDs
+	clusterCRD := &apiextensionsv1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "clusters.cluster.x-k8s.io",
+		},
+		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
+			Group: "cluster.x-k8s.io",
+			Names: apiextensionsv1.CustomResourceDefinitionNames{
+				Kind:     "Cluster",
+				ListKind: "ClusterList",
+				Plural:   "clusters",
+				Singular: "cluster",
+				Categories: []string{
+					"cluster-api",
+				},
+			},
+			Scope: apiextensionsv1.NamespaceScoped,
+			Versions: []apiextensionsv1.CustomResourceDefinitionVersion{
+				{
+					Name:    "v1beta1",
+					Served:  true,
+					Storage: true,
+					Schema: &apiextensionsv1.CustomResourceValidation{
+						OpenAPIV3Schema: &apiextensionsv1.JSONSchemaProps{
+							Type:     "object",
+							Required: []string{"spec"},
+							Properties: map[string]apiextensionsv1.JSONSchemaProps{
+								"apiVersion": {Type: "string"},
+								"kind":       {Type: "string"},
+								"metadata":   {Type: "object"},
+								"spec": {
+									Type:     "object",
+									Required: []string{},
+									Properties: map[string]apiextensionsv1.JSONSchemaProps{
+										"controlPlaneEndpoint": {
+											Type:     "object",
+											Required: []string{"host", "port"},
+											Properties: map[string]apiextensionsv1.JSONSchemaProps{
+												"host": {Type: "string"},
+												"port": {Type: "integer", Minimum: pointer.Float64(1), Maximum: pointer.Float64(65535)},
+											},
+										},
+									},
+								},
+								"status": {
+									Type: "object",
+									Properties: map[string]apiextensionsv1.JSONSchemaProps{
+										"controlPlaneReady": {Type: "boolean"},
+										"phase":             {Type: "string"},
+									},
+								},
+							},
+						},
+					},
+					Subresources: &apiextensionsv1.CustomResourceSubresources{
+						Status: &apiextensionsv1.CustomResourceSubresourceStatus{},
+					},
+				},
+			},
+		},
+	}
+	err = k8sClient.Create(ctx, clusterCRD)
+	Expect(err).NotTo(HaveOccurred())
 })
 
 var _ = AfterSuite(func() {

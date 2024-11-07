@@ -9,6 +9,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	controlplanev1beta1 "github.com/appthrust/capt/api/controlplane/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
@@ -26,14 +27,14 @@ func NewSecretManager(client client.Client) *SecretManager {
 }
 
 // GetAndValidateSecret retrieves and validates the connection secret
-func (m *SecretManager) GetAndValidateSecret(ctx context.Context, cluster *clusterv1.Cluster) (*corev1.Secret, error) {
+func (m *SecretManager) GetAndValidateSecret(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane) (*corev1.Secret, error) {
 	logger := log.FromContext(ctx)
-	secretName := fmt.Sprintf("%s-eks-connection", cluster.Name)
+	secretName := fmt.Sprintf("%s-eks-connection", controlPlane.Name)
 	logger.Info("Getting and validating connection secret", "secretName", secretName)
 
 	secret := &corev1.Secret{}
 	key := types.NamespacedName{
-		Namespace: cluster.Namespace,
+		Namespace: controlPlane.Namespace,
 		Name:      secretName,
 	}
 

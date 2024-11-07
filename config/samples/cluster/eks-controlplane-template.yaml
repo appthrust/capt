@@ -1,0 +1,126 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplate
+metadata:
+  name: eks-controlplane-template
+  namespace: default
+spec:
+  template:
+    metadata:
+      description: "Template for creating EKS Control Plane"
+      version: "1.0.0"
+      tags:
+        provider: "aws"
+        resource: "eks"
+        environment: "dev"
+    spec:
+      writeConnectionSecretToRef:
+        name: ${CLUSTER_NAME}-eks-connection
+        namespace: default
+      providerConfigRef:
+        name: aws-provider-for-eks
+      forProvider:
+        source: Inline
+        enableTerraformCLILogging: true
+        vars:
+          - key: cluster_name
+            value: ${CLUSTER_NAME}
+          - key: kubernetes_version
+            value: ${KUBERNETES_VERSION}
+        module: |
+          module "eks" {
+            source  = "terraform-aws-modules/eks/aws"
+            version = "~> 20.11"
+
+            cluster_name                   = var.cluster_name
+            cluster_version                = var.kubernetes_version
+            cluster_endpoint_public_access = true
+
+            vpc_id     = var.vpc_id
+            subnet_ids = var.private_subnets
+
+            enable_cluster_creator_admin_permissions = true
+
+            tags = {
+              Environment = "dev"
+              Terraform   = "true"
+            }
+          }
+
+          # Output definitions for non-sensitive data
+          output "cluster_endpoint" {
+            description = "Endpoint for EKS control plane"
+            value       = module.eks.cluster_endpoint
+          }
+
+          output "cluster_name" {
+            description = "The name of the EKS cluster"
+            value       = module.eks.cluster_name
+          }
+
+          output "oidc_provider" {
+            description = "The OpenID Connect identity provider"
+            value       = module.eks.oidc_provider
+          }
+
+          output "oidc_provider_arn" {
+            description = "The ARN of the OIDC Provider"
+            value       = module.eks.oidc_provider_arn
+          }
+
+          # Output definitions for sensitive data
+          output "cluster_certificate_authority_data" {
+            description = "Base64 encoded certificate data"
+            value       = module.eks.cluster_certificate_authority_data
+            sensitive   = true
+          }
+
+          output "kubeconfig" {
+            description = "Kubeconfig for the EKS cluster"
+            sensitive   = true
+            value      = <<-EOT
+              apiVersion: v1
+              clusters:
+              - cluster:
+                  certificate-authority-data: ${module.eks.cluster_certificate_authority_data}
+                  server: ${module.eks.cluster_endpoint}
+                name: ${module.eks.cluster_name}
+              contexts:
+              - context:
+                  cluster: ${module.eks.cluster_name}
+                  user: ${module.eks.cluster_name}-admin
+                name: ${module.eks.cluster_name}
+              current-context: ${module.eks.cluster_name}
+              kind: Config
+              users:
+              - name: ${module.eks.cluster_name}-admin
+                user:
+                  exec:
+                    apiVersion: client.authentication.k8s.io/v1beta1
+                    args:
+                    - eks
+                    - get-token
+                    - --cluster-name
+                    - ${module.eks.cluster_name}
+                    command: aws
+            EOT
+          }
+
+          variable "cluster_name" {
+            type        = string
+            description = "Name of the EKS cluster"
+          }
+
+          variable "kubernetes_version" {
+            type        = string
+            description = "Kubernetes version for the EKS cluster"
+          }
+
+          variable "vpc_id" {
+            type        = string
+            description = "ID of the VPC where EKS cluster will be created"
+          }
+
+          variable "private_subnets" {
+            type        = list(string)
+            description = "List of private subnet IDs for EKS cluster"
+          }

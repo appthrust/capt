@@ -14,7 +14,6 @@ import (
 
 	controlplanev1beta1 "github.com/appthrust/capt/api/controlplane/v1beta1"
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
-	"github.com/appthrust/capt/internal/controller/controlplane/endpoint"
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -149,6 +148,12 @@ func (r *CAPTControlPlaneReconciler) reconcileNormal(ctx context.Context, contro
 			logger.Error(err, "Failed to update WorkspaceTemplateApply")
 			return r.setFailedStatus(ctx, controlPlane, cluster, controlplanev1beta1.ReasonFailed, fmt.Sprintf("Failed to update WorkspaceTemplateApply: %v", err))
 		}
+	}
+
+	// Reconcile secrets and endpoint
+	if err := r.reconcileSecrets(ctx, controlPlane, cluster, workspaceApply); err != nil {
+		logger.Error(err, "Failed to reconcile secrets")
+		return ctrl.Result{}, err
 	}
 
 	// Update status
@@ -304,35 +309,36 @@ func (r *CAPTControlPlaneReconciler) updateStatus(ctx context.Context, controlPl
 		controlPlane.Status.FailureReason = nil
 		controlPlane.Status.FailureMessage = nil
 
+		// TODO: Remove when endpoint is implemented
 		// Get endpoint from Workspace
-		if workspaceApply.Status.WorkspaceName != "" {
-			if apiEndpoint, err := endpoint.GetEndpointFromWorkspace(ctx, r.Client, workspaceApply.Status.WorkspaceName); err != nil {
-				logger.Error(err, "Failed to get endpoint from Workspace")
-			} else if apiEndpoint != nil {
-				// Update CAPTControlPlane endpoint
-				patchBase := controlPlane.DeepCopy()
-				controlPlane.Spec.ControlPlaneEndpoint = *apiEndpoint
+		// if workspaceApply.Status.WorkspaceName != "" {
+		// 	if apiEndpoint, err := endpoint.GetEndpointFromWorkspace(ctx, r.Client, workspaceApply.Status.WorkspaceName); err != nil {
+		// 		logger.Error(err, "Failed to get endpoint from Workspace")
+		// 	} else if apiEndpoint != nil {
+		// 		// Update CAPTControlPlane endpoint
+		// 		patchBase := controlPlane.DeepCopy()
+		// 		controlPlane.Spec.ControlPlaneEndpoint = *apiEndpoint
 
-				if err := r.Patch(ctx, controlPlane, client.MergeFrom(patchBase)); err != nil {
-					logger.Error(err, "Failed to patch CAPTControlPlane endpoint")
-				} else {
-					logger.Info("Successfully patched CAPTControlPlane endpoint")
+		// 		if err := r.Patch(ctx, controlPlane, client.MergeFrom(patchBase)); err != nil {
+		// 			logger.Error(err, "Failed to patch CAPTControlPlane endpoint")
+		// 		} else {
+		// 			logger.Info("Successfully patched CAPTControlPlane endpoint")
 
-					// Update owner cluster endpoint if it exists
-					if cluster != nil {
-						patchBase := cluster.DeepCopy()
-						cluster.Spec.ControlPlaneEndpoint = controlPlane.Spec.ControlPlaneEndpoint
-						if err := r.Patch(ctx, cluster, client.MergeFrom(patchBase)); err != nil {
-							logger.Error(err, "Failed to patch Cluster endpoint")
-						} else {
-							logger.Info("Successfully patched Cluster endpoint")
-						}
-					}
-				}
-			}
-		} else {
-			logger.Info("WorkspaceName not set in WorkspaceTemplateApply status")
-		}
+		// 			// Update owner cluster endpoint if it exists
+		// 			if cluster != nil {
+		// 				patchBase := cluster.DeepCopy()
+		// 				cluster.Spec.ControlPlaneEndpoint = controlPlane.Spec.ControlPlaneEndpoint
+		// 				if err := r.Patch(ctx, cluster, client.MergeFrom(patchBase)); err != nil {
+		// 					logger.Error(err, "Failed to patch Cluster endpoint")
+		// 				} else {
+		// 					logger.Info("Successfully patched Cluster endpoint")
+		// 				}
+		// 			}
+		// 		}
+		// 	}
+		// } else {
+		// 	logger.Info("WorkspaceName not set in WorkspaceTemplateApply status")
+		// }
 	}
 
 	// Update WorkspaceTemplateStatus fields

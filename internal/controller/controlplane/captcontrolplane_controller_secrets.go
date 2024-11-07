@@ -33,7 +33,7 @@ func (r *CAPTControlPlaneReconciler) reconcileSecrets(ctx context.Context, contr
 	secretManager := secrets.NewSecretManager(r.Client)
 
 	// Get and validate secret
-	secret, err := secretManager.GetAndValidateSecret(ctx, cluster)
+	secret, err := secretManager.GetAndValidateSecret(ctx, controlPlane)
 	if err != nil {
 		logger.Error(err, "Failed to get or validate secret")
 		_, setErr := r.setFailedStatus(ctx, controlPlane, cluster, ReasonSecretError, fmt.Sprintf("Failed to get or validate secret: %v", err))
@@ -41,6 +41,12 @@ func (r *CAPTControlPlaneReconciler) reconcileSecrets(ctx context.Context, contr
 			return fmt.Errorf("failed to set status: %v (original error: %v)", setErr, err)
 		}
 		return err
+	}
+
+	// Skip workspace operations if WorkspaceName is not set
+	if workspaceApply.Status.WorkspaceName == "" {
+		logger.Info("Workspace name not set, skipping workspace operations")
+		return nil
 	}
 
 	// Get workspace

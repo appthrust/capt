@@ -91,9 +91,9 @@ func (r *CAPTControlPlaneReconciler) reconcileSecrets(ctx context.Context, contr
 		},
 	}
 
-	// Set controller reference
+	// Set controller reference for kubeconfig secret
 	if err := controllerutil.SetControllerReference(controlPlane, kubeconfigSecret, r.Scheme); err != nil {
-		logger.Error(err, "Failed to set controller reference")
+		logger.Error(err, "Failed to set controller reference for kubeconfig secret")
 		return err
 	}
 
@@ -124,6 +124,63 @@ func (r *CAPTControlPlaneReconciler) reconcileSecrets(ctx context.Context, contr
 		logger.Info("Successfully updated kubeconfig secret",
 			"name", existingSecret.Name,
 			"namespace", existingSecret.Namespace)
+	}
+
+	// Get CA data from secret
+	caData, err := secretManager.GetCertificateAuthorityData(ctx, secret)
+	if err != nil {
+		logger.Error(err, "Failed to get certificate authority data")
+		return err
+	}
+
+	// Create Cluster API CA certificate secret
+	// For EKS clusters, we only have access to the public certificate
+	caSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("%s-ca", controlPlane.Name),
+			Namespace: controlPlane.Namespace,
+		},
+		Data: map[string][]byte{
+			// Required key - we only have the public certificate for EKS
+			"tls.crt": []byte(caData),
+			// Optional but recommended key - same as tls.crt
+			"ca.crt": []byte(caData),
+		},
+	}
+
+	// Set controller reference for CA secret
+	if err := controllerutil.SetControllerReference(controlPlane, caSecret, r.Scheme); err != nil {
+		logger.Error(err, "Failed to set controller reference for CA secret")
+		return err
+	}
+
+	// Create or update the CA secret
+	existingCASecret := &corev1.Secret{}
+	err = r.Get(ctx, client.ObjectKey{Name: caSecret.Name, Namespace: caSecret.Namespace}, existingCASecret)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			// Create new CA secret
+			if err := r.Create(ctx, caSecret); err != nil {
+				logger.Error(err, "Failed to create CA secret")
+				return err
+			}
+			logger.Info("Successfully created CA secret",
+				"name", caSecret.Name,
+				"namespace", caSecret.Namespace)
+		} else {
+			logger.Error(err, "Failed to get existing CA secret")
+			return err
+		}
+	} else {
+		// Update existing CA secret
+		existingCASecret.Data = caSecret.Data
+		if err := r.Update(ctx, existingCASecret); err != nil {
+			logger.Error(err, "Failed to update CA secret")
+			return err
+		}
+		logger.Info("Successfully updated CA secret",
+			"name", existingCASecret.Name,
+			"namespace", existingCASecret.Namespace)
 	}
 
 	// Update CAPTControlPlane endpoint

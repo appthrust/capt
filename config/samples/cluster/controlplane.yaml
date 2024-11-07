@@ -189,6 +189,7 @@ spec:
           output "pod_execution_role_arn" {
             description = "The ARN of the pod execution role for Fargate profiles"
             value       = module.eks.fargate_profile_pod_execution_role_arn
+            sensitive   = true
           }
 
           output "kubeconfig" {

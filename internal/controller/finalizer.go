@@ -2,10 +2,13 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 const (
@@ -44,7 +47,42 @@ func handleFinalizer(ctx context.Context, c client.Client, captCluster *infrastr
 }
 
 func deleteExternalResources(ctx context.Context, c client.Client, captCluster *infrastructurev1beta1.CAPTCluster) error {
-	// WorkspaceTemplateApply resources are automatically garbage collected by Kubernetes
-	// when the owner (CAPTCluster) is deleted, so no explicit cleanup is needed here
+	logger := log.FromContext(ctx)
+
+	// Check if VPC should be retained
+	if captCluster.Spec.RetainVPCOnDelete && captCluster.Spec.VPCTemplateRef != nil {
+		logger.Info("RetainVPCOnDelete is true, skipping VPC deletion",
+			"vpcId", captCluster.Status.VPCID,
+			"workspaceTemplateApplyName", captCluster.Spec.WorkspaceTemplateApplyName)
+		return nil
+	}
+
+	// Find and delete associated WorkspaceTemplateApply
+	if captCluster.Spec.WorkspaceTemplateApplyName != "" {
+		workspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
+		err := c.Get(ctx, types.NamespacedName{
+			Name:      captCluster.Spec.WorkspaceTemplateApplyName,
+			Namespace: captCluster.Namespace,
+		}, workspaceApply)
+
+		if err == nil {
+			// Check if WorkspaceTemplateApply is already being deleted
+			if workspaceApply.DeletionTimestamp != nil {
+				logger.Info("WorkspaceTemplateApply is being deleted, waiting",
+					"name", workspaceApply.Name)
+				return fmt.Errorf("waiting for WorkspaceTemplateApply deletion")
+			}
+
+			// WorkspaceTemplateApply exists and not being deleted, delete it
+			if err := c.Delete(ctx, workspaceApply); err != nil {
+				logger.Error(err, "Failed to delete WorkspaceTemplateApply")
+				return fmt.Errorf("failed to delete WorkspaceTemplateApply: %v", err)
+			}
+			logger.Info("Initiated WorkspaceTemplateApply deletion",
+				"name", workspaceApply.Name)
+			return fmt.Errorf("waiting for WorkspaceTemplateApply deletion")
+		}
+	}
+
 	return nil
 }

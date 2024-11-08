@@ -15,7 +15,7 @@ spec:
         environment: "dev"
     spec:
       writeConnectionSecretToRef:
-        name: eks-connection
+        name: "${WORKSPACE_NAME}-eks-connection"
         namespace: default
       providerConfigRef:
         name: aws-provider-for-eks
@@ -35,7 +35,7 @@ spec:
             format: HCL
             secretKeyRef:
               namespace: default
-              name: vpc-connection
+              name: "${WORKSPACE_NAME}-vpc-connection"
               key: vpc_config
         module: |
           module "eks" {

@@ -90,5 +90,5 @@ spec:
             sensitive   = true  # このoutputのみsensitiveに設定
           }
       writeConnectionSecretToRef:
-        name: vpc-connection
+        name: "${WORKSPACE_NAME}-vpc-connection"
         namespace: default

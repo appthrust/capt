@@ -65,6 +65,7 @@ rules:
   - captmachinedeployments
   - captmachines
   - captmachinesets
+  - captmachinetemplates
   - workspacetemplateapplies
   - workspacetemplates
   verbs:
@@ -93,6 +94,7 @@ rules:
   - captmachinedeployments/status
   - captmachines/status
   - captmachinesets/status
+  - captmachinetemplates/status
   - workspacetemplateapplies/status
   - workspacetemplates/status
   verbs:

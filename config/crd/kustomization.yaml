@@ -10,6 +10,7 @@ resources:
 - bases/infrastructure.cluster.x-k8s.io_captmachines.yaml
 - bases/infrastructure.cluster.x-k8s.io_captmachinesets.yaml
 - bases/infrastructure.cluster.x-k8s.io_captmachinedeployments.yaml
+- bases/infrastructure.cluster.x-k8s.io_captmachinetemplates.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

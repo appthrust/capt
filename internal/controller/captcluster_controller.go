@@ -73,7 +73,7 @@ func (r *CAPTClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 		// Cluster not found, could be a standalone CAPTCluster
 		cluster = nil
-		return ctrl.Result{}, nil
+		logger.Info("Owner Cluster not found, proceeding with reconciliation")
 	}
 
 	// Handle deletion

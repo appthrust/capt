@@ -1,0 +1,21 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: CaptMachineTemplate
+metadata:
+  name: eks-managed-node-template
+  namespace: default
+spec:
+  template:
+    spec:
+      workspaceTemplateRef:
+        name: eks-node-template
+        namespace: default
+      nodeType: ManagedNodeGroup
+      instanceType: t3.medium
+      scaling:
+        minSize: 1
+        maxSize: 5
+        desiredSize: 3
+      labels:
+        role: worker
+      additionalTags:
+        Environment: "dev"

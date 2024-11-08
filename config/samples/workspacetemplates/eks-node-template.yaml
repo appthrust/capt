@@ -1,0 +1,149 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplate
+metadata:
+  name: eks-node-template
+  namespace: default
+spec:
+  template:
+    metadata:
+      description: "Template for creating EKS Managed Node Group"
+      version: "1.0.0"
+      tags:
+        provider: "aws"
+        resource: "eks-node"
+        environment: "dev"
+    spec:
+      writeConnectionSecretToRef:
+        name: eks-node-connection
+        namespace: default
+      providerConfigRef:
+        name: aws-provider-for-eks
+      forProvider:
+        source: Inline
+        enableTerraformCLILogging: true
+        vars:
+          - key: cluster_name
+            value: "demo-cluster"
+          - key: instance_type
+            value: "t3.medium"
+          - key: min_size
+            value: "1"
+          - key: max_size
+            value: "5"
+          - key: desired_size
+            value: "3"
+        varFiles:
+          - source: SecretKey
+            format: HCL
+            secretKeyRef:
+              namespace: default
+              name: vpc-connection
+              key: vpc_config
+          - source: SecretKey
+            format: HCL
+            secretKeyRef:
+              namespace: default
+              name: eks-connection
+              key: eks_config
+        module: |
+          module "eks_managed_node_group" {
+            source = "terraform-aws-modules/eks/aws//modules/eks-managed-node-group"
+            version = "~> 20.0"
+
+            name            = "${var.cluster_name}-managed-node-group"
+            cluster_name    = var.cluster_name
+            cluster_version = var.cluster_version
+
+            subnet_ids = var.private_subnets
+
+            min_size     = var.min_size
+            max_size     = var.max_size
+            desired_size = var.desired_size
+
+            instance_types = [var.instance_type]
+            capacity_type  = "ON_DEMAND"
+
+            labels = {
+              role = "worker"
+            }
+
+            tags = {
+              Environment = "dev"
+              Terraform   = "true"
+            }
+
+            # Use EKS managed node group defaults
+            ami_type       = "AL2_x86_64"
+            disk_size      = 50
+
+            # Allow remote access to nodes
+            remote_access = {
+              ec2_ssh_key = var.key_name
+            }
+          }
+
+          variable "cluster_name" {
+            type        = string
+            description = "Name of the EKS cluster"
+          }
+
+          variable "cluster_version" {
+            type        = string
+            description = "Kubernetes version for the EKS cluster"
+          }
+
+          variable "vpc_id" {
+            type        = string
+            description = "ID of the VPC where EKS cluster will be created"
+          }
+
+          variable "private_subnets" {
+            type        = list(string)
+            description = "List of private subnet IDs for EKS cluster"
+          }
+
+          variable "instance_type" {
+            type        = string
+            description = "EC2 instance type for the node group"
+          }
+
+          variable "min_size" {
+            type        = string
+            description = "Minimum size of the node group"
+          }
+
+          variable "max_size" {
+            type        = string
+            description = "Maximum size of the node group"
+          }
+
+          variable "desired_size" {
+            type        = string
+            description = "Desired size of the node group"
+          }
+
+          variable "key_name" {
+            type        = string
+            description = "Name of the EC2 key pair to use for SSH access"
+            default     = ""
+          }
+
+          output "node_group_arn" {
+            description = "Amazon Resource Name (ARN) of the EKS Node Group"
+            value       = module.eks_managed_node_group.node_group_arn
+          }
+
+          output "node_group_id" {
+            description = "EKS Node Group ID"
+            value       = module.eks_managed_node_group.node_group_id
+          }
+
+          output "node_group_status" {
+            description = "Status of the EKS Node Group"
+            value       = module.eks_managed_node_group.node_group_status
+          }
+
+          output "node_group_resources" {
+            description = "List of objects containing information about underlying resources of the EKS Node Group"
+            value       = module.eks_managed_node_group.node_group_resources
+          }

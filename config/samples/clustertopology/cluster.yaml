@@ -1,0 +1,33 @@
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: demo-cluster
+  namespace: default
+spec:
+  clusterNetwork:
+    services:
+      cidrBlocks: ["10.96.0.0/12"]
+    pods:
+      cidrBlocks: ["192.168.0.0/16"]
+    serviceDomain: "cluster.local"
+  topology:
+    class: eks-class
+    version: v1.31.0
+    controlPlane:
+      metadata: {}
+      replicas: 3
+    variables:
+      - name: controlPlane.endpointAccess.public
+        value: true
+      - name: controlPlane.endpointAccess.private
+        value: true
+      - name: cluster.environment
+        value: dev
+    workers:
+      machineDeployments:
+        - class: default-worker
+          name: md-0
+          replicas: 3
+          metadata:
+            labels:
+              role: worker

@@ -88,10 +88,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controller.CAPTClusterReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+	if err = controller.SetupCAPTClusterController(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "CAPTCluster")
 		os.Exit(1)
 	}

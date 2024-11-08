@@ -17,6 +17,16 @@ WorkspaceTemplateは、Terraformのワークスペースを定義し、再利用
    - テンプレートの適用を管理
    - 依存関係の制御
    - 変数のカスタマイズ
+   - コントローラー（CAPTClusterやCAPTControlPlane）によって自動的に作成・管理される
+   - 手動での作成は推奨されない
+
+### Resource Relationships
+
+```
+CAPTCluster/CAPTControlPlane
+  ├── WorkspaceTemplateRef ──> WorkspaceTemplate
+  └── (Controller) ──> WorkspaceTemplateApply ──> Secret
+```
 
 ### Resource Definitions
 
@@ -73,6 +83,7 @@ type WorkspaceTemplateApplySpec struct {
 - 変数のオーバーライド
 - 依存関係の管理
 - 状態監視
+- コントローラーによる自動管理
 
 ### 3. Dependency Management
 - 他のWorkspaceへの依存関係定義
@@ -105,26 +116,21 @@ spec:
           }
 ```
 
-### 2. Template Application with Dependencies
+### 2. Using Template in CAPTCluster
 
 ```yaml
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-kind: WorkspaceTemplateApply
+kind: CAPTCluster
 metadata:
-  name: vpc-template-apply-with-deps
+  name: sample-cluster
 spec:
-  templateRef:
+  region: us-west-2
+  vpcTemplateRef:
     name: vpc-template-sample
     namespace: default
-  variables:
-    name: "production-vpc"
-  writeConnectionSecretToRef:
-    name: production-vpc-connection
-    namespace: default
-  waitForWorkspaces:
-    - name: base-vpc-workspace
-      namespace: default
 ```
+
+注意: WorkspaceTemplateApplyは直接作成せず、コントローラーに管理を任せます。
 
 ## Best Practices
 
@@ -142,6 +148,11 @@ spec:
    - 明示的な依存関係の定義
    - 循環依存の回避
    - タイムアウトの適切な設定
+
+4. WorkspaceTemplateApply Management
+   - WorkspaceTemplateApplyの直接作成を避ける
+   - コントローラーによる管理を信頼する
+   - 状態の監視はコントローラーを通じて行う
 
 ## Future Improvements
 
@@ -162,3 +173,8 @@ spec:
    - テンプレートの事前検証
    - 変数バリデーション
    - クロスリソースバリデーション
+
+5. Controller Management
+   - WorkspaceTemplateApply作成ロジックの改善
+   - より柔軟な依存関係管理
+   - エラーハンドリングの強化

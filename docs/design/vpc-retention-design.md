@@ -2,25 +2,25 @@
 
 ## Overview
 
-このドキュメントでは、CAPTClusterにおけるVPC維持機能の設計と実装について説明します。この機能は、親クラスタが削除された場合でも、必要に応じてVPCリソースを維持することを可能にします。
+This document describes the design and implementation of VPC retention functionality in CAPTCluster. This feature enables VPC resources to be retained when needed, even if the parent cluster is deleted.
 
 ## Background
 
-### 課題
+### Challenges
 
-1. VPCリソースは複数のプロジェクトで共有されることがある
-2. 親クラスタの削除時に、共有されているVPCも削除されてしまう
-3. VPCの削除は他のプロジェクトに影響を与える可能性がある
+1. VPC resources can be shared across multiple projects
+2. Shared VPCs are deleted when the parent cluster is deleted
+3. VPC deletion can impact other projects
 
-### 要件
+### Requirements
 
-1. VPCの維持/削除を制御できる機能が必要
-2. この制御は明示的に設定可能である必要がある
-3. 既存のVPCを使用する場合は影響を受けない
+1. Need functionality to control VPC retention/deletion
+2. This control must be explicitly configurable
+3. Existing VPC usage should not be affected
 
 ## Design Decision
 
-### API設計
+### API Design
 
 #### CaptCluster
 
@@ -45,65 +45,65 @@ type WorkspaceTemplateApplySpec struct {
 }
 ```
 
-### 設計上の考慮点
+### Design Considerations
 
-1. **明示的な設定**
-   - CaptCluster: デフォルトではfalse（VPCは削除される）
-   - WorkspaceTemplateApply: デフォルトではfalse（Workspaceは削除される）
-   - 明示的にtrueを設定した場合のみリソースが維持される
+1. **Explicit Configuration**
+   - CaptCluster: Defaults to false (VPC is deleted)
+   - WorkspaceTemplateApply: Defaults to false (Workspace is deleted)
+   - Resources are only retained when explicitly set to true
 
-2. **適用範囲の制限**
-   - CaptCluster: VPCTemplateRefを使用する場合のみ有効
-   - WorkspaceTemplateApply: すべてのケースで有効
+2. **Scope Limitations**
+   - CaptCluster: Only effective when using VPCTemplateRef
+   - WorkspaceTemplateApply: Effective in all cases
 
-3. **バリデーション**
-   - RetainVPCOnDeleteはVPCTemplateRefが設定されている場合のみ有効
-   - 不正な組み合わせは早期に検出される
+3. **Validation**
+   - RetainVPCOnDelete is only valid when VPCTemplateRef is set
+   - Invalid combinations are detected early
 
-### WorkspaceTemplateApplyの保持機能
+### WorkspaceTemplateApply Retention Feature
 
-1. **設計の背景**
-   - WorkspaceTemplateApplyの削除時に、関連するWorkspaceも自動的に削除される現在の動作
-   - この動作は共有リソース（VPCなど）の保持が必要なケースで問題となる
+1. **Design Background**
+   - Current behavior where related Workspace is automatically deleted when WorkspaceTemplateApply is deleted
+   - This behavior is problematic for cases requiring shared resource (VPC, etc.) retention
 
-2. **新しい設計方針**
-   - WorkspaceTemplateApplyに直接Workspace保持設定を追加
-   - 親リソースの設定に依存せず、各WorkspaceTemplateApplyで個別に制御可能
+2. **New Design Approach**
+   - Add direct Workspace retention setting to WorkspaceTemplateApply
+   - Can be controlled individually for each WorkspaceTemplateApply, independent of parent resource settings
 
-3. **利点**
-   - 柔軟性：各WorkspaceTemplateApplyで個別に制御可能
-   - 明確性：リソースの保持意図が明示的に記述される
-   - 再利用性：同じWorkspaceTemplateを使用する異なるユースケースで、異なる保持戦略を適用可能
+3. **Benefits**
+   - Flexibility: Can be controlled individually for each WorkspaceTemplateApply
+   - Clarity: Resource retention intent is explicitly documented
+   - Reusability: Different retention strategies can be applied for different use cases using the same WorkspaceTemplate
 
-### 実装の重要ポイント
+### Key Implementation Points
 
-1. **削除処理の制御**
+1. **Deletion Control**
 ```go
 func (r *workspaceTemplateApplyReconciler) reconcileDelete(ctx context.Context, workspaceApply *infrastructurev1beta1.WorkspaceTemplateApply) (ctrl.Result, error) {
     if workspaceApply.Spec.RetainWorkspaceOnDelete {
-        // Workspaceを維持する場合は、削除処理をスキップ
+        // Skip deletion process if Workspace should be retained
         return ctrl.Result{}, nil
     }
-    // 通常の削除処理
+    // Normal deletion process
     ...
 }
 ```
 
-2. **バリデーション**
+2. **Validation**
 ```go
 func (s *WorkspaceTemplateApplySpec) ValidateConfiguration() error {
-    // 必要に応じてバリデーションを追加
+    // Add validations as needed
     return nil
 }
 ```
 
-3. **ログ記録**
-   - リソースの維持/削除の判断を明確に記録
-   - トラブルシューティングを容易にする
+3. **Logging**
+   - Clearly log resource retention/deletion decisions
+   - Facilitate troubleshooting
 
 ## Usage Example
 
-### VPC保持の設定
+### VPC Retention Configuration
 
 ```yaml
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
@@ -114,10 +114,10 @@ spec:
   region: ap-northeast-1
   vpcTemplateRef:
     name: vpc-template
-  retainVpcOnDelete: true  # VPCを維持する設定
+  retainVpcOnDelete: true  # Configuration to retain VPC
 ```
 
-### Workspace保持の設定
+### Workspace Retention Configuration
 
 ```yaml
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
@@ -127,40 +127,40 @@ metadata:
 spec:
   templateRef:
     name: vpc-template
-  retainWorkspaceOnDelete: true  # Workspaceを保持する設定
+  retainWorkspaceOnDelete: true  # Configuration to retain Workspace
 ```
 
 ## Lessons Learned
 
-1. **機能の分離**
-   - リソースの維持/削除の制御は、各リソースレベルで独立して管理する必要がある
-   - これにより、設定の意図が明確になり、誤用を防ぐことができる
+1. **Feature Separation**
+   - Resource retention/deletion control needs to be managed independently at each resource level
+   - This makes configuration intent clear and prevents misuse
 
-2. **明示的な設定の重要性**
-   - デフォルトでは安全側（リソースを削除）に倒す
-   - 維持が必要な場合は明示的な設定を要求する
+2. **Importance of Explicit Configuration**
+   - Default to the safe side (delete resources)
+   - Require explicit configuration when retention is needed
 
-3. **バリデーションの重要性**
-   - 早期のバリデーションにより、設定ミスを防ぐ
-   - エラーメッセージは具体的で理解しやすいものにする
+3. **Importance of Validation**
+   - Early validation prevents configuration mistakes
+   - Error messages should be specific and easy to understand
 
-4. **ドキュメントとサンプル**
-   - 機能の使用方法を明確に示すサンプルが重要
-   - 設定の意図と影響を理解しやすくする
+4. **Documentation and Samples**
+   - Clear samples demonstrating feature usage are important
+   - Make configuration intent and impact easy to understand
 
 ## Future Considerations
 
-1. **拡張性**
-   - 他のリソースタイプにも同様の維持機能が必要になる可能性
-   - 共通のパターンとして抽象化を検討
+1. **Extensibility**
+   - Similar retention functionality may be needed for other resource types
+   - Consider abstraction as a common pattern
 
-2. **モニタリング**
-   - リソースの維持/削除の決定を監視可能にする
-   - メトリクスの収集を検討
+2. **Monitoring**
+   - Make resource retention/deletion decisions monitorable
+   - Consider metrics collection
 
-3. **ライフサイクル管理**
-   - 維持されたリソースの管理方法
-   - クリーンアップポリシーの検討
+3. **Lifecycle Management**
+   - How to manage retained resources
+   - Consider cleanup policies
 
 ## References
 

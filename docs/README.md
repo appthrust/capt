@@ -4,6 +4,28 @@
 
 The Cluster API Terraform Provider is a tool for declaratively managing Kubernetes cluster infrastructure using Terraform. This provider streamlines the construction, management, and operation of infrastructure, providing cluster resources in a consistent manner.
 
+## Core Components
+
+### 1. Infrastructure Management (CAPTCluster)
+- Manages core infrastructure components like VPC
+- Supports VPC retention functionality for shared infrastructure scenarios
+- Provides comprehensive status management and tracking
+
+### 2. Control Plane Management (CAPTControlPlane)
+- Manages EKS control plane configuration
+- Handles control plane endpoint management
+- Integrates with EKS addons and configurations
+
+### 3. Compute Resource Management (Machine)
+- Manages node groups and Fargate profiles
+- Supports flexible scaling configurations
+- Enables independent lifecycle management of compute resources
+
+### 4. Template Management (WorkspaceTemplate)
+- Provides infrastructure as code capabilities
+- Enables reusable and modular infrastructure definitions
+- Supports version control and configuration management
+
 ## Key Benefits
 
 ### 1. Declarative Infrastructure Management
@@ -90,9 +112,18 @@ Easily integrate with the latest Kubernetes features:
 - Integrated management of EKS addons
 - Extensibility through Custom Resource Definitions (CRDs)
 
+### 6. Advanced Infrastructure Management
+
+Provides sophisticated infrastructure management capabilities:
+
+- VPC retention functionality for shared infrastructure scenarios
+- Comprehensive status management and monitoring
+- Detailed lifecycle management for all components
+- Robust error handling and recovery mechanisms
+
 ## Usage Examples
 
-1. Creating a VPC:
+1. Creating a VPC with Retention:
 ```yaml
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: WorkspaceTemplateApply
@@ -101,6 +132,7 @@ metadata:
 spec:
   templateRef:
     name: vpc-template
+  retainWorkspaceOnDelete: true  # Retain VPC after deletion
   variables:
     name: demo-cluster-vpc
 ```
@@ -117,19 +149,42 @@ spec:
     name: eks-controlplane-template
 ```
 
+3. Managing Compute Resources:
+```yaml
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: CAPTMachineDeployment
+metadata:
+  name: demo-nodegroup
+spec:
+  template:
+    spec:
+      workspaceTemplateRef:
+        name: nodegroup-template
+```
+
 ## Best Practices
 
 1. Resource Management
 - Manage related resources in the same namespace
 - Use consistent naming conventions
 - Define clear dependencies
+- Implement proper status monitoring
 
 2. Security
 - Manage sensitive information as secrets
 - Configure IAM following the principle of least privilege
 - Properly configure security groups
+- Regularly rotate credentials and certificates
 
 3. Operations Management
 - Separate configurations by environment
 - Utilize version control
 - Regularly check for configuration drift
+- Monitor cluster and component status
+- Implement proper backup and disaster recovery procedures
+
+4. Infrastructure Planning
+- Consider VPC retention requirements for shared infrastructure
+- Plan for scalability and high availability
+- Design for multi-environment deployments
+- Implement proper resource tagging strategy

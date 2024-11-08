@@ -61,9 +61,9 @@ func (r *CAPTControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			logger.Error(err, "Failed to get owner Cluster")
 			return ctrl.Result{}, err
 		}
-		// Cluster not found, could be a standalone CAPTControlPlane
-		cluster = nil
-		logger.Info("No owner Cluster found, proceeding with standalone CAPTControlPlane")
+		// If cluster is not found, we should not proceed with reconciliation
+		logger.Info("No owner Cluster found, cannot proceed with reconciliation")
+		return r.setFailedStatus(ctx, controlPlane, nil, controlplanev1beta1.ReasonFailed, "Owner Cluster not found")
 	}
 
 	// Handle deletion
@@ -71,11 +71,9 @@ func (r *CAPTControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return r.reconcileDelete(ctx, controlPlane)
 	}
 
-	// Set owner reference if cluster exists and reference not already set
-	if cluster != nil {
-		if err := r.setOwnerReference(ctx, controlPlane, cluster); err != nil {
-			return ctrl.Result{}, err
-		}
+	// Set owner reference
+	if err := r.setOwnerReference(ctx, controlPlane, cluster); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	// Handle normal reconciliation
@@ -106,6 +104,11 @@ func (r *CAPTControlPlaneReconciler) reconcileNormal(ctx context.Context, contro
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling normal state")
 
+	// Ensure cluster exists
+	if cluster == nil {
+		return r.setFailedStatus(ctx, controlPlane, nil, controlplanev1beta1.ReasonFailed, "Owner Cluster not found")
+	}
+
 	// Get the referenced WorkspaceTemplate
 	workspaceTemplate := &infrastructurev1beta1.WorkspaceTemplate{}
 	templateNamespacedName := types.NamespacedName{
@@ -122,11 +125,9 @@ func (r *CAPTControlPlaneReconciler) reconcileNormal(ctx context.Context, contro
 	var applyName string
 
 	if controlPlane.Spec.WorkspaceTemplateApplyName != "" {
-		// Use the name from spec if it exists
 		applyName = controlPlane.Spec.WorkspaceTemplateApplyName
 		logger.Info("Using existing WorkspaceTemplateApply name from spec", "name", applyName)
 	} else {
-		// Create a new name
 		applyName = fmt.Sprintf("%s-eks-controlplane-apply", controlPlane.Name)
 		logger.Info("Creating new WorkspaceTemplateApply", "name", applyName)
 	}
@@ -152,7 +153,21 @@ func (r *CAPTControlPlaneReconciler) reconcileNormal(ctx context.Context, contro
 		}
 	}
 
-	// Reconcile secrets and endpoint
+	// Check if WorkspaceTemplateApply is ready before proceeding with secrets
+	ready := false
+	for _, condition := range workspaceApply.Status.Conditions {
+		if condition.Type == xpv1.TypeReady && condition.Status == corev1.ConditionTrue {
+			ready = true
+			break
+		}
+	}
+
+	if !ready {
+		logger.Info("WorkspaceTemplateApply is not ready yet")
+		return r.updateStatus(ctx, controlPlane, workspaceApply, cluster)
+	}
+
+	// Reconcile secrets and endpoint only when WorkspaceTemplateApply is ready
 	if err := r.reconcileSecrets(ctx, controlPlane, cluster, workspaceApply); err != nil {
 		logger.Error(err, "Failed to reconcile secrets")
 		return ctrl.Result{}, err

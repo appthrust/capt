@@ -20,8 +20,9 @@ import (
 )
 
 const (
-	ReasonSecretError   = "SecretError"
-	ReasonEndpointError = "EndpointError"
+	ReasonSecretError       = "SecretError"
+	ReasonEndpointError     = "EndpointError"
+	ReasonWorkspaceNotReady = "WorkspaceNotReady"
 )
 
 // reconcileSecrets handles secret management for CAPTControlPlane
@@ -29,24 +30,11 @@ func (r *CAPTControlPlaneReconciler) reconcileSecrets(ctx context.Context, contr
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling secrets")
 
-	// Initialize secret manager
-	secretManager := secrets.NewSecretManager(r.Client)
-
-	// Get and validate secret
-	secret, err := secretManager.GetAndValidateSecret(ctx, controlPlane)
-	if err != nil {
-		logger.Error(err, "Failed to get or validate secret")
-		_, setErr := r.setFailedStatus(ctx, controlPlane, cluster, ReasonSecretError, fmt.Sprintf("Failed to get or validate secret: %v", err))
-		if setErr != nil {
-			return fmt.Errorf("failed to set status: %v (original error: %v)", setErr, err)
-		}
-		return err
-	}
-
-	// Skip workspace operations if WorkspaceName is not set
+	// Verify WorkspaceTemplateApply is ready and has a workspace name
 	if workspaceApply.Status.WorkspaceName == "" {
-		logger.Info("Workspace name not set, skipping workspace operations")
-		return nil
+		logger.Info("Workspace name not set, waiting for WorkspaceTemplateApply to be ready")
+		_, err := r.setFailedStatus(ctx, controlPlane, cluster, ReasonWorkspaceNotReady, "Waiting for workspace to be created")
+		return err
 	}
 
 	// Get workspace
@@ -74,6 +62,42 @@ func (r *CAPTControlPlaneReconciler) reconcileSecrets(ctx context.Context, contr
 	logger.Info("Found workspace",
 		"workspaceName", workspaceApply.Status.WorkspaceName,
 		"namespace", workspaceApply.Namespace)
+
+	// Initialize secret manager
+	secretManager := secrets.NewSecretManager(r.Client)
+
+	// Get connection secret
+	secret := &corev1.Secret{}
+	secretRef := workspaceApply.Spec.WriteConnectionSecretToRef
+	if secretRef == nil {
+		err := fmt.Errorf("workspace connection secret reference is not set")
+		logger.Error(err, "Failed to get secret reference")
+		_, setErr := r.setFailedStatus(ctx, controlPlane, cluster, ReasonSecretError, err.Error())
+		if setErr != nil {
+			return fmt.Errorf("failed to set status: %v (original error: %v)", setErr, err)
+		}
+		return err
+	}
+
+	if err := r.Get(ctx, client.ObjectKey{
+		Name:      secretRef.Name,
+		Namespace: secretRef.Namespace,
+	}, secret); err != nil {
+		if !apierrors.IsNotFound(err) {
+			logger.Error(err, "Failed to get secret")
+			_, setErr := r.setFailedStatus(ctx, controlPlane, cluster, ReasonSecretError, fmt.Sprintf("Failed to get secret: %v", err))
+			if setErr != nil {
+				return fmt.Errorf("failed to set status: %v (original error: %v)", setErr, err)
+			}
+			return err
+		}
+		// If secret is not found, wait for it to be created
+		logger.Info("Waiting for secret to be created",
+			"name", secretRef.Name,
+			"namespace", secretRef.Namespace)
+		_, err := r.setFailedStatus(ctx, controlPlane, cluster, ReasonSecretError, "Waiting for connection secret to be created")
+		return err
+	}
 
 	// Get endpoint from workspace or secret
 	endpoint, err := secretManager.GetClusterEndpoint(ctx, workspace, secret)
@@ -140,17 +164,14 @@ func (r *CAPTControlPlaneReconciler) reconcileSecrets(ctx context.Context, contr
 	}
 
 	// Create Cluster API CA certificate secret
-	// For EKS clusters, we only have access to the public certificate
 	caSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("%s-ca", controlPlane.Name),
 			Namespace: controlPlane.Namespace,
 		},
 		Data: map[string][]byte{
-			// Required key - we only have the public certificate for EKS
 			"tls.crt": []byte(caData),
-			// Optional but recommended key - same as tls.crt
-			"ca.crt": []byte(caData),
+			"ca.crt":  []byte(caData),
 		},
 	}
 

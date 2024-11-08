@@ -1,0 +1,177 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.1
+  name: captcontrolplanetemplates.controlplane.cluster.x-k8s.io
+spec:
+  group: controlplane.cluster.x-k8s.io
+  names:
+    categories:
+    - cluster-api
+    kind: CaptControlPlaneTemplate
+    listKind: CaptControlPlaneTemplateList
+    plural: captcontrolplanetemplates
+    singular: captcontrolplanetemplate
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: CaptControlPlaneTemplate is the Schema for the captcontrolplanetemplates
+          API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: CaptControlPlaneTemplateSpec defines the desired state of
+              CaptControlPlaneTemplate
+            properties:
+              template:
+                description: Template is the template for the CaptControlPlane
+                properties:
+                  metadata:
+                    description: |-
+                      Standard object's metadata.
+                      More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+                    type: object
+                  spec:
+                    description: |-
+                      Spec is the specification of the desired behavior of the CaptControlPlane.
+                      This spec allows for all the same configuration as CaptControlPlane.
+                    properties:
+                      additionalTags:
+                        additionalProperties:
+                          type: string
+                        description: AdditionalTags is an optional set of tags to
+                          add to AWS resources managed by the AWS provider.
+                        type: object
+                      controlPlaneConfig:
+                        description: ControlPlaneConfig contains additional configuration
+                          for the EKS control plane.
+                        properties:
+                          addons:
+                            description: Addons defines the EKS addons to be installed
+                            items:
+                              description: Addon represents an EKS addon
+                              properties:
+                                configurationValues:
+                                  description: ConfigurationValues is a string containing
+                                    configuration values
+                                  type: string
+                                name:
+                                  description: Name is the name of the addon
+                                  type: string
+                                version:
+                                  description: Version is the version of the addon
+                                  type: string
+                              required:
+                              - name
+                              type: object
+                            type: array
+                          endpointAccess:
+                            description: EndpointAccess defines the access configuration
+                              for the API server endpoint
+                            properties:
+                              private:
+                                description: Private controls whether the API server
+                                  has private access
+                                type: boolean
+                              public:
+                                description: Public controls whether the API server
+                                  has public access
+                                type: boolean
+                              publicCIDRs:
+                                description: PublicCIDRs is a list of CIDR blocks
+                                  that can access the API server
+                                items:
+                                  type: string
+                                type: array
+                            type: object
+                          timeouts:
+                            description: Timeouts defines timeout settings for various
+                              operations
+                            properties:
+                              controlPlaneTimeout:
+                                default: 30
+                                description: ControlPlaneTimeout is the timeout in
+                                  minutes for control plane creation
+                                minimum: 1
+                                type: integer
+                              vpcReadyTimeout:
+                                default: 15
+                                description: VPCReadyTimeout is the timeout in minutes
+                                  for VPC ready check
+                                minimum: 1
+                                type: integer
+                            type: object
+                        type: object
+                      controlPlaneEndpoint:
+                        description: ControlPlaneEndpoint represents the endpoint
+                          used to communicate with the control plane.
+                        properties:
+                          host:
+                            description: The hostname on which the API server is serving.
+                            type: string
+                          port:
+                            description: The port on which the API server is serving.
+                            format: int32
+                            type: integer
+                        required:
+                        - host
+                        - port
+                        type: object
+                      version:
+                        description: Version defines the desired Kubernetes version.
+                        type: string
+                      workspaceTemplateApplyName:
+                        description: |-
+                          WorkspaceTemplateApplyName is the name of the WorkspaceTemplateApply used for this control plane.
+                          This field is managed by the controller and should not be modified manually.
+                        type: string
+                      workspaceTemplateRef:
+                        description: WorkspaceTemplateRef is a reference to the WorkspaceTemplate
+                          used for creating the control plane.
+                        properties:
+                          name:
+                            description: Name is the name of the WorkspaceTemplate.
+                            type: string
+                          namespace:
+                            description: Namespace is the namespace of the WorkspaceTemplate.
+                            type: string
+                        required:
+                        - name
+                        type: object
+                    required:
+                    - version
+                    - workspaceTemplateRef
+                    type: object
+                type: object
+            required:
+            - template
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

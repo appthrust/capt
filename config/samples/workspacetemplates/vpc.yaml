@@ -92,14 +92,3 @@ spec:
       writeConnectionSecretToRef:
         name: vpc-connection
         namespace: default
----
-# VPC WorkspaceTemplateApply
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-kind: WorkspaceTemplateApply
-metadata:
-  name: demo-vpc-apply
-  namespace: default
-spec:
-  templateRef:
-    name: vpc-template
-    namespace: default

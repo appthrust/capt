@@ -1,0 +1,54 @@
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: ClusterClass
+metadata:
+  name: eks-class
+  namespace: default
+spec:
+  controlPlane:
+    ref:
+      apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+      kind: CaptControlPlaneTemplate
+      name: eks-control-plane-template
+      namespace: default
+  infrastructure:
+    ref:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+      kind: CAPTCluster
+      name: eks-cluster-template
+      namespace: default
+  workers:
+    machineDeployments:
+      - class: default-worker
+        template:
+          bootstrap:
+            ref:
+              apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+              kind: WorkspaceTemplate
+              name: eks-node-template
+              namespace: default
+          infrastructure:
+            ref:
+              apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+              kind: CaptMachineTemplate
+              name: eks-node-template
+              namespace: default
+  variables:
+    - name: controlPlane.endpointAccess.public
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: boolean
+          default: true
+    - name: controlPlane.endpointAccess.private
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: boolean
+          default: true
+    - name: cluster.environment
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: string
+          enum: ["dev", "staging", "prod"]
+          default: "dev"

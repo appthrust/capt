@@ -18,6 +18,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -28,11 +29,13 @@ import (
 	"github.com/crossplane/crossplane-runtime/pkg/meta"
 	tfv1beta1 "github.com/upbound/provider-terraform/apis/v1beta1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/appthrust/capt/api/v1beta1"
 )
@@ -66,6 +69,12 @@ const (
 	// Reconciliation
 	requeueAfterSecret = 30 * time.Second
 	requeueAfterStatus = 10 * time.Second
+
+	// Variables
+	workspaceNameVar = "${WORKSPACE_NAME}"
+
+	// Finalizer
+	workspaceTemplateApplyFinalizer = "infrastructure.cluster.x-k8s.io/finalizer"
 )
 
 // WorkspaceTemplateApplyGroupKind is the group and kind of the WorkspaceTemplateApply resource
@@ -148,6 +157,34 @@ func (r *workspaceTemplateApplyReconciler) waitForRequiredSecrets(ctx context.Co
 	return nil
 }
 
+// replaceTemplateVariables replaces template variables with their values
+func replaceTemplateVariables(template *v1beta1.WorkspaceTemplate, cr *v1beta1.WorkspaceTemplateApply) (*v1beta1.WorkspaceTemplate, error) {
+	// Create a deep copy of the template to avoid modifying the original
+	templateCopy := template.DeepCopy()
+
+	// Convert the template spec to JSON for easier manipulation
+	specJSON, err := json.Marshal(templateCopy.Spec.Template.Spec)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal template spec: %w", err)
+	}
+
+	// Replace workspace name variable with the WorkspaceTemplateApply name
+	specStr := string(specJSON)
+	specStr = strings.ReplaceAll(specStr, workspaceNameVar, cr.Name)
+
+	// Replace other variables from cr.Spec.Variables
+	for key, value := range cr.Spec.Variables {
+		specStr = strings.ReplaceAll(specStr, fmt.Sprintf("${%s}", key), value)
+	}
+
+	// Unmarshal back to the template spec
+	if err := json.Unmarshal([]byte(specStr), &templateCopy.Spec.Template.Spec); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal template spec: %w", err)
+	}
+
+	return templateCopy, nil
+}
+
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplateapplies,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplateapplies/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplateapplies/finalizers,verbs=update
@@ -187,6 +224,14 @@ func (r *workspaceTemplateApplyReconciler) Reconcile(ctx context.Context, req ct
 		return r.reconcileDelete(ctx, cr)
 	}
 
+	// Add finalizer if it doesn't exist
+	if !controllerutil.ContainsFinalizer(cr, workspaceTemplateApplyFinalizer) {
+		controllerutil.AddFinalizer(cr, workspaceTemplateApplyFinalizer)
+		if err := r.client.Update(ctx, cr); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
 	// Check if we need to wait for secrets first
 	if err := r.waitForRequiredSecrets(ctx, cr); err != nil {
 		return ctrl.Result{RequeueAfter: requeueAfterSecret}, nil
@@ -214,10 +259,20 @@ func (r *workspaceTemplateApplyReconciler) Reconcile(ctx context.Context, req ct
 		}
 	}
 
+	// Generate workspace name
+	workspaceName := cr.Name + "-workspace"
+
+	// Replace template variables
+	template, err := replaceTemplateVariables(template, cr)
+	if err != nil {
+		log.Debug("Failed to replace template variables", "error", err)
+		return ctrl.Result{}, err
+	}
+
 	// Create Workspace from template
 	workspace := &tfv1beta1.Workspace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      cr.Name + "-workspace",
+			Name:      workspaceName,
 			Namespace: cr.Namespace,
 		},
 		Spec: template.Spec.Template.Spec,
@@ -251,12 +306,16 @@ func (r *workspaceTemplateApplyReconciler) reconcileDelete(ctx context.Context, 
 	log := r.log.WithValues("request", cr.Name)
 	log.Debug("Reconciling deletion")
 
-	// If RetainWorkspaceOnDelete is true, skip workspace deletion
+	// If RetainWorkspaceOnDelete is true, remove finalizer and skip workspace deletion
 	if cr.Spec.RetainWorkspaceOnDelete {
 		log.Info("RetainWorkspaceOnDelete is true, skipping workspace deletion",
 			"workspaceName", cr.Status.WorkspaceName)
 		r.record.Event(cr, event.Normal(reasonRetainedWorkspace,
 			fmt.Sprintf("Retained workspace %s as specified", cr.Status.WorkspaceName)))
+		controllerutil.RemoveFinalizer(cr, workspaceTemplateApplyFinalizer)
+		if err := r.client.Update(ctx, cr); err != nil {
+			return ctrl.Result{}, err
+		}
 		return ctrl.Result{}, nil
 	}
 
@@ -269,14 +328,32 @@ func (r *workspaceTemplateApplyReconciler) reconcileDelete(ctx context.Context, 
 		}, workspace)
 
 		if err == nil {
-			// Workspace exists, delete it
+			// Check if workspace is already being deleted
+			if workspace.DeletionTimestamp != nil {
+				// Workspace is being deleted, wait for it
+				log.Info("Waiting for workspace to be deleted", "workspaceName", workspace.Name)
+				return ctrl.Result{RequeueAfter: requeueAfterStatus}, nil
+			}
+
+			// Workspace exists and not being deleted, delete it
 			if err := r.client.Delete(ctx, workspace); err != nil {
 				log.Debug(errDeleteWorkspace, "error", err)
 				return ctrl.Result{}, fmt.Errorf("%s: %w", errDeleteWorkspace, err)
 			}
+			log.Info("Initiated workspace deletion", "workspaceName", workspace.Name)
 			r.record.Event(cr, event.Normal(reasonDeletedWorkspace,
-				fmt.Sprintf("Deleted workspace %s", cr.Status.WorkspaceName)))
+				fmt.Sprintf("Initiated deletion of workspace %s", cr.Status.WorkspaceName)))
+			return ctrl.Result{RequeueAfter: requeueAfterStatus}, nil
+		} else if !apierrors.IsNotFound(err) {
+			// Error other than NotFound
+			return ctrl.Result{}, err
 		}
+	}
+
+	// Workspace doesn't exist or is fully deleted, remove finalizer
+	controllerutil.RemoveFinalizer(cr, workspaceTemplateApplyFinalizer)
+	if err := r.client.Update(ctx, cr); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil

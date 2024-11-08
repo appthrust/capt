@@ -1,15 +1,3 @@
-# CAPTCluster
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-kind: CAPTCluster
-metadata:
-  name: demo-cluster
-  namespace: default
-spec:
-  region: "ap-northeast-1"
-  vpcTemplateRef:
-    name: vpc-template
-    namespace: default
----
 # Cluster
 apiVersion: cluster.x-k8s.io/v1beta1
 kind: Cluster

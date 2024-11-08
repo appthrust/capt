@@ -16,12 +16,15 @@ CAPT uses WorkspaceTemplate to manage VPC configurations, providing a flexible a
    - Specifies connection secret reference
 
 2. WorkspaceTemplateApply
+   - Automatically created and managed by the CAPTCluster controller
    - Applies the VPC configuration
    - Manages the lifecycle of VPC resources
    - Handles dependencies and secrets
+   - Name format: {cluster-name}-vpc
 
 3. CAPTCluster
    - References VPC WorkspaceTemplate
+   - Controller creates and manages WorkspaceTemplateApply
    - Tracks VPC status
    - Manages VPC lifecycle
 
@@ -29,8 +32,10 @@ CAPT uses WorkspaceTemplate to manage VPC configurations, providing a flexible a
 
 ```
 CAPTCluster
-  └── VPCTemplateRef ──> WorkspaceTemplate
-                           └── WriteConnectionSecretToRef ──> Secret
+  ├── VPCTemplateRef ──> WorkspaceTemplate
+  │                        └── WriteConnectionSecretToRef ──> Secret
+  └── (Controller) ──> WorkspaceTemplateApply
+                        └── TemplateRef ──> WorkspaceTemplate
 ```
 
 ## VPC Configuration
@@ -48,6 +53,8 @@ spec:
     name: vpc-template
     namespace: default
 ```
+
+Note: The controller will automatically create a WorkspaceTemplateApply named `{cluster-name}-vpc`
 
 ### Using Existing VPC
 
@@ -164,12 +171,21 @@ spec:
     namespace: default
 ```
 
-### Using the Template
+### Using the Template in CAPTCluster
 
-1. Create WorkspaceTemplate
-2. Reference in CAPTCluster
-3. Monitor VPC status through conditions
-4. Access VPC information through status
+```yaml
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: CAPTCluster
+metadata:
+  name: sample-cluster
+spec:
+  region: us-west-2
+  vpcTemplateRef:
+    name: vpc-template
+    namespace: default
+```
+
+Note: Do not create WorkspaceTemplateApply manually, as it is managed by the controller.
 
 ## Migration Guide
 
@@ -178,7 +194,8 @@ For migrating from the old VPCConfig approach:
 1. Create WorkspaceTemplate for your VPC configuration
 2. Update CAPTCluster to use VPCTemplateRef
 3. Remove old VPCConfig
-4. Apply changes and monitor status
+4. Let the controller manage WorkspaceTemplateApply
+5. Apply changes and monitor status
 
 ## Best Practices
 
@@ -196,3 +213,8 @@ For migrating from the old VPCConfig approach:
    - Handle transient failures
    - Implement proper retries
    - Log relevant error information
+
+4. WorkspaceTemplateApply
+   - Never create WorkspaceTemplateApply manually
+   - Let the controller manage the lifecycle
+   - Monitor through CAPTCluster status

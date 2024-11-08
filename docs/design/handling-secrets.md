@@ -1,43 +1,43 @@
 # Cluster API Control Plane Secrets Design Document
 
-## 概要
+## Overview
 
-このドキュメントは、Cluster APIプロバイダーにおけるControl Plane Secretsの設計仕様を定義します。
-この仕様に従うことで、セキュアで管理しやすいControl Planeの実装と、他のCluster APIプロバイダーとの互換性を確保することができます。
+This document defines the design specifications for Control Plane Secrets in Cluster API providers.
+Following these specifications ensures secure and manageable Control Plane implementation and compatibility with other Cluster API providers.
 
-## 目次
+## Table of Contents
 
-1. [基本設計](#基本設計)
-2. [Secret仕様](#secret仕様)
-3. [証明書要件](#証明書要件)
-4. [実装ガイドライン](#実装ガイドライン)
-5. [セキュリティ考慮事項](#セキュリティ考慮事項)
-6. [運用管理](#運用管理)
+1. [Basic Design](#basic-design)
+2. [Secret Specifications](#secret-specifications)
+3. [Certificate Requirements](#certificate-requirements)
+4. [Implementation Guidelines](#implementation-guidelines)
+5. [Security Considerations](#security-considerations)
+6. [Operational Management](#operational-management)
 
-## 基本設計
+## Basic Design
 
-### 命名規則
+### Naming Conventions
 
-Control Plane関連のSecretは以下の命名規則に従う必要があります：
+Control Plane related Secrets must follow these naming conventions:
 
 ```
-<cluster-name>-control-plane-kubeconfig  # クラスターのkubeconfig
-<cluster-name>-etcd                      # etcd関連の証明書
+<cluster-name>-control-plane-kubeconfig  # Cluster kubeconfig
+<cluster-name>-etcd                      # etcd related certificates
 <cluster-name>-ca                        # Kubernetes API Server CA
-<cluster-name>-sa                        # Service Account関連
-<cluster-name>-proxy                     # プロキシ設定関連
+<cluster-name>-sa                        # Service Account related
+<cluster-name>-proxy                     # Proxy configuration related
 ```
 
-### 必須コンポーネント
+### Required Components
 
-各Control Planeは以下のSecretを必要とします：
+Each Control Plane requires the following Secrets:
 
-- etcd証明書とキー
-- Kubernetes API Server証明書とキー
-- Service Account証明書とキー
-- クラスターCA証明書
+- etcd certificates and keys
+- Kubernetes API Server certificates and keys
+- Service Account certificates and keys
+- Cluster CA certificates
 
-## Secret仕様
+## Secret Specifications
 
 ### etcd Secret
 
@@ -49,9 +49,9 @@ metadata:
   namespace: ${NAMESPACE}
 type: Opaque
 data:
-  tls.crt: <base64-encoded-cert>    # etcdサーバー証明書
-  tls.key: <base64-encoded-key>     # etcdサーバー秘密鍵
-  ca.crt: <base64-encoded-ca-cert>  # etcd CA証明書
+  tls.crt: <base64-encoded-cert>    # etcd server certificate
+  tls.key: <base64-encoded-key>     # etcd server private key
+  ca.crt: <base64-encoded-ca-cert>  # etcd CA certificate
 ```
 
 ### API Server CA Secret
@@ -64,8 +64,8 @@ metadata:
   namespace: ${NAMESPACE}
 type: Opaque
 data:
-  tls.crt: <base64-encoded-cert>  # API Server CA証明書
-  tls.key: <base64-encoded-key>   # API Server CA秘密鍵
+  tls.crt: <base64-encoded-cert>  # API Server CA certificate
+  tls.key: <base64-encoded-key>   # API Server CA private key
 ```
 
 ### Service Account Secret
@@ -78,21 +78,21 @@ metadata:
   namespace: ${NAMESPACE}
 type: Opaque
 data:
-  tls.crt: <base64-encoded-cert>  # SA署名用証明書
-  tls.key: <base64-encoded-key>   # SA署名用秘密鍵
+  tls.crt: <base64-encoded-cert>  # SA signing certificate
+  tls.key: <base64-encoded-key>   # SA signing private key
 ```
 
-## 証明書要件
+## Certificate Requirements
 
-### 一般要件
+### General Requirements
 
-- フォーマット: X.509
-- 推奨有効期間: 1年以上
-- エンコーディング: PEM形式
+- Format: X.509
+- Recommended validity period: 1 year or more
+- Encoding: PEM format
 
-### SANs要件
+### SANs Requirements
 
-APIサーバー証明書には以下のSANsを含める必要があります：
+API server certificates must include the following SANs:
 
 - DNSNames:
   - kubernetes
@@ -101,30 +101,30 @@ APIサーバー証明書には以下のSANsを含める必要があります：
   - kubernetes.default.svc.cluster.local
   - `<cluster-name>-apiserver`
 - IPAddresses:
-  - Cluster IP範囲の最初のIP
-  - Control PlaneのEndpoint IP
+  - First IP of Cluster IP range
+  - Control Plane Endpoint IP
   - Localhost (127.0.0.1)
 
-## 実装ガイドライン
+## Implementation Guidelines
 
-### 証明書生成
+### Certificate Generation
 
 ```go
-// 証明書生成の基本実装
+// Basic implementation of certificate generation
 func generateCertificates(cluster *clusterv1.Cluster) (*certificates.CertificateAuthority, error) {
     caConfig := certificates.CAConfig{
         CommonName: fmt.Sprintf("%s-ca", cluster.Name),
-        Duration:   time.Hour * 24 * 365, // 1年
+        Duration:   time.Hour * 24 * 365, // 1 year
     }
     
     return certificates.NewCertificateAuthority(caConfig)
 }
 ```
 
-### Secret作成
+### Secret Creation
 
 ```go
-// Secret作成の基本実装
+// Basic implementation of secret creation
 func createSecret(ctx context.Context, cluster *clusterv1.Cluster, name string, data map[string][]byte) error {
     secret := &corev1.Secret{
         ObjectMeta: metav1.ObjectMeta{
@@ -142,29 +142,29 @@ func createSecret(ctx context.Context, cluster *clusterv1.Cluster, name string, 
 }
 ```
 
-## セキュリティ考慮事項
+## Security Considerations
 
-### アクセス制御
+### Access Control
 
-- RBACポリシーの適用
-- 最小権限の原則の遵守
-- Secretsへのアクセスログの監視
+- Apply RBAC policies
+- Follow principle of least privilege
+- Monitor access logs to Secrets
 
-### 暗号化要件
+### Encryption Requirements
 
-- etcd暗号化の有効化
-- TLS 1.2以上の使用
-- 強力な暗号スイートの選択
+- Enable etcd encryption
+- Use TLS 1.2 or higher
+- Select strong cipher suites
 
-## 運用管理
+## Operational Management
 
-### 証明書更新
+### Certificate Renewal
 
-証明書の更新は以下のタイミングで実施します：
+Certificates should be renewed at the following times:
 
-1. 有効期限の70%経過時に更新準備開始
-2. 有効期限の80%経過時に更新警告
-3. 有効期限の90%経過時に強制更新
+1. Start renewal preparation at 70% of validity period
+2. Issue renewal warning at 80% of validity period
+3. Force renewal at 90% of validity period
 
 ```go
 func shouldRotateCertificates(cert *x509.Certificate) bool {
@@ -174,22 +174,22 @@ func shouldRotateCertificates(cert *x509.Certificate) bool {
 }
 ```
 
-### モニタリング
+### Monitoring
 
-以下の項目を監視する必要があります：
+The following items need to be monitored:
 
-- 証明書の有効期限
-- Secret作成・更新の成功率
-- 証明書のローテーション状態
+- Certificate expiration
+- Secret creation/update success rate
+- Certificate rotation status
 
-### トラブルシューティング
+### Troubleshooting
 
-一般的な問題の診断手順：
+General diagnostic procedures:
 
-1. 証明書の有効性確認
-2. SANsの検証
-3. 秘密鍵とペアの確認
-4. 権限の確認
+1. Verify certificate validity
+2. Validate SANs
+3. Check private key pairs
+4. Verify permissions
 
 ```go
 func validateCertificateSecret(secret *corev1.Secret) error {
@@ -200,18 +200,18 @@ func validateCertificateSecret(secret *corev1.Secret) error {
         }
     }
     
-    // 証明書の検証
+    // Certificate validation
     cert, err := certificates.DecodeCertPEM(secret.Data["tls.crt"])
     if err != nil {
         return fmt.Errorf("invalid certificate: %v", err)
     }
     
-    // その他の検証...
+    // Other validations...
     return nil
 }
 ```
 
-## 参考資料
+## References
 
 - [Kubernetes Certificates API](https://kubernetes.io/docs/reference/access-authn-authz/certificate-signing-requests/)
 - [etcd Security Model](https://etcd.io/docs/latest/op-guide/security/)

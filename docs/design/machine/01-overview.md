@@ -1,40 +1,40 @@
-# Machine概念の導入
+# Introduction of Machine Concept
 
-## 背景
+## Background
 
-現在のCAPTの実装では、コンピュートリソース（Fargateプロファイル、マネージドノードグループなど）がControlPlaneリソースの一部として定義されています。これは以下の課題を引き起こしています：
+In the current CAPT implementation, compute resources (Fargate profiles, managed node groups, etc.) are defined as part of the ControlPlane resource. This creates the following challenges:
 
-- コンピュートリソースの管理が柔軟性に欠ける
-- スケーリングやライフサイクル管理が困難
-- Cluster API (CAPI)の標準パターンから逸脱
+- Lack of flexibility in compute resource management
+- Difficulties in scaling and lifecycle management
+- Deviation from standard Cluster API (CAPI) patterns
 
-## 提案
+## Proposal
 
-CAPTにMachine概念を導入し、コンピュートリソースを独立したリソースとして管理することを提案します。
+We propose introducing the Machine concept to CAPT, managing compute resources as independent resources.
 
-### 主な変更点
+### Key Changes
 
-1. 新しいカスタムリソースの導入
+1. Introduction of New Custom Resources
    - CAPTMachineTemplate
    - CAPTMachineDeployment
    - CAPTMachine
 
-2. WorkspaceTemplateの分離
-   - ControlPlane用のWorkspaceTemplate
-   - Machine用のWorkspaceTemplate
+2. Separation of WorkspaceTemplates
+   - WorkspaceTemplate for ControlPlane
+   - WorkspaceTemplate for Machine
 
-3. Terraform moduleの再構成
-   - eks moduleからnode group関連の設定を分離
-   - 新しいnode group用のmoduleを作成
+3. Restructuring of Terraform Modules
+   - Separation of node group configurations from eks module
+   - Creation of new module for node groups
 
-## 期待される効果
+## Expected Benefits
 
-1. 運用性の向上
-   - ノードグループの個別管理が可能に
-   - スケーリングの柔軟な制御
-   - ライフサイクル管理の改善
+1. Improved Operability
+   - Enable individual management of node groups
+   - Flexible scaling control
+   - Enhanced lifecycle management
 
-2. アーキテクチャの改善
-   - 責務の明確な分離
-   - CAPIパターンとの整合性
-   - 将来的な拡張性の向上
+2. Architecture Improvements
+   - Clear separation of responsibilities
+   - Alignment with CAPI patterns
+   - Enhanced future extensibility

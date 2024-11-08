@@ -1,14 +1,14 @@
 # Cluster API Terraform Provider
 
-## 概要
+## Overview
 
-Cluster API Terraform Providerは、KubernetesクラスターのインフラストラクチャをTerraformを使用して宣言的に管理するためのツールです。このプロバイダーは、インフラストラクチャの構築、管理、運用を効率化し、一貫性のある方法でクラスターリソースを提供します。
+The Cluster API Terraform Provider is a tool for declaratively managing Kubernetes cluster infrastructure using Terraform. This provider streamlines the construction, management, and operation of infrastructure, providing cluster resources in a consistent manner.
 
-## 主な利点
+## Key Benefits
 
-### 1. 宣言的なインフラストラクチャ管理
+### 1. Declarative Infrastructure Management
 
-WorkspaceTemplateを使用することで、インフラストラクチャをコードとして管理できます：
+Use WorkspaceTemplate to manage infrastructure as code:
 
 ```yaml
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
@@ -30,13 +30,13 @@ spec:
           }
 ```
 
-- バージョン管理とタグ付けによる明確な構成管理
-- 状態追跡による設定のドリフト検出
-- 標準的なTerraformモジュールの活用
+- Clear configuration management through versioning and tagging
+- Configuration drift detection through state tracking
+- Utilization of standard Terraform modules
 
-### 2. 堅牢な依存関係管理
+### 2. Robust Dependency Management
 
-コンポーネント間の依存関係を明示的に定義し、安全に管理します：
+Explicitly define and safely manage dependencies between components:
 
 ```yaml
 spec:
@@ -45,22 +45,22 @@ spec:
     namespace: default
 ```
 
-- VPCとEKSなどのコンポーネント間の明示的な依存関係定義
-- シークレットベースの安全な設定伝播
-- コンポーネントごとの独立したライフサイクル管理
+- Explicit dependency definition between components like VPC and EKS
+- Secure configuration propagation through secrets
+- Independent lifecycle management for each component
 
-### 3. セキュアな設定管理
+### 3. Secure Configuration Management
 
-セキュリティを重視した設定管理機能を提供します：
+Provides security-focused configuration management features:
 
-- Kubernetesシークレットによる機密情報の安全な管理
-- OIDC認証やIAMロールの自動設定
-- セキュリティグループとネットワークポリシーの一元管理
-- 環境間でのセキュアな設定の移行
+- Secure management of sensitive information using Kubernetes secrets
+- Automatic configuration of OIDC authentication and IAM roles
+- Centralized management of security groups and network policies
+- Secure configuration migration between environments
 
-### 4. 高い運用性と再利用性
+### 4. High Operability and Reusability
 
-効率的な運用と設定の再利用を実現します：
+Enables efficient operations and configuration reuse:
 
 ```yaml
 spec:
@@ -76,23 +76,23 @@ spec:
             value: "demo-cluster"
 ```
 
-- 再利用可能なインフラストラクチャテンプレート
-- 環境固有の変数とタグによるカスタマイズ
-- HelmチャートやEKSアドオンの自動管理
-- 既存のTerraformモジュールとの互換性
+- Reusable infrastructure templates
+- Customization through environment-specific variables and tags
+- Automatic management of Helm charts and EKS addons
+- Compatibility with existing Terraform modules
 
-### 5. モダンなKubernetes機能との統合
+### 5. Integration with Modern Kubernetes Features
 
-最新のKubernetes機能を簡単に統合できます：
+Easily integrate with the latest Kubernetes features:
 
-- Fargateプロファイルの自動設定
-- Karpenterによる効率的なノードスケーリング
-- EKSアドオンの統合管理
-- カスタムリソース定義（CRD）による拡張性
+- Automatic Fargate profile configuration
+- Efficient node scaling with Karpenter
+- Integrated management of EKS addons
+- Extensibility through Custom Resource Definitions (CRDs)
 
-## 使用例
+## Usage Examples
 
-1. VPCの作成:
+1. Creating a VPC:
 ```yaml
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: WorkspaceTemplateApply
@@ -105,7 +105,7 @@ spec:
     name: demo-cluster-vpc
 ```
 
-2. EKSクラスターの作成:
+2. Creating an EKS Cluster:
 ```yaml
 apiVersion: controlplane.cluster.x-k8s.io/v1beta1
 kind: CAPTControlPlane
@@ -117,19 +117,19 @@ spec:
     name: eks-controlplane-template
 ```
 
-## ベストプラクティス
+## Best Practices
 
-1. リソース管理
-- 関連リソースは同じネームスペースで管理
-- 一貫性のある命名規則の使用
-- 明確な依存関係の定義
+1. Resource Management
+- Manage related resources in the same namespace
+- Use consistent naming conventions
+- Define clear dependencies
 
-2. セキュリティ
-- 機密情報はシークレットとして管理
-- 最小権限の原則に従ったIAM設定
-- セキュリティグループの適切な設定
+2. Security
+- Manage sensitive information as secrets
+- Configure IAM following the principle of least privilege
+- Properly configure security groups
 
-3. 運用管理
-- 環境ごとの設定分離
-- バージョン管理の活用
-- 定期的な設定のドリフトチェック
+3. Operations Management
+- Separate configurations by environment
+- Utilize version control
+- Regularly check for configuration drift

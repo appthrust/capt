@@ -18,6 +18,33 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
+// テストヘルパー関数
+
+// validateCondition は指定された条件の存在と状態を検証します
+func validateCondition(t *testing.T, conditions []metav1.Condition, conditionType string, status metav1.ConditionStatus, reason string) {
+	found := false
+	for _, condition := range conditions {
+		if condition.Type == conditionType {
+			assert.Equal(t, status, condition.Status)
+			assert.Equal(t, reason, condition.Reason)
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "Expected condition not found: %s", conditionType)
+}
+
+// validateResourceDeletion はリソースが削除されたことを検証します
+func validateResourceDeletion(t *testing.T, client client.Client, name types.NamespacedName, obj client.Object) {
+	err := client.Get(context.Background(), name, obj)
+	assert.True(t, apierrors.IsNotFound(err), "Expected resource to be deleted, but it still exists")
+}
+
+// validateControlPlaneStatus はControlPlaneのステータスを検証します
+func validateControlPlaneStatus(t *testing.T, controlPlane *controlplanev1beta1.CAPTControlPlane, expectedPhase string) {
+	assert.Equal(t, expectedPhase, controlPlane.Status.Phase)
+}
+
 func TestReconcile(t *testing.T) {
 	scheme := setupScheme()
 
@@ -52,18 +79,13 @@ func TestReconcile(t *testing.T) {
 			expectedResult: Result{},
 			expectedError:  false,
 			validate: func(t *testing.T, client client.Client, result Result, err error) {
-				// Verify the result
 				assert.Equal(t, Result{}, result)
 				assert.NoError(t, err)
 
-				// Verify the object is deleted
-				controlPlane := &controlplanev1beta1.CAPTControlPlane{}
-				err = client.Get(context.Background(), types.NamespacedName{
+				validateResourceDeletion(t, client, types.NamespacedName{
 					Name:      "test-controlplane",
 					Namespace: "default",
-				}, controlPlane)
-
-				assert.True(t, apierrors.IsNotFound(err), "Expected NotFound error, got %v", err)
+				}, &controlplanev1beta1.CAPTControlPlane{})
 			},
 		},
 		{
@@ -102,21 +124,55 @@ func TestReconcile(t *testing.T) {
 				assert.NoError(t, err)
 				assert.True(t, controllerutil.ContainsFinalizer(controlPlane, CAPTControlPlaneFinalizer))
 
-				// Verify waiting condition
-				found := false
-				for _, condition := range controlPlane.Status.Conditions {
-					if condition.Type == controlplanev1beta1.ControlPlaneReadyCondition {
-						assert.Equal(t, metav1.ConditionFalse, condition.Status)
-						assert.Equal(t, controlplanev1beta1.ReasonCreating, condition.Reason)
-						found = true
-						break
-					}
-				}
-				assert.True(t, found, "Expected condition not found")
+				validateCondition(t, controlPlane.Status.Conditions,
+					controlplanev1beta1.ControlPlaneReadyCondition,
+					metav1.ConditionFalse,
+					controlplanev1beta1.ReasonCreating)
 			},
 		},
 		{
-			name: "Normal reconciliation",
+			name: "WorkspaceTemplate not found",
+			existingObjs: []runtime.Object{
+				&controlplanev1beta1.CAPTControlPlane{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-controlplane",
+						Namespace: "default",
+					},
+					Spec: controlplanev1beta1.CAPTControlPlaneSpec{
+						WorkspaceTemplateRef: controlplanev1beta1.WorkspaceTemplateReference{
+							Name:      "non-existent-template",
+							Namespace: "default",
+						},
+					},
+				},
+				&clusterv1.Cluster{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-controlplane",
+						Namespace: "default",
+						UID:       "test-uid",
+					},
+				},
+			},
+			expectedResult: Result{},
+			expectedError:  true,
+			validate: func(t *testing.T, client client.Client, result Result, err error) {
+				assert.True(t, apierrors.IsNotFound(err))
+
+				controlPlane := &controlplanev1beta1.CAPTControlPlane{}
+				err = client.Get(context.Background(), types.NamespacedName{
+					Name:      "test-controlplane",
+					Namespace: "default",
+				}, controlPlane)
+				assert.NoError(t, err)
+
+				validateCondition(t, controlPlane.Status.Conditions,
+					controlplanev1beta1.ControlPlaneReadyCondition,
+					metav1.ConditionFalse,
+					"WorkspaceTemplateNotFound")
+			},
+		},
+		{
+			name: "Normal reconciliation with WorkspaceTemplateApply creation",
 			existingObjs: []runtime.Object{
 				&controlplanev1beta1.CAPTControlPlane{
 					ObjectMeta: metav1.ObjectMeta{
@@ -147,18 +203,6 @@ func TestReconcile(t *testing.T) {
 						Namespace: "default",
 					},
 				},
-				&infrastructurev1beta1.WorkspaceTemplateApply{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-workspace",
-						Namespace: "default",
-					},
-					Spec: infrastructurev1beta1.WorkspaceTemplateApplySpec{
-						TemplateRef: infrastructurev1beta1.WorkspaceTemplateReference{
-							Name:      "test-template",
-							Namespace: "default",
-						},
-					},
-				},
 			},
 			expectedResult: Result{RequeueAfter: requeueInterval},
 			expectedError:  false,
@@ -170,7 +214,7 @@ func TestReconcile(t *testing.T) {
 				}, controlPlane)
 				assert.NoError(t, err)
 
-				// Verify owner reference
+				// オーナー参照の検証
 				found := false
 				for _, ref := range controlPlane.OwnerReferences {
 					if ref.Kind == "Cluster" {
@@ -180,23 +224,63 @@ func TestReconcile(t *testing.T) {
 				}
 				assert.True(t, found, "Expected owner reference not found")
 
-				// Verify finalizer
+				// Finalizerの検証
 				assert.True(t, controllerutil.ContainsFinalizer(controlPlane, CAPTControlPlaneFinalizer))
 
-				// Verify workspace template apply creation
+				// WorkspaceTemplateApplyの検証
 				assert.NotEmpty(t, controlPlane.Spec.WorkspaceTemplateApplyName)
+				workspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
+				err = client.Get(context.Background(), types.NamespacedName{
+					Name:      controlPlane.Spec.WorkspaceTemplateApplyName,
+					Namespace: "default",
+				}, workspaceApply)
+				assert.NoError(t, err)
+				assert.Equal(t, "test-template", workspaceApply.Spec.TemplateRef.Name)
 
-				// Verify conditions
-				found = false
-				for _, condition := range controlPlane.Status.Conditions {
-					if condition.Type == controlplanev1beta1.ControlPlaneReadyCondition {
-						assert.Equal(t, metav1.ConditionFalse, condition.Status)
-						assert.Equal(t, controlplanev1beta1.ReasonCreating, condition.Reason)
-						found = true
-						break
-					}
-				}
-				assert.True(t, found, "Expected condition not found")
+				// 条件の検証
+				validateCondition(t, controlPlane.Status.Conditions,
+					controlplanev1beta1.ControlPlaneReadyCondition,
+					metav1.ConditionFalse,
+					controlplanev1beta1.ReasonCreating)
+			},
+		},
+		{
+			name: "Resource cleanup during deletion",
+			existingObjs: []runtime.Object{
+				&controlplanev1beta1.CAPTControlPlane{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:              "test-controlplane",
+						Namespace:         "default",
+						DeletionTimestamp: &metav1.Time{Time: time.Now()},
+						Finalizers:        []string{CAPTControlPlaneFinalizer},
+					},
+					Spec: controlplanev1beta1.CAPTControlPlaneSpec{
+						WorkspaceTemplateApplyName: "test-apply",
+					},
+				},
+				&infrastructurev1beta1.WorkspaceTemplateApply{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-apply",
+						Namespace: "default",
+					},
+				},
+			},
+			expectedResult: Result{},
+			expectedError:  false,
+			validate: func(t *testing.T, client client.Client, result Result, err error) {
+				assert.NoError(t, err)
+
+				// WorkspaceTemplateApplyの削除確認
+				validateResourceDeletion(t, client, types.NamespacedName{
+					Name:      "test-apply",
+					Namespace: "default",
+				}, &infrastructurev1beta1.WorkspaceTemplateApply{})
+
+				// ControlPlaneの削除確認
+				validateResourceDeletion(t, client, types.NamespacedName{
+					Name:      "test-controlplane",
+					Namespace: "default",
+				}, &controlplanev1beta1.CAPTControlPlane{})
 			},
 		},
 	}

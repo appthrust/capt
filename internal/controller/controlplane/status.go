@@ -2,9 +2,11 @@ package controlplane
 
 import (
 	"context"
+	"fmt"
 
 	controlplanev1beta1 "github.com/appthrust/capt/api/controlplane/v1beta1"
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
+	"github.com/appthrust/capt/internal/controller/controlplane/endpoint"
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -12,6 +14,7 @@ import (
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // Helper functions
@@ -125,6 +128,8 @@ func (r *Reconciler) handleReadyStatus(
 	cluster *clusterv1.Cluster,
 	workspaceApply *infrastructurev1beta1.WorkspaceTemplateApply,
 ) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
 	meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
 		Type:               controlplanev1beta1.ControlPlaneReadyCondition,
 		Status:             metav1.ConditionTrue,
@@ -143,6 +148,23 @@ func (r *Reconciler) handleReadyStatus(
 
 	if workspaceApply.Status.LastAppliedTime != nil {
 		controlPlane.Status.WorkspaceTemplateStatus.LastAppliedRevision = workspaceApply.Status.LastAppliedTime.String()
+	}
+
+	// Update endpoint from workspace
+	if workspaceApply.Status.WorkspaceName != "" {
+		if apiEndpoint, err := endpoint.GetEndpointFromWorkspace(ctx, r.Client, workspaceApply.Status.WorkspaceName); err != nil {
+			logger.Error(err, "Failed to get endpoint from workspace")
+			return ctrl.Result{}, fmt.Errorf("failed to get endpoint: %w", err)
+		} else if apiEndpoint != nil {
+			logger.Info("Updating control plane endpoint", "endpoint", apiEndpoint)
+			controlPlane.Spec.ControlPlaneEndpoint = *apiEndpoint
+			if err := r.Update(ctx, controlPlane); err != nil {
+				logger.Error(err, "Failed to update control plane endpoint")
+				return ctrl.Result{}, fmt.Errorf("failed to update endpoint: %w", err)
+			}
+		} else {
+			logger.Info("No endpoint found in workspace")
+		}
 	}
 
 	if err := r.Status().Update(ctx, controlPlane); err != nil {

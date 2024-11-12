@@ -12,9 +12,15 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	"sigs.k8s.io/cluster-api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+)
+
+const (
+	// ReasonEndpointUpdateFailed indicates that the endpoint update failed
+	ReasonEndpointUpdateFailed = "EndpointUpdateFailed"
 )
 
 // Helper functions
@@ -130,6 +136,22 @@ func (r *Reconciler) handleReadyStatus(
 ) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
+	// Update endpoint from workspace first
+	if workspaceApply.Status.WorkspaceName != "" {
+		if apiEndpoint, err := endpoint.GetEndpointFromWorkspace(ctx, r.Client, workspaceApply.Status.WorkspaceName); err != nil {
+			errMsg := fmt.Sprintf("Failed to get endpoint from workspace: %v", err)
+			return r.setFailedStatus(ctx, controlPlane, cluster, ReasonEndpointUpdateFailed, errMsg)
+		} else if apiEndpoint != nil {
+			logger.Info("Updating control plane endpoint", "endpoint", apiEndpoint)
+			controlPlane.Spec.ControlPlaneEndpoint = *apiEndpoint
+			if err := r.Update(ctx, controlPlane); err != nil {
+				errMsg := fmt.Sprintf("Failed to update control plane endpoint: %v", err)
+				return r.setFailedStatus(ctx, controlPlane, cluster, ReasonEndpointUpdateFailed, errMsg)
+			}
+		}
+	}
+
+	// Only proceed with ready status if endpoint update was successful
 	meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
 		Type:               controlplanev1beta1.ControlPlaneReadyCondition,
 		Status:             metav1.ConditionTrue,
@@ -148,23 +170,6 @@ func (r *Reconciler) handleReadyStatus(
 
 	if workspaceApply.Status.LastAppliedTime != nil {
 		controlPlane.Status.WorkspaceTemplateStatus.LastAppliedRevision = workspaceApply.Status.LastAppliedTime.String()
-	}
-
-	// Update endpoint from workspace
-	if workspaceApply.Status.WorkspaceName != "" {
-		if apiEndpoint, err := endpoint.GetEndpointFromWorkspace(ctx, r.Client, workspaceApply.Status.WorkspaceName); err != nil {
-			logger.Error(err, "Failed to get endpoint from workspace")
-			return ctrl.Result{}, fmt.Errorf("failed to get endpoint: %w", err)
-		} else if apiEndpoint != nil {
-			logger.Info("Updating control plane endpoint", "endpoint", apiEndpoint)
-			controlPlane.Spec.ControlPlaneEndpoint = *apiEndpoint
-			if err := r.Update(ctx, controlPlane); err != nil {
-				logger.Error(err, "Failed to update control plane endpoint")
-				return ctrl.Result{}, fmt.Errorf("failed to update endpoint: %w", err)
-			}
-		} else {
-			logger.Info("No endpoint found in workspace")
-		}
 	}
 
 	if err := r.Status().Update(ctx, controlPlane); err != nil {
@@ -207,6 +212,11 @@ func (r *Reconciler) setFailedStatus(
 		controlPlane.Status.WorkspaceTemplateStatus.LastFailureMessage = message
 	}
 
+	// Set failure reason and message
+	failureReason := reason
+	controlPlane.Status.FailureReason = &failureReason
+	controlPlane.Status.FailureMessage = &message
+
 	if err := r.Status().Update(ctx, controlPlane); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -216,6 +226,8 @@ func (r *Reconciler) setFailedStatus(
 		patchBase := cluster.DeepCopy()
 		cluster.Status.ControlPlaneReady = false
 		cluster.Status.FailureMessage = &message
+		clusterStatusError := errors.ClusterStatusError(reason)
+		cluster.Status.FailureReason = &clusterStatusError
 		if err := r.Status().Patch(ctx, cluster, client.MergeFrom(patchBase)); err != nil {
 			return ctrl.Result{}, err
 		}

@@ -83,9 +83,14 @@ func (r *Reconciler) handleVPCTemplate(ctx context.Context, captCluster *infrast
 		return Result{}, fmt.Errorf("failed to get VPC WorkspaceTemplate: %v", err)
 	}
 
-	// Get or create WorkspaceTemplateApply
+	// Get or create WorkspaceTemplateApply with retry
 	workspaceApply, err := r.getOrCreateWorkspaceTemplateApply(ctx, captCluster)
 	if err != nil {
+		if apierrors.IsConflict(err) {
+			// If there's a conflict, requeue and try again
+			logger.Info("Conflict detected while updating WorkspaceTemplateApply, will retry")
+			return Result{Requeue: true}, nil
+		}
 		return Result{}, err
 	}
 
@@ -115,19 +120,29 @@ func (r *Reconciler) getOrCreateWorkspaceTemplateApply(ctx context.Context, capt
 	workspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
 	err := r.Get(ctx, types.NamespacedName{Name: applyName, Namespace: captCluster.Namespace}, workspaceApply)
 	if err == nil {
-		// Update existing WorkspaceTemplateApply if needed
-		workspaceApply.Spec = infrastructurev1beta1.WorkspaceTemplateApplySpec{
+		// Get the latest version before updating
+		latest := &infrastructurev1beta1.WorkspaceTemplateApply{}
+		if err := r.Get(ctx, types.NamespacedName{Name: applyName, Namespace: captCluster.Namespace}, latest); err != nil {
+			return nil, err
+		}
+
+		// Update existing WorkspaceTemplateApply
+		latest.Spec = infrastructurev1beta1.WorkspaceTemplateApplySpec{
 			TemplateRef: *captCluster.Spec.VPCTemplateRef,
 			Variables: map[string]string{
 				"name":        fmt.Sprintf("%s-vpc", captCluster.Name),
 				"environment": "production", // TODO: Make this configurable
 			},
 		}
-		if err := r.Update(ctx, workspaceApply); err != nil {
+		if err := r.Update(ctx, latest); err != nil {
+			if apierrors.IsConflict(err) {
+				logger.Info("Conflict detected while updating WorkspaceTemplateApply")
+				return nil, err
+			}
 			logger.Error(err, "Failed to update WorkspaceTemplateApply")
 			return nil, fmt.Errorf("failed to update WorkspaceTemplateApply: %v", err)
 		}
-		return workspaceApply, nil
+		return latest, nil
 	}
 
 	if err != nil && !apierrors.IsNotFound(err) {
@@ -156,6 +171,11 @@ func (r *Reconciler) getOrCreateWorkspaceTemplateApply(ctx context.Context, capt
 	}
 
 	if err := r.Create(ctx, workspaceApply); err != nil {
+		if apierrors.IsAlreadyExists(err) {
+			// If the resource already exists, requeue and try again
+			logger.Info("WorkspaceTemplateApply already exists, will retry")
+			return nil, err
+		}
 		logger.Error(err, "Failed to create WorkspaceTemplateApply")
 		return nil, fmt.Errorf("failed to create WorkspaceTemplateApply: %v", err)
 	}
@@ -276,6 +296,11 @@ func (r *Reconciler) verifyVPCID(ctx context.Context, captCluster *infrastructur
 	if workspaceApply.Status.LastAppliedTime != nil {
 		captCluster.Status.WorkspaceTemplateStatus.LastAppliedRevision = workspaceApply.Status.LastAppliedTime.String()
 	}
+
+	// Clear any previous failure status
+	captCluster.Status.FailureReason = nil
+	captCluster.Status.FailureMessage = nil
+	captCluster.Status.WorkspaceTemplateStatus.LastFailureMessage = ""
 
 	logger.Info("Updating final status",
 		"ready", captCluster.Status.Ready,

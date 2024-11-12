@@ -210,10 +210,13 @@ spec:
             values = [
               <<-EOT
               dnsPolicy: Default
+              priorityClassName: system-cluster-critical
               settings:
                 clusterName: ${module.eks.cluster_name}
                 clusterEndpoint: ${module.eks.cluster_endpoint}
                 interruptionQueue: ${module.karpenter.queue_name}
+                featureGates:
+                  spotToSpotConsolidation: true
               serviceAccount:
                 annotations:
                   eks.amazonaws.com/role-arn: ${module.karpenter.iam_role_arn}

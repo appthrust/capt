@@ -45,6 +45,17 @@ spec:
             }
           }
 
+          module "kms" {
+            source  = "terraform-aws-modules/kms/aws"
+            version = "~> 2.1"
+
+            description           = "${var.cluster_name} cluster encryption key"
+            enable_default_policy = true
+            key_owners            = [data.aws_caller_identity.current.arn]
+
+            tags = local.tags
+          }
+
           module "eks" {
             source  = "terraform-aws-modules/eks/aws"
             version = "~> 20.29"
@@ -61,7 +72,12 @@ spec:
             create_node_security_group    = false
 
             enable_cluster_creator_admin_permissions = true
-            create_kms_key                           = false
+
+            create_kms_key = false
+            cluster_encryption_config = {
+              resources        = ["secrets"]
+              provider_key_arn = module.kms.key_arn
+            }
 
             # Default Fargate profiles
             fargate_profiles = {

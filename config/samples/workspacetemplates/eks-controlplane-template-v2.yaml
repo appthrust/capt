@@ -61,6 +61,7 @@ spec:
             create_node_security_group    = false
 
             enable_cluster_creator_admin_permissions = true
+            create_kms_key                           = false
 
             # Default Fargate profiles
             fargate_profiles = {

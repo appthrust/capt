@@ -45,6 +45,8 @@ spec:
             }
           }
 
+          data "aws_caller_identity" "current" {}
+
           module "kms" {
             source  = "terraform-aws-modules/kms/aws"
             version = "~> 2.1"

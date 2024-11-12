@@ -10,6 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -49,7 +50,7 @@ func (r *Reconciler) updateStatus(
 	controlPlane *controlplanev1beta1.CAPTControlPlane,
 	workspaceApply *infrastructurev1beta1.WorkspaceTemplateApply,
 	cluster *clusterv1.Cluster,
-) (Result, error) {
+) (ctrl.Result, error) {
 	// Initialize WorkspaceTemplateStatus if not exists
 	if controlPlane.Status.WorkspaceTemplateStatus == nil {
 		controlPlane.Status.WorkspaceTemplateStatus = &controlplanev1beta1.WorkspaceTemplateStatus{}
@@ -72,7 +73,7 @@ func (r *Reconciler) handleNotReadyStatus(
 	controlPlane *controlplanev1beta1.CAPTControlPlane,
 	cluster *clusterv1.Cluster,
 	errorMessage string,
-) (Result, error) {
+) (ctrl.Result, error) {
 	if errorMessage != "" {
 		meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
 			Type:               controlplanev1beta1.ControlPlaneReadyCondition,
@@ -102,7 +103,7 @@ func (r *Reconciler) handleNotReadyStatus(
 	}
 
 	if err := r.Status().Update(ctx, controlPlane); err != nil {
-		return Result{}, err
+		return ctrl.Result{}, err
 	}
 
 	// Update Cluster status if it exists
@@ -110,11 +111,11 @@ func (r *Reconciler) handleNotReadyStatus(
 		patchBase := cluster.DeepCopy()
 		cluster.Status.ControlPlaneReady = false
 		if err := r.Status().Patch(ctx, cluster, client.MergeFrom(patchBase)); err != nil {
-			return Result{}, err
+			return ctrl.Result{}, err
 		}
 	}
 
-	return Result{RequeueAfter: requeueInterval}, nil
+	return ctrl.Result{RequeueAfter: requeueInterval}, nil
 }
 
 // handleReadyStatus updates the status for a ready control plane
@@ -123,7 +124,7 @@ func (r *Reconciler) handleReadyStatus(
 	controlPlane *controlplanev1beta1.CAPTControlPlane,
 	cluster *clusterv1.Cluster,
 	workspaceApply *infrastructurev1beta1.WorkspaceTemplateApply,
-) (Result, error) {
+) (ctrl.Result, error) {
 	meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
 		Type:               controlplanev1beta1.ControlPlaneReadyCondition,
 		Status:             metav1.ConditionTrue,
@@ -145,7 +146,7 @@ func (r *Reconciler) handleReadyStatus(
 	}
 
 	if err := r.Status().Update(ctx, controlPlane); err != nil {
-		return Result{}, err
+		return ctrl.Result{}, err
 	}
 
 	// Update Cluster status if it exists
@@ -153,11 +154,11 @@ func (r *Reconciler) handleReadyStatus(
 		patchBase := cluster.DeepCopy()
 		cluster.Status.ControlPlaneReady = true
 		if err := r.Status().Patch(ctx, cluster, client.MergeFrom(patchBase)); err != nil {
-			return Result{}, err
+			return ctrl.Result{}, err
 		}
 	}
 
-	return Result{}, nil
+	return ctrl.Result{}, nil
 }
 
 // setFailedStatus sets the status to failed with the given reason and message
@@ -167,7 +168,7 @@ func (r *Reconciler) setFailedStatus(
 	cluster *clusterv1.Cluster,
 	reason string,
 	message string,
-) (Result, error) {
+) (ctrl.Result, error) {
 	meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
 		Type:               controlplanev1beta1.ControlPlaneReadyCondition,
 		Status:             metav1.ConditionFalse,
@@ -185,7 +186,7 @@ func (r *Reconciler) setFailedStatus(
 	}
 
 	if err := r.Status().Update(ctx, controlPlane); err != nil {
-		return Result{}, err
+		return ctrl.Result{}, err
 	}
 
 	// Update Cluster status if it exists
@@ -194,9 +195,9 @@ func (r *Reconciler) setFailedStatus(
 		cluster.Status.ControlPlaneReady = false
 		cluster.Status.FailureMessage = &message
 		if err := r.Status().Patch(ctx, cluster, client.MergeFrom(patchBase)); err != nil {
-			return Result{}, err
+			return ctrl.Result{}, err
 		}
 	}
 
-	return Result{RequeueAfter: requeueInterval}, nil
+	return ctrl.Result{RequeueAfter: requeueInterval}, nil
 }

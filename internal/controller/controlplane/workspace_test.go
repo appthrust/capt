@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
@@ -26,7 +27,7 @@ func TestReconcileWorkspace(t *testing.T) {
 		cluster        *clusterv1.Cluster
 		workspaceApply *infrastructurev1beta1.WorkspaceTemplateApply
 		expectedError  bool
-		expectedResult Result
+		expectedResult ctrl.Result
 		validate       func(t *testing.T, client fake.ClientBuilder)
 	}{
 		{
@@ -82,7 +83,7 @@ func TestReconcileWorkspace(t *testing.T) {
 				},
 			},
 			expectedError:  false,
-			expectedResult: Result{RequeueAfter: requeueInterval},
+			expectedResult: ctrl.Result{RequeueAfter: requeueInterval},
 			validate: func(t *testing.T, client fake.ClientBuilder) {
 				// Verify WorkspaceTemplateApply was created
 				workspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
@@ -114,7 +115,7 @@ func TestReconcileWorkspace(t *testing.T) {
 			template:       nil,
 			cluster:        nil,
 			expectedError:  true,
-			expectedResult: Result{},
+			expectedResult: ctrl.Result{},
 		},
 	}
 
@@ -146,7 +147,7 @@ func TestReconcileWorkspace(t *testing.T) {
 			result, err := r.reconcileWorkspace(context.Background(), tt.controlPlane, tt.cluster)
 			if tt.expectedError {
 				assert.Error(t, err)
-				assert.Contains(t, err.Error(), "Failed to get WorkspaceTemplate")
+				assert.Contains(t, err.Error(), "failed to get WorkspaceTemplate")
 			} else {
 				assert.NoError(t, err)
 			}

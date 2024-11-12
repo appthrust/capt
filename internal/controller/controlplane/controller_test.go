@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -51,14 +52,14 @@ func TestReconcile(t *testing.T) {
 	tests := []struct {
 		name           string
 		existingObjs   []runtime.Object
-		expectedResult Result
+		expectedResult ctrl.Result
 		expectedError  bool
-		validate       func(t *testing.T, client client.Client, result Result, err error)
+		validate       func(t *testing.T, client client.Client, result ctrl.Result, err error)
 	}{
 		{
 			name:           "ControlPlane not found",
 			existingObjs:   []runtime.Object{},
-			expectedResult: Result{},
+			expectedResult: ctrl.Result{},
 			expectedError:  false,
 		},
 		{
@@ -76,10 +77,10 @@ func TestReconcile(t *testing.T) {
 					},
 				},
 			},
-			expectedResult: Result{},
+			expectedResult: ctrl.Result{},
 			expectedError:  false,
-			validate: func(t *testing.T, client client.Client, result Result, err error) {
-				assert.Equal(t, Result{}, result)
+			validate: func(t *testing.T, client client.Client, result ctrl.Result, err error) {
+				assert.Equal(t, ctrl.Result{}, result)
 				assert.NoError(t, err)
 
 				validateResourceDeletion(t, client, types.NamespacedName{
@@ -113,9 +114,9 @@ func TestReconcile(t *testing.T) {
 					},
 				},
 			},
-			expectedResult: Result{RequeueAfter: requeueInterval},
+			expectedResult: ctrl.Result{RequeueAfter: requeueInterval},
 			expectedError:  false,
-			validate: func(t *testing.T, client client.Client, result Result, err error) {
+			validate: func(t *testing.T, client client.Client, result ctrl.Result, err error) {
 				controlPlane := &controlplanev1beta1.CAPTControlPlane{}
 				err = client.Get(context.Background(), types.NamespacedName{
 					Name:      "test-controlplane",
@@ -153,9 +154,9 @@ func TestReconcile(t *testing.T) {
 					},
 				},
 			},
-			expectedResult: Result{},
+			expectedResult: ctrl.Result{},
 			expectedError:  true,
-			validate: func(t *testing.T, client client.Client, result Result, err error) {
+			validate: func(t *testing.T, client client.Client, result ctrl.Result, err error) {
 				assert.True(t, apierrors.IsNotFound(err))
 
 				controlPlane := &controlplanev1beta1.CAPTControlPlane{}
@@ -204,9 +205,9 @@ func TestReconcile(t *testing.T) {
 					},
 				},
 			},
-			expectedResult: Result{RequeueAfter: requeueInterval},
+			expectedResult: ctrl.Result{RequeueAfter: requeueInterval},
 			expectedError:  false,
-			validate: func(t *testing.T, client client.Client, result Result, err error) {
+			validate: func(t *testing.T, client client.Client, result ctrl.Result, err error) {
 				controlPlane := &controlplanev1beta1.CAPTControlPlane{}
 				err = client.Get(context.Background(), types.NamespacedName{
 					Name:      "test-controlplane",
@@ -265,9 +266,9 @@ func TestReconcile(t *testing.T) {
 					},
 				},
 			},
-			expectedResult: Result{},
+			expectedResult: ctrl.Result{},
 			expectedError:  false,
-			validate: func(t *testing.T, client client.Client, result Result, err error) {
+			validate: func(t *testing.T, client client.Client, result ctrl.Result, err error) {
 				assert.NoError(t, err)
 
 				// WorkspaceTemplateApplyの削除確認
@@ -298,12 +299,12 @@ func TestReconcile(t *testing.T) {
 				Scheme: scheme,
 			}
 
-			namespacedName := types.NamespacedName{
-				Name:      "test-controlplane",
-				Namespace: "default",
-			}
-
-			result, err := r.Reconcile(context.Background(), namespacedName)
+			result, err := r.Reconcile(context.Background(), ctrl.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      "test-controlplane",
+					Namespace: "default",
+				},
+			})
 
 			if tt.validate != nil {
 				tt.validate(t, client, result, err)

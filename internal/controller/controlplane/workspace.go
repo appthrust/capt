@@ -11,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
@@ -19,7 +20,7 @@ func (r *Reconciler) reconcileWorkspace(
 	ctx context.Context,
 	controlPlane *controlplanev1beta1.CAPTControlPlane,
 	cluster *clusterv1.Cluster,
-) (Result, error) {
+) (ctrl.Result, error) {
 	// Get the referenced WorkspaceTemplate
 	workspaceTemplate := &infrastructurev1beta1.WorkspaceTemplate{}
 	templateNamespacedName := types.NamespacedName{
@@ -27,16 +28,13 @@ func (r *Reconciler) reconcileWorkspace(
 		Namespace: controlPlane.Spec.WorkspaceTemplateRef.Namespace,
 	}
 	if err := r.Get(ctx, templateNamespacedName, workspaceTemplate); err != nil {
-		return Result{}, NewReconciliationError(
-			fmt.Sprintf("Failed to get WorkspaceTemplate: %v", err),
-			err,
-		)
+		return ctrl.Result{}, fmt.Errorf("failed to get WorkspaceTemplate: %v", err)
 	}
 
 	// Get or create WorkspaceTemplateApply
 	workspaceApply, err := r.getOrCreateWorkspaceTemplateApply(ctx, controlPlane, workspaceTemplate)
 	if err != nil {
-		return Result{}, err
+		return ctrl.Result{}, err
 	}
 
 	// Update status based on WorkspaceTemplateApply conditions

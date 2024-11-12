@@ -98,39 +98,49 @@ func (r *Reconciler) getOrCreateWorkspaceTemplateApply(
 
 // generateWorkspaceTemplateApplySpec generates the spec for a WorkspaceTemplateApply
 func (r *Reconciler) generateWorkspaceTemplateApplySpec(controlPlane *controlplanev1beta1.CAPTControlPlane) infrastructurev1beta1.WorkspaceTemplateApplySpec {
-	variables := map[string]string{
-		"cluster_name":       controlPlane.Name,
-		"kubernetes_version": controlPlane.Spec.Version,
-	}
-
-	if controlPlane.Spec.ControlPlaneConfig != nil {
-		if controlPlane.Spec.ControlPlaneConfig.EndpointAccess != nil {
-			variables["endpoint_public_access"] = fmt.Sprintf("%v", controlPlane.Spec.ControlPlaneConfig.EndpointAccess.Public)
-			variables["endpoint_private_access"] = fmt.Sprintf("%v", controlPlane.Spec.ControlPlaneConfig.EndpointAccess.Private)
-		}
-	}
-
-	if len(controlPlane.Spec.AdditionalTags) > 0 {
-		for k, v := range controlPlane.Spec.AdditionalTags {
-			variables[fmt.Sprintf("tags_%s", k)] = v
-		}
-	}
-
-	return infrastructurev1beta1.WorkspaceTemplateApplySpec{
+	spec := infrastructurev1beta1.WorkspaceTemplateApplySpec{
 		TemplateRef: infrastructurev1beta1.WorkspaceTemplateReference{
 			Name:      controlPlane.Spec.WorkspaceTemplateRef.Name,
 			Namespace: controlPlane.Spec.WorkspaceTemplateRef.Namespace,
 		},
-		Variables: variables,
-		WaitForWorkspaces: []infrastructurev1beta1.WorkspaceReference{
-			{
-				Name:      fmt.Sprintf("%s-vpc", controlPlane.Name),
-				Namespace: controlPlane.Namespace,
-			},
+		Variables: map[string]string{
+			"cluster_name":       controlPlane.Name,
+			"kubernetes_version": controlPlane.Spec.Version,
 		},
 		WriteConnectionSecretToRef: &xpv1.SecretReference{
 			Name:      fmt.Sprintf("%s-eks-connection", controlPlane.Name),
 			Namespace: controlPlane.Namespace,
 		},
 	}
+
+	// Add endpoint access configuration if specified
+	if controlPlane.Spec.ControlPlaneConfig != nil && controlPlane.Spec.ControlPlaneConfig.EndpointAccess != nil {
+		spec.Variables["endpoint_public_access"] = fmt.Sprintf("%v", controlPlane.Spec.ControlPlaneConfig.EndpointAccess.Public)
+		spec.Variables["endpoint_private_access"] = fmt.Sprintf("%v", controlPlane.Spec.ControlPlaneConfig.EndpointAccess.Private)
+	}
+
+	// Add additional tags if specified
+	if len(controlPlane.Spec.AdditionalTags) > 0 {
+		for k, v := range controlPlane.Spec.AdditionalTags {
+			spec.Variables[fmt.Sprintf("tags_%s", k)] = v
+		}
+	}
+
+	// Add VPC workspace dependency only if specified in the template
+	vpcWorkspaceName := fmt.Sprintf("%s-vpc", controlPlane.Name)
+	vpcWorkspace := &infrastructurev1beta1.WorkspaceTemplateApply{}
+	err := r.Get(context.Background(), types.NamespacedName{
+		Name:      vpcWorkspaceName,
+		Namespace: controlPlane.Namespace,
+	}, vpcWorkspace)
+	if err == nil {
+		spec.WaitForWorkspaces = []infrastructurev1beta1.WorkspaceReference{
+			{
+				Name:      vpcWorkspaceName,
+				Namespace: controlPlane.Namespace,
+			},
+		}
+	}
+
+	return spec
 }

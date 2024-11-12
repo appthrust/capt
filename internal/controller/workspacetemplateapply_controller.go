@@ -259,8 +259,8 @@ func (r *workspaceTemplateApplyReconciler) Reconcile(ctx context.Context, req ct
 		}
 	}
 
-	// Generate workspace name
-	workspaceName := cr.Name + "-workspace"
+	// Generate workspace name - use the WorkspaceTemplateApply name directly
+	workspaceName := cr.Name
 
 	// Replace template variables
 	template, err := replaceTemplateVariables(template, cr)

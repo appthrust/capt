@@ -46,8 +46,14 @@ func (r *Reconciler) handleExistingVPC(ctx context.Context, captCluster *infrast
 	logger := log.FromContext(ctx)
 	logger.Info("Using existing VPC", "vpcId", captCluster.Spec.ExistingVPCID)
 
+	// Initialize WorkspaceTemplateStatus if not exists
+	if captCluster.Status.WorkspaceTemplateStatus == nil {
+		captCluster.Status.WorkspaceTemplateStatus = &infrastructurev1beta1.CAPTClusterWorkspaceStatus{}
+	}
+
 	captCluster.Status.VPCID = captCluster.Spec.ExistingVPCID
 	captCluster.Status.Ready = true
+	captCluster.Status.WorkspaceTemplateStatus.Ready = true
 	meta.SetStatusCondition(&captCluster.Status.Conditions, metav1.Condition{
 		Type:               infrastructurev1beta1.VPCReadyCondition,
 		Status:             metav1.ConditionTrue,
@@ -217,6 +223,7 @@ func (r *Reconciler) updateVPCStatus(ctx context.Context, captCluster *infrastru
 
 		captCluster.Status.Ready = false
 		captCluster.Status.WorkspaceTemplateStatus.Ready = false
+
 		if errorMessage != "" {
 			captCluster.Status.WorkspaceTemplateStatus.LastFailureMessage = errorMessage
 			if workspaceApply.Status.LastAppliedTime != nil {
@@ -241,7 +248,7 @@ func (r *Reconciler) verifyVPCID(ctx context.Context, captCluster *infrastructur
 		return Result{RequeueAfter: requeueInterval}, nil
 	}
 
-	vpcID, err := endpoint.GetVPCIDFromWorkspace(ctx, r.Client, workspaceApply.Status.WorkspaceName)
+	vpcID, err := endpoint.GetVPCIDFromWorkspace(ctx, r.Client, captCluster.Namespace, workspaceApply.Status.WorkspaceName)
 	if err != nil {
 		logger.Error(err, "Failed to get VPC ID from workspace")
 		return Result{RequeueAfter: requeueInterval}, nil
@@ -266,7 +273,9 @@ func (r *Reconciler) verifyVPCID(ctx context.Context, captCluster *infrastructur
 
 	captCluster.Status.Ready = true
 	captCluster.Status.WorkspaceTemplateStatus.Ready = true
-	captCluster.Status.WorkspaceTemplateStatus.LastAppliedRevision = workspaceApply.Status.LastAppliedTime.String()
+	if workspaceApply.Status.LastAppliedTime != nil {
+		captCluster.Status.WorkspaceTemplateStatus.LastAppliedRevision = workspaceApply.Status.LastAppliedTime.String()
+	}
 
 	logger.Info("Updating final status",
 		"ready", captCluster.Status.Ready,

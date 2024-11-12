@@ -2,7 +2,7 @@
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
 kind: WorkspaceTemplate
 metadata:
-  name: eks-controlplane-template
+  name: eks-controlplane-template-v2
   namespace: default
 spec:
   template:
@@ -38,9 +38,16 @@ spec:
               name: "${WORKSPACE_NAME}-vpc-connection"
               key: vpc_config
         module: |
+          locals {
+            tags = {
+              Environment = "dev"
+              Terraform   = "true"
+            }
+          }
+
           module "eks" {
             source  = "terraform-aws-modules/eks/aws"
-            version = "~> 20.11"
+            version = "~> 20.29"
 
             cluster_name                   = var.cluster_name
             cluster_version                = var.kubernetes_version
@@ -70,11 +77,9 @@ spec:
               }
             }
 
-            tags = {
-              Environment = "dev"
-              Terraform   = "true"
+            tags = merge(local.tags, {
               "karpenter.sh/discovery" = var.cluster_name
-            }
+            })
           }
 
           module "eks_blueprints_addons" {
@@ -105,8 +110,26 @@ spec:
                   }
                 })
               }
-              vpc-cni    = {}
-              kube-proxy = {}
+              vpc-cni = {
+                configuration_values = jsonencode({
+                  resources = {
+                    requests = {
+                      cpu = "0.1"
+                      memory = "128M"
+                    }
+                  }
+                })
+              }
+              kube-proxy = {
+                configuration_values = jsonencode({
+                  resources = {
+                    requests = {
+                      cpu = "0.1"
+                      memory = "64M"
+                    }
+                  }
+                })
+              }
             }
 
             enable_karpenter = true
@@ -121,10 +144,7 @@ spec:
               iam_role_use_name_prefix = false
             }
 
-            tags = {
-              Environment = "dev"
-              Terraform   = "true"
-            }
+            tags = local.tags
           }
 
           resource "aws_eks_access_entry" "karpenter_node_access_entry" {
@@ -138,6 +158,57 @@ spec:
                 kubernetes_groups
               ]
             }
+          }
+
+
+          module "karpenter" {
+            source  = "terraform-aws-modules/eks/aws//modules/karpenter"
+            version = "~> 20.29"
+
+            cluster_name          = module.eks.cluster_name
+            enable_v1_permissions = true
+            namespace             = "karpenter"
+
+            # Name needs to match role name passed to the EC2NodeClass
+            node_iam_role_use_name_prefix = false
+            node_iam_role_name            = "${module.eks.cluster_name}-node"
+
+            # EKS Fargate does not support pod identity
+            create_pod_identity_association = false
+            enable_irsa                     = true
+            irsa_oidc_provider_arn          = module.eks.oidc_provider_arn
+
+            tags = local.tags
+          }
+
+          resource "helm_release" "karpenter" {
+            name                = "karpenter"
+            namespace           = "karpenter"
+            create_namespace    = true
+            repository          = "oci://public.ecr.aws/karpenter"
+            chart               = "karpenter"
+            version             = "1.0.7"
+            wait                = false
+
+            values = [
+              <<-EOT
+              dnsPolicy: Default
+              settings:
+                clusterName: ${module.eks.cluster_name}
+                clusterEndpoint: ${module.eks.cluster_endpoint}
+                interruptionQueue: ${module.karpenter.queue_name}
+              serviceAccount:
+                annotations:
+                  eks.amazonaws.com/role-arn: ${module.karpenter.iam_role_arn}
+              webhook:
+                enabled: false
+              EOT
+            ]
+          }
+
+          variable "region" {
+            type = string
+            description = "Name of AWS Region"
           }
 
           variable "cluster_name" {
@@ -188,7 +259,7 @@ spec:
 
           output "pod_execution_role_arn" {
             description = "The ARN of the pod execution role for Fargate profiles"
-            value       = module.eks.fargate_profile_pod_execution_role_arn
+            value       = module.eks.fargate_profiles.pod_execution_role_arn
             sensitive   = true
           }
 
@@ -223,7 +294,7 @@ spec:
                 - --cluster-name
                 - ${module.eks.cluster_name}
                 - --region
-                - ${data.aws_region.current.name}
+                - ${var.region}
                 command: aws
                 env:
                 - name: AWS_STS_REGIONAL_ENDPOINTS
@@ -231,4 +302,3 @@ spec:
                 provideClusterInfo: false
           EOT
           }
-          data "aws_region" "current" {}

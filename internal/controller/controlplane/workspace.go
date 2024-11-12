@@ -51,6 +51,14 @@ func (r *Reconciler) getOrCreateWorkspaceTemplateApply(
 	applyName := controlPlane.Spec.WorkspaceTemplateApplyName
 	if applyName == "" {
 		applyName = fmt.Sprintf("%s-eks-controlplane-apply", controlPlane.Name)
+		// Update WorkspaceTemplateApplyName in Spec first
+		controlPlaneCopy := controlPlane.DeepCopy()
+		controlPlaneCopy.Spec.WorkspaceTemplateApplyName = applyName
+		if err := r.Update(ctx, controlPlaneCopy); err != nil {
+			return nil, fmt.Errorf("failed to update WorkspaceTemplateApplyName in spec: %v", err)
+		}
+		// Update the original object
+		controlPlane.Spec.WorkspaceTemplateApplyName = applyName
 	}
 
 	// Try to find existing WorkspaceTemplateApply
@@ -87,12 +95,6 @@ func (r *Reconciler) getOrCreateWorkspaceTemplateApply(
 		return nil, fmt.Errorf("failed to create WorkspaceTemplateApply: %v", err)
 	}
 
-	// Update WorkspaceTemplateApplyName in Spec
-	controlPlane.Spec.WorkspaceTemplateApplyName = applyName
-	if err := r.Update(ctx, controlPlane); err != nil {
-		return nil, fmt.Errorf("failed to update WorkspaceTemplateApplyName in spec: %v", err)
-	}
-
 	return workspaceApply, nil
 }
 
@@ -126,17 +128,17 @@ func (r *Reconciler) generateWorkspaceTemplateApplySpec(controlPlane *controlpla
 		}
 	}
 
-	// Add VPC workspace dependency only if specified in the template
-	vpcWorkspaceName := fmt.Sprintf("%s-vpc", controlPlane.Name)
-	vpcWorkspace := &infrastructurev1beta1.WorkspaceTemplateApply{}
+	// Add VPC workspace dependency
+	vpcWorkspaceApplyName := fmt.Sprintf("%s-vpc", controlPlane.Name)
+	vpcWorkspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
 	err := r.Get(context.Background(), types.NamespacedName{
-		Name:      vpcWorkspaceName,
+		Name:      vpcWorkspaceApplyName,
 		Namespace: controlPlane.Namespace,
-	}, vpcWorkspace)
+	}, vpcWorkspaceApply)
 	if err == nil {
 		spec.WaitForWorkspaces = []infrastructurev1beta1.WorkspaceReference{
 			{
-				Name:      vpcWorkspaceName,
+				Name:      vpcWorkspaceApplyName,
 				Namespace: controlPlane.Namespace,
 			},
 		}

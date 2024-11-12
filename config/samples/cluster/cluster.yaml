@@ -2,7 +2,7 @@
 apiVersion: cluster.x-k8s.io/v1beta1
 kind: Cluster
 metadata:
-  name: demo-cluster
+  name: demo-cluster2
   namespace: default
 spec:
   clusterNetwork:

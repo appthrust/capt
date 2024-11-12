@@ -205,7 +205,9 @@ spec:
             repository       = "oci://public.ecr.aws/karpenter"
             chart            = "karpenter"
             version          = "1.0.7"
-            wait             = false
+            force_update     = true
+            atomic           = true
+            cleanup_on_fail  = true
 
             values = [
               <<-EOT

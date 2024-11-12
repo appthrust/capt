@@ -143,10 +143,23 @@ func (r *Reconciler) handleReadyStatus(
 			return r.setFailedStatus(ctx, controlPlane, cluster, ReasonEndpointUpdateFailed, errMsg)
 		} else if apiEndpoint != nil {
 			logger.Info("Updating control plane endpoint", "endpoint", apiEndpoint)
+
+			// Update CAPTControlPlane endpoint
 			controlPlane.Spec.ControlPlaneEndpoint = *apiEndpoint
 			if err := r.Update(ctx, controlPlane); err != nil {
 				errMsg := fmt.Sprintf("Failed to update control plane endpoint: %v", err)
 				return r.setFailedStatus(ctx, controlPlane, cluster, ReasonEndpointUpdateFailed, errMsg)
+			}
+
+			// Update parent Cluster endpoint
+			if cluster != nil {
+				patchBase := cluster.DeepCopy()
+				cluster.Spec.ControlPlaneEndpoint = *apiEndpoint
+				if err := r.Patch(ctx, cluster, client.MergeFrom(patchBase)); err != nil {
+					errMsg := fmt.Sprintf("Failed to update cluster endpoint: %v", err)
+					return r.setFailedStatus(ctx, controlPlane, cluster, ReasonEndpointUpdateFailed, errMsg)
+				}
+				logger.Info("Updated parent cluster endpoint", "endpoint", apiEndpoint)
 			}
 		}
 	}

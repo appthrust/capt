@@ -2,7 +2,7 @@
 apiVersion: controlplane.cluster.x-k8s.io/v1beta1
 kind: CAPTControlPlane
 metadata:
-  name: demo-cluster3
+  name: demo-cluster4
   namespace: default
 spec:
   version: "1.31"

@@ -12,6 +12,7 @@ spec:
         name: eks-controlplane-template
         namespace: default
       controlPlaneConfig:
+        region: "ap-northeast-1"
         endpointAccess:
           public: ${controlPlane.endpointAccess.public}
           private: ${controlPlane.endpointAccess.private}

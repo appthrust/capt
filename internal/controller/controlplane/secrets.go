@@ -31,14 +31,16 @@ func (r *Reconciler) reconcileSecrets(ctx context.Context, controlPlane *control
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling secrets")
 
+	// Skip if secrets are already reconciled
+	if controlPlane.Status.SecretsReady {
+		logger.V(4).Info("Secrets already reconciled")
+		return nil
+	}
+
 	// Verify WorkspaceTemplateApply is ready and has a workspace name
 	if workspaceApply.Status.WorkspaceName == "" {
 		logger.Info("Workspace name not set, waiting for WorkspaceTemplateApply to be ready")
-		_, err := r.setFailedStatus(ctx, controlPlane, cluster, ReasonWorkspaceNotReady, "Waiting for workspace to be created")
-		if err != nil {
-			return fmt.Errorf("failed to set status: %v", err)
-		}
-		return fmt.Errorf("workspace name is not set")
+		return nil
 	}
 
 	// Get workspace
@@ -54,11 +56,7 @@ func (r *Reconciler) reconcileSecrets(ctx context.Context, controlPlane *control
 		Namespace: workspaceApply.Namespace,
 	}, workspace); err != nil {
 		logger.Error(err, "Failed to get workspace")
-		_, setErr := r.setFailedStatus(ctx, controlPlane, cluster, ReasonEndpointError, fmt.Sprintf("Failed to get workspace: %v", err))
-		if setErr != nil {
-			return fmt.Errorf("failed to set status: %v (original error: %v)", setErr, err)
-		}
-		return err
+		return nil
 	}
 
 	// Get connection secret
@@ -67,11 +65,7 @@ func (r *Reconciler) reconcileSecrets(ctx context.Context, controlPlane *control
 	if secretRef == nil {
 		err := fmt.Errorf("workspace connection secret reference is not set")
 		logger.Error(err, "Failed to get secret reference")
-		_, setErr := r.setFailedStatus(ctx, controlPlane, cluster, ReasonSecretError, err.Error())
-		if setErr != nil {
-			return fmt.Errorf("failed to set status: %v (original error: %v)", setErr, err)
-		}
-		return err
+		return nil
 	}
 
 	if err := r.Get(ctx, client.ObjectKey{
@@ -80,19 +74,11 @@ func (r *Reconciler) reconcileSecrets(ctx context.Context, controlPlane *control
 	}, secret); err != nil {
 		if !apierrors.IsNotFound(err) {
 			logger.Error(err, "Failed to get secret")
-			_, setErr := r.setFailedStatus(ctx, controlPlane, cluster, ReasonSecretError, fmt.Sprintf("Failed to get secret: %v", err))
-			if setErr != nil {
-				return fmt.Errorf("failed to set status: %v (original error: %v)", setErr, err)
-			}
-			return err
+			return nil
 		}
 		// If secret is not found, wait for it to be created
 		logger.Info("Waiting for secret to be created")
-		_, err := r.setFailedStatus(ctx, controlPlane, cluster, ReasonSecretError, "Waiting for connection secret to be created")
-		if err != nil {
-			return fmt.Errorf("failed to set status: %v", err)
-		}
-		return fmt.Errorf("connection secret not found")
+		return nil
 	}
 
 	// Initialize secret manager
@@ -102,20 +88,12 @@ func (r *Reconciler) reconcileSecrets(ctx context.Context, controlPlane *control
 	endpoint, err := secretManager.GetClusterEndpoint(ctx, workspace, secret)
 	if err != nil {
 		logger.Error(err, "Failed to get cluster endpoint")
-		_, setErr := r.setFailedStatus(ctx, controlPlane, cluster, ReasonEndpointError, fmt.Sprintf("Failed to get cluster endpoint: %v", err))
-		if setErr != nil {
-			return fmt.Errorf("failed to set status: %v (original error: %v)", setErr, err)
-		}
-		return err
+		return nil
 	}
 
 	// If endpoint is not ready yet, requeue
 	if endpoint == nil {
 		logger.Info("Endpoint not ready yet, will retry")
-		_, err := r.setFailedStatus(ctx, controlPlane, cluster, ReasonEndpointNotReady, "Waiting for endpoint to be available")
-		if err != nil {
-			return fmt.Errorf("failed to set status: %v", err)
-		}
 		return nil
 	}
 
@@ -123,99 +101,97 @@ func (r *Reconciler) reconcileSecrets(ctx context.Context, controlPlane *control
 	caData, err := secretManager.GetCertificateAuthorityData(ctx, secret)
 	if err != nil {
 		logger.Error(err, "Failed to get certificate authority data")
-		return err
+		return nil
 	}
 
-	// Create Cluster API kubeconfig secret
-	kubeconfigSecret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("%s-control-plane-kubeconfig", controlPlane.Name),
-			Namespace: controlPlane.Namespace,
-		},
-		Data: map[string][]byte{
-			"value": secret.Data["kubeconfig"],
-		},
-	}
-
-	// Set controller reference for kubeconfig secret
-	if err := controllerutil.SetControllerReference(controlPlane, kubeconfigSecret, r.Scheme); err != nil {
-		logger.Error(err, "Failed to set controller reference for kubeconfig secret")
-		return err
-	}
-
-	// Create or update the kubeconfig secret
-	if err := r.Create(ctx, kubeconfigSecret); err != nil {
-		if !apierrors.IsAlreadyExists(err) {
-			logger.Error(err, "Failed to create kubeconfig secret")
-			return err
-		}
-		// Update existing secret
-		existing := &corev1.Secret{}
-		if err := r.Get(ctx, client.ObjectKey{Name: kubeconfigSecret.Name, Namespace: kubeconfigSecret.Namespace}, existing); err != nil {
+	// Check if kubeconfig secret already exists
+	kubeconfigSecretName := fmt.Sprintf("%s-control-plane-kubeconfig", controlPlane.Name)
+	existingKubeconfigSecret := &corev1.Secret{}
+	kubeconfigSecretExists := true
+	if err := r.Get(ctx, client.ObjectKey{
+		Name:      kubeconfigSecretName,
+		Namespace: controlPlane.Namespace,
+	}, existingKubeconfigSecret); err != nil {
+		if !apierrors.IsNotFound(err) {
 			logger.Error(err, "Failed to get existing kubeconfig secret")
-			return err
+			return nil
 		}
-		existing.Data = kubeconfigSecret.Data
-		if err := r.Update(ctx, existing); err != nil {
-			logger.Error(err, "Failed to update kubeconfig secret")
-			return err
-		}
+		kubeconfigSecretExists = false
 	}
 
-	// Create Cluster API CA certificate secret
-	caSecret := &corev1.Secret{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("%s-ca", controlPlane.Name),
-			Namespace: controlPlane.Namespace,
-		},
-		Data: map[string][]byte{
-			"tls.crt": []byte(caData),
-			"ca.crt":  []byte(caData),
-		},
-	}
-
-	// Set controller reference for CA secret
-	if err := controllerutil.SetControllerReference(controlPlane, caSecret, r.Scheme); err != nil {
-		logger.Error(err, "Failed to set controller reference for CA secret")
-		return err
-	}
-
-	// Create or update the CA secret
-	if err := r.Create(ctx, caSecret); err != nil {
-		if !apierrors.IsAlreadyExists(err) {
-			logger.Error(err, "Failed to create CA secret")
-			return err
+	// Create or update kubeconfig secret only if needed
+	if !kubeconfigSecretExists {
+		kubeconfigSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      kubeconfigSecretName,
+				Namespace: controlPlane.Namespace,
+			},
+			Data: map[string][]byte{
+				"value": secret.Data["kubeconfig"],
+			},
 		}
-		// Update existing secret
-		existing := &corev1.Secret{}
-		if err := r.Get(ctx, client.ObjectKey{Name: caSecret.Name, Namespace: caSecret.Namespace}, existing); err != nil {
+
+		if err := controllerutil.SetControllerReference(controlPlane, kubeconfigSecret, r.Scheme); err != nil {
+			logger.Error(err, "Failed to set controller reference for kubeconfig secret")
+			return nil
+		}
+
+		if err := r.Create(ctx, kubeconfigSecret); err != nil {
+			logger.Error(err, "Failed to create kubeconfig secret")
+			return nil
+		}
+		logger.Info("Created kubeconfig secret")
+	}
+
+	// Check if CA secret already exists
+	caSecretName := fmt.Sprintf("%s-ca", controlPlane.Name)
+	existingCASecret := &corev1.Secret{}
+	caSecretExists := true
+	if err := r.Get(ctx, client.ObjectKey{
+		Name:      caSecretName,
+		Namespace: controlPlane.Namespace,
+	}, existingCASecret); err != nil {
+		if !apierrors.IsNotFound(err) {
 			logger.Error(err, "Failed to get existing CA secret")
-			return err
+			return nil
 		}
-		existing.Data = caSecret.Data
-		if err := r.Update(ctx, existing); err != nil {
-			logger.Error(err, "Failed to update CA secret")
-			return err
-		}
+		caSecretExists = false
 	}
 
-	// Update CAPTControlPlane endpoint
-	patchBase := controlPlane.DeepCopy()
-	controlPlane.Spec.ControlPlaneEndpoint = *endpoint
+	// Create or update CA secret only if needed
+	if !caSecretExists {
+		caSecret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      caSecretName,
+				Namespace: controlPlane.Namespace,
+			},
+			Data: map[string][]byte{
+				"tls.crt": []byte(caData),
+				"ca.crt":  []byte(caData),
+			},
+		}
 
-	if err := r.Patch(ctx, controlPlane, client.MergeFrom(patchBase)); err != nil {
-		logger.Error(err, "Failed to patch CAPTControlPlane endpoint")
-		return err
+		if err := controllerutil.SetControllerReference(controlPlane, caSecret, r.Scheme); err != nil {
+			logger.Error(err, "Failed to set controller reference for CA secret")
+			return nil
+		}
+
+		if err := r.Create(ctx, caSecret); err != nil {
+			logger.Error(err, "Failed to create CA secret")
+			return nil
+		}
+		logger.Info("Created CA secret")
 	}
 
-	// Update owner cluster endpoint if it exists
-	if cluster != nil {
-		patchBase := cluster.DeepCopy()
-		cluster.Spec.ControlPlaneEndpoint = controlPlane.Spec.ControlPlaneEndpoint
-		if err := r.Patch(ctx, cluster, client.MergeFrom(patchBase)); err != nil {
-			logger.Error(err, "Failed to patch Cluster endpoint")
-			return err
+	// Mark secrets as reconciled
+	if !controlPlane.Status.SecretsReady {
+		patchBase := controlPlane.DeepCopy()
+		controlPlane.Status.SecretsReady = true
+		if err := r.Status().Patch(ctx, controlPlane, client.MergeFrom(patchBase)); err != nil {
+			logger.Error(err, "Failed to update secrets status")
+			return nil
 		}
+		logger.Info("Marked secrets as ready")
 	}
 
 	return nil

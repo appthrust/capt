@@ -25,130 +25,179 @@ CAPTControlPlaneコントローラーにおいて、リコンサイルが高頻�
 - ステータス管理ロジックの変更
 - エラーハンドリングの変更
 
+## 問題分析
+
+### 高頻度リコンサイルの原因
+
+1. エンドポイント更新の重複
+   - secrets.goとstatus.goの両方でエンドポイントの更新が行われている
+   - 各更新が新しいリコンサイルをトリガーしている
+
+2. シークレット管理の問題
+   - シークレットの更新が毎回行われ、新しいリコンサイルをトリガーしている
+   - シークレットの状態チェックが不十分
+
+3. 状態更新の連鎖
+   - 一つの更新が次の更新を引き起こす連鎖反応が発生
+   - エラー状態でも継続的なリコンサイルが行われる
+
+### 影響範囲
+
+1. パフォーマンスへの影響
+   - コントローラーのCPU使用率が高い
+   - APIサーバーへの不要な負荷
+   - メモリ使用量の増加
+
+2. 運用への影響
+   - ログの肥大化
+   - モニタリングの困難さ
+   - デバッグの複雑化
+
 ## Proposal
 
-### User Stories
+### 改善方針
 
-#### Story 1: システムリソースの効率的な利用
-
-クラスター管理者として、CAPTControlPlaneコントローラーが適切な間隔でリコンサイルを実行し、システムリソースを効率的に利用することを期待します。
-
-#### Story 2: ログの適切な管理
-
-クラスター管理者として、ログが適切な頻度で出力され、必要な情報を容易に確認できることを期待します。
-
-### Implementation Details
-
-1. リコンサイル間隔の制御
+1. リコンサイル間隔の最適化
 ```go
-// 現在の実装
-return ctrl.Result{RequeueAfter: requeueInterval}, nil
-
-// 提案される改善
 const (
-    // 通常のリコンサイル間隔
+    // 通常のリコンサイル間隔（30秒）
     defaultRequeueInterval = 30 * time.Second
-    // エラー時のリコンサイル間隔
+    // エラー時のリコンサイル間隔（10秒）
     errorRequeueInterval = 10 * time.Second
-    // 初期化時のリコンサイル間隔
+    // 初期化時のリコンサイル間隔（5秒）
     initializationRequeueInterval = 5 * time.Second
 )
 ```
 
-2. 状態に応じたリコンサイル間隔の調整
+2. シークレット管理の改善
 ```go
-func (r *Reconciler) determineRequeueInterval(controlPlane *controlplanev1beta1.CAPTControlPlane) time.Duration {
-    // 初期化中は短い間隔
-    if !controlPlane.Status.Initialized {
-        return initializationRequeueInterval
-    }
+// シークレットの状態を追跡
+type CAPTControlPlaneStatus struct {
+    // 既存のフィールド
+    ...
+    // シークレットが正常に作成されたかを追跡
+    SecretsReady bool `json:"secretsReady,omitempty"`
+}
 
-    // エラー状態の場合は中間の間隔
-    if controlPlane.Status.FailureMessage != nil {
-        return errorRequeueInterval
+// シークレット更新の最適化
+func (r *Reconciler) reconcileSecrets(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane) error {
+    // シークレットが既に準備済みの場合はスキップ
+    if controlPlane.Status.SecretsReady {
+        return nil
     }
-
-    // 通常状態は長い間隔
-    return defaultRequeueInterval
+    // シークレット更新処理
+    ...
 }
 ```
 
-3. リコンサイル条件の最適化
+3. エンドポイント更新の一元化
 ```go
-func (r *Reconciler) shouldRequeue(controlPlane *controlplanev1beta1.CAPTControlPlane) bool {
-    // 状態が変更された場合のみリコンサイル
-    return controlPlane.Status.LastTransitionTime.Add(defaultRequeueInterval).Before(time.Now())
+// status.goでのエンドポイント更新
+func (r *Reconciler) updateEndpoint(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane) error {
+    // エンドポイントの更新を一箇所で管理
+    ...
 }
 ```
 
-### Risks and Mitigations
+### 実装計画
 
-1. リコンサイル間隔が長すぎる場合
+1. フェーズ1: 基本的なリコンサイル間隔の最適化
+   - リコンサイル間隔の定数定義
+   - 状態に応じた間隔の調整
+   - テストケースの追加
+
+2. フェーズ2: シークレット管理の改善
+   - SecretsReady状態の追加
+   - シークレット更新ロジックの最適化
+   - エラーハンドリングの改善
+
+3. フェーズ3: エンドポイント更新の最適化
+   - 更新ロジックの一元化
+   - 不要な更新の抑制
+   - テストの拡充
+
+### リスクと対策
+
+1. リコンサイル間隔が長すぎる場合のリスク
    - 対策: 状態に応じた適切な間隔の設定
    - 対策: 重要なイベントの即時処理
 
-2. 状態更新の遅延
-   - 対策: 重要な状態変更の即時反映
-   - 対策: エラー状態での適切な間隔設定
+2. シークレット更新の遅延
+   - 対策: 初期化フェーズでの短い間隔の使用
+   - 対策: エラー状態での適切な再試行
 
-3. リソース状態の同期ずれ
-   - 対策: 適切なキャッシュ無効化
-   - 対策: 重要な更新の即時反映
+3. エンドポイント更新の競合
+   - 対策: 更新ロジックの一元化
+   - 対策: 適切なロック機構の導入
 
 ### Test Plan
 
 1. ユニットテスト
    - リコンサイル間隔の計算テスト
-   - 状態に応じた間隔調整テスト
-   - エラー状態のハンドリングテスト
+   - シークレット状態管理のテスト
+   - エンドポイント更新のテスト
 
-2. E2Eテスト
+2. 統合テスト
    - 長期実行時のリソース使用量テスト
-   - 状態変更の反映タイミングテスト
    - エラー状態からの回復テスト
+   - 並行処理の整合性テスト
+
+3. パフォーマンステスト
+   - CPU使用率の測定
+   - メモリ使用量の測定
+   - APIサーバー負荷の測定
 
 ### Graduation Criteria
 
-1. CPU使用率の改善
-2. メモリ使用量の安定化
-3. ログ出力量の適正化
-4. 状態更新の適切な反映
+1. パフォーマンス基準
+   - CPU使用率が50%以下に低下
+   - メモリ使用量が安定
+   - リコンサイル間隔が適切に維持
+
+2. 安定性基準
+   - エラー率が1%以下
+   - 不要なリコンサイルの排除
+   - ログ出力量の適正化
 
 ### Upgrade Strategy
 
 この変更は後方互換性があり、特別なアップグレード手順は必要ありません。
+既存のクラスターは、コントローラーの再起動後に新しい動作に移行します。
 
 ## Implementation History
 
-- [ ] 2024-03-XX: CAPTEP提案
+- [x] 2024-03-13: 問題の詳細分析とCAPTEP更新
 - [ ] リコンサイル間隔の最適化実装
-- [ ] テストの実装
-- [ ] レビュー
-- [ ] マージ
+- [ ] シークレット管理の改善実装
+- [ ] エンドポイント更新の最適化実装
+- [ ] テストの実装と検証
+- [ ] レビューとマージ
 
 ## Alternatives
 
 1. イベントベースの実装
    - メリット: リソース使用量の削減
    - デメリット: 実装の複雑化
+   - 結論: 現時点では複雑さのリスクが高いため採用しない
 
-2. 状態変更の監視
-   - メリット: 即時反映が可能
-   - デメリット: オーバーヘッドの増加
+2. キャッシュの導入
+   - メリット: 更新頻度の削減
+   - デメリット: 状態の整合性管理が複雑
+   - 結論: 将来の最適化オプションとして検討
 
 ## Lessons Learned
 
-1. リコンサイル間隔の重要性
-   - システムリソースへの影響
-   - ログ管理の重要性
-   - 状態更新の適切なタイミング
+1. 状態管理の重要性
+   - 状態の一元管理
+   - 更新の適切なタイミング
+   - エラー状態の適切な処理
 
-2. Kubernetes Controllerの設計原則
-   - レベルトリガー vs エッジトリガー
-   - キャッシュの重要性
-   - リソース効率の考慮
+2. パフォーマンスとリソース効率
+   - 不要な更新の影響
+   - リソース使用量の監視
+   - 適切な間隔設定の重要性
 
-3. 監視とデバッグ
-   - 適切なログレベル
-   - メトリクスの重要性
-   - トレーサビリティの確保
+3. テストと検証
+   - 長期実行時の挙動
+   - エラー状態のハンドリング
+   - パフォーマンス測定の重要性

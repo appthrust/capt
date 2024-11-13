@@ -22,6 +22,58 @@ const (
 	CAPTControlPlaneFinalizer = "controlplane.cluster.x-k8s.io/captcontrolplane"
 )
 
+// cleanupResources cleans up all resources associated with the CAPTControlPlane
+func (r *Reconciler) cleanupResources(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane) error {
+	logger := log.FromContext(ctx)
+
+	// 親クラスタを取得
+	cluster := &clusterv1.Cluster{}
+	if err := r.Get(ctx, types.NamespacedName{
+		Name:      controlPlane.Name,
+		Namespace: controlPlane.Namespace,
+	}, cluster); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return fmt.Errorf("failed to get parent cluster: %v", err)
+		}
+		// 親クラスタが既に削除されている場合は処理を続行
+		logger.Info("Parent cluster already deleted")
+	} else {
+		// エンドポイントを削除
+		cluster.Spec.ControlPlaneEndpoint = clusterv1.APIEndpoint{}
+		if err := r.Update(ctx, cluster); err != nil {
+			return fmt.Errorf("failed to update cluster endpoint: %v", err)
+		}
+		logger.Info("Successfully cleared control plane endpoint")
+	}
+
+	// Find and delete associated WorkspaceTemplateApply
+	var applyName string
+	if controlPlane.Spec.WorkspaceTemplateApplyName != "" {
+		applyName = controlPlane.Spec.WorkspaceTemplateApplyName
+	} else {
+		applyName = fmt.Sprintf("%s-eks-controlplane-apply", controlPlane.Name)
+	}
+
+	workspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
+	err := r.Get(ctx, types.NamespacedName{
+		Name:      applyName,
+		Namespace: controlPlane.Namespace,
+	}, workspaceApply)
+
+	if err == nil {
+		// WorkspaceTemplateApply exists, delete it
+		if err := r.Delete(ctx, workspaceApply); err != nil {
+			logger.Error(err, "Failed to delete WorkspaceTemplateApply")
+			return fmt.Errorf("failed to delete WorkspaceTemplateApply: %v", err)
+		}
+		logger.Info("Successfully deleted WorkspaceTemplateApply")
+	} else if !apierrors.IsNotFound(err) {
+		return fmt.Errorf("failed to get WorkspaceTemplateApply: %v", err)
+	}
+
+	return nil
+}
+
 // Reconcile handles CAPTControlPlane events
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
@@ -198,36 +250,4 @@ func (r *Reconciler) setOwnerReference(ctx context.Context, controlPlane *contro
 	}
 
 	return r.Update(ctx, controlPlane)
-}
-
-// cleanupResources cleans up all resources associated with the CAPTControlPlane
-func (r *Reconciler) cleanupResources(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane) error {
-	logger := log.FromContext(ctx)
-
-	// Find and delete associated WorkspaceTemplateApply
-	var applyName string
-	if controlPlane.Spec.WorkspaceTemplateApplyName != "" {
-		applyName = controlPlane.Spec.WorkspaceTemplateApplyName
-	} else {
-		applyName = fmt.Sprintf("%s-eks-controlplane-apply", controlPlane.Name)
-	}
-
-	workspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
-	err := r.Get(ctx, types.NamespacedName{
-		Name:      applyName,
-		Namespace: controlPlane.Namespace,
-	}, workspaceApply)
-
-	if err == nil {
-		// WorkspaceTemplateApply exists, delete it
-		if err := r.Delete(ctx, workspaceApply); err != nil {
-			logger.Error(err, "Failed to delete WorkspaceTemplateApply")
-			return fmt.Errorf("failed to delete WorkspaceTemplateApply: %v", err)
-		}
-		logger.Info("Successfully deleted WorkspaceTemplateApply")
-	} else if !apierrors.IsNotFound(err) {
-		return fmt.Errorf("failed to get WorkspaceTemplateApply: %v", err)
-	}
-
-	return nil
 }

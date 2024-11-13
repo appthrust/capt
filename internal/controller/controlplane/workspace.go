@@ -115,6 +115,11 @@ func (r *Reconciler) generateWorkspaceTemplateApplySpec(controlPlane *controlpla
 		},
 	}
 
+	// Add region from ControlPlaneConfig
+	if controlPlane.Spec.ControlPlaneConfig != nil {
+		spec.Variables["region"] = controlPlane.Spec.ControlPlaneConfig.Region
+	}
+
 	// Add endpoint access configuration if specified
 	if controlPlane.Spec.ControlPlaneConfig != nil && controlPlane.Spec.ControlPlaneConfig.EndpointAccess != nil {
 		spec.Variables["endpoint_public_access"] = fmt.Sprintf("%v", controlPlane.Spec.ControlPlaneConfig.EndpointAccess.Public)

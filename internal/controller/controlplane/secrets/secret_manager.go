@@ -2,10 +2,10 @@ package secrets
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net/url"
 	"strconv"
-	"strings"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
@@ -49,7 +49,7 @@ func (m *Manager) GetAndValidateSecret(ctx context.Context, controlPlane *contro
 	// Validate required fields
 	requiredFields := []string{
 		"kubeconfig",
-		"ca.crt",
+		"cluster_certificate_authority_data",
 	}
 	for _, field := range requiredFields {
 		if _, ok := secret.Data[field]; !ok {
@@ -69,35 +69,38 @@ func (m *Manager) GetClusterEndpoint(ctx context.Context, workspace *unstructure
 	logger.Info("Getting cluster endpoint")
 
 	// Try to get endpoint from workspace outputs
-	outputs, found, err := unstructured.NestedMap(workspace.Object, "status", "outputs")
+	outputs, found, err := unstructured.NestedMap(workspace.Object, "status", "atProvider", "outputs")
 	if err != nil {
 		logger.Error(err, "Failed to get workspace outputs")
 		return nil, fmt.Errorf("failed to get workspace outputs: %v", err)
 	}
 
-	if found {
-		endpoint, ok := outputs["endpoint"].(map[string]interface{})
-		if ok {
-			endpointValue, ok := endpoint["value"].(string)
-			if ok {
-				logger.Info("Found endpoint in workspace outputs", "endpoint", endpointValue)
-				return parseEndpoint(endpointValue)
-			}
+	if found && outputs != nil {
+		if endpointValue, ok := outputs["cluster_endpoint"].(string); ok {
+			logger.Info("Found cluster_endpoint in workspace outputs", "endpoint", endpointValue)
+			return parseEndpoint(endpointValue)
 		}
-		logger.Info("Endpoint not found in workspace outputs")
+		logger.V(4).Info("cluster_endpoint not found in workspace outputs")
 	}
 
 	// Try to get endpoint from secret
 	if secret != nil && secret.Data != nil {
-		if endpointBytes, ok := secret.Data["endpoint"]; ok {
+		if endpointBytes, ok := secret.Data["cluster_endpoint"]; ok {
 			endpointValue := string(endpointBytes)
-			logger.Info("Found endpoint in secret", "endpoint", endpointValue)
+			// Try to decode if it's base64 encoded
+			if decoded, err := base64.StdEncoding.DecodeString(endpointValue); err == nil {
+				endpointValue = string(decoded)
+			}
+			logger.Info("Found cluster_endpoint in secret", "endpoint", endpointValue)
 			return parseEndpoint(endpointValue)
 		}
-		logger.Info("Endpoint not found in secret")
+		logger.V(4).Info("cluster_endpoint not found in secret")
 	}
 
-	return nil, fmt.Errorf("endpoint not found in both workspace outputs and secret")
+	// Return nil without error if endpoint is not found
+	// This indicates the endpoint is not yet available
+	logger.V(4).Info("Endpoint not found in both workspace outputs and secret, will retry later")
+	return nil, nil
 }
 
 // GetCertificateAuthorityData gets the CA data from the secret
@@ -109,13 +112,18 @@ func (m *Manager) GetCertificateAuthorityData(ctx context.Context, secret *corev
 	}
 
 	// Try to get CA data from secret
-	if caData, ok := secret.Data["ca.crt"]; ok {
+	if caData, ok := secret.Data["cluster_certificate_authority_data"]; ok {
+		// Try to decode if it's base64 encoded
+		if decoded, err := base64.StdEncoding.DecodeString(string(caData)); err == nil {
+			logger.Info("Successfully retrieved and decoded certificate authority data from secret")
+			return string(decoded), nil
+		}
 		logger.Info("Successfully retrieved certificate authority data from secret")
 		return string(caData), nil
 	}
 
 	logger.Error(nil, "Certificate authority data not found in secret")
-	return "", fmt.Errorf("ca.crt not found in secret")
+	return "", fmt.Errorf("cluster_certificate_authority_data not found in secret")
 }
 
 // ValidateEndpoint validates the endpoint configuration
@@ -151,8 +159,8 @@ func parseEndpoint(endpoint string) (*clusterv1.APIEndpoint, error) {
 	host := u.Hostname()
 	portStr := u.Port()
 	if portStr == "" {
-		// Default to 6443 if no port is specified
-		portStr = "6443"
+		// Default to 443 for HTTPS
+		portStr = "443"
 	}
 
 	port, err := strconv.ParseInt(portStr, 10, 32)
@@ -161,7 +169,7 @@ func parseEndpoint(endpoint string) (*clusterv1.APIEndpoint, error) {
 	}
 
 	return &clusterv1.APIEndpoint{
-		Host: strings.TrimSuffix(host, ":"+portStr),
+		Host: host,
 		Port: int32(port),
 	}, nil
 }

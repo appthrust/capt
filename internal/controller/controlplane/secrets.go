@@ -23,6 +23,7 @@ const (
 	ReasonSecretError       = "SecretError"
 	ReasonEndpointError     = "EndpointError"
 	ReasonWorkspaceNotReady = "WorkspaceNotReady"
+	ReasonEndpointNotReady  = "EndpointNotReady"
 )
 
 // reconcileSecrets handles secret management for CAPTControlPlane
@@ -106,6 +107,16 @@ func (r *Reconciler) reconcileSecrets(ctx context.Context, controlPlane *control
 			return fmt.Errorf("failed to set status: %v (original error: %v)", setErr, err)
 		}
 		return err
+	}
+
+	// If endpoint is not ready yet, requeue
+	if endpoint == nil {
+		logger.Info("Endpoint not ready yet, will retry")
+		_, err := r.setFailedStatus(ctx, controlPlane, cluster, ReasonEndpointNotReady, "Waiting for endpoint to be available")
+		if err != nil {
+			return fmt.Errorf("failed to set status: %v", err)
+		}
+		return nil
 	}
 
 	// Get CA data

@@ -160,11 +160,22 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return result, err
 	}
 
+	// Reconcile secrets after status update
+	logger.Info("Reconciling secrets")
+	if err := r.reconcileSecrets(ctx, controlPlane, cluster, workspaceApply); err != nil {
+		logger.Error(err, "Failed to reconcile secrets")
+		if _, setErr := r.setFailedStatus(ctx, controlPlane, cluster, "SecretReconciliationFailed", fmt.Sprintf("Failed to reconcile secrets: %v", err)); setErr != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set status: %v (original error: %v)", setErr, err)
+		}
+		return ctrl.Result{RequeueAfter: requeueInterval}, err
+	}
+
 	// Fetch the final updated object
 	if err := r.Get(ctx, req.NamespacedName, controlPlane); err != nil {
 		return ctrl.Result{}, err
 	}
 
+	// Return the result from updateStatus to maintain the requeue interval
 	return result, nil
 }
 

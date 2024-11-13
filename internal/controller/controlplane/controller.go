@@ -105,7 +105,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			return ctrl.Result{}, err
 		}
 
-		return ctrl.Result{RequeueAfter: requeueInterval}, nil
+		return ctrl.Result{RequeueAfter: initializationRequeueInterval}, nil
 	}
 
 	// Set owner reference if cluster exists
@@ -167,7 +167,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		if _, setErr := r.setFailedStatus(ctx, controlPlane, cluster, "SecretReconciliationFailed", fmt.Sprintf("Failed to reconcile secrets: %v", err)); setErr != nil {
 			return ctrl.Result{}, fmt.Errorf("failed to set status: %v (original error: %v)", setErr, err)
 		}
-		return ctrl.Result{RequeueAfter: requeueInterval}, err
+		return ctrl.Result{RequeueAfter: errorRequeueInterval}, err
 	}
 
 	// Fetch the final updated object

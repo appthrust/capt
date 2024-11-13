@@ -30,8 +30,8 @@ spec:
             value: "${cluster_name}"
           - key: kubernetes_version
             value: "${kubernetes_version}"
-          - key: region  # Added region variable
-            value: "${Region}"  # Read from additionalTags
+          - key: region
+            value: "${region}"  # Updated to use simple variable name
         varFiles:
           - source: SecretKey
             format: HCL
@@ -348,17 +348,17 @@ spec:
             - cluster:
                 certificate-authority-data: ${module.eks.cluster_certificate_authority_data}
                 server: ${module.eks.cluster_endpoint}
-              name: ${module.eks.cluster_name}.ap-northeast-1.eksctl.io
+              name: ${module.eks.cluster_name}.${var.region}.eksctl.io
             contexts:
             - context:
-                cluster: ${module.eks.cluster_name}.ap-northeast-1.eksctl.io
-                user: rancher-installer@${module.eks.cluster_name}.ap-northeast-1.eksctl.io
-              name: rancher-installer@${module.eks.cluster_name}.ap-northeast-1.eksctl.io
-            current-context: rancher-installer@${module.eks.cluster_name}.ap-northeast-1.eksctl.io
+                cluster: ${module.eks.cluster_name}.${var.region}.eksctl.io
+                user: rancher-installer@${module.eks.cluster_name}.${var.region}.eksctl.io
+              name: rancher-installer@${module.eks.cluster_name}.${var.region}.eksctl.io
+            current-context: rancher-installer@${module.eks.cluster_name}.${var.region}.eksctl.io
             kind: Config
             preferences: {}
             users:
-            - name: rancher-installer@${module.eks.cluster_name}.ap-northeast-1.eksctl.io
+            - name: rancher-installer@${module.eks.cluster_name}.${var.region}.eksctl.io
               user:
                 exec:
                   apiVersion: client.authentication.k8s.io/v1beta1

@@ -198,7 +198,8 @@ func (r *Reconciler) handleReadyStatus(
 		}
 	}
 
-	return ctrl.Result{}, nil
+	// Always requeue with interval to ensure periodic reconciliation
+	return ctrl.Result{RequeueAfter: requeueInterval}, nil
 }
 
 // setFailedStatus sets the status to failed with the given reason and message

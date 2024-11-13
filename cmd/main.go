@@ -93,17 +93,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controlplanecontroller.CAPTControlPlaneReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+	if err = (&controlplanecontroller.Reconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("captcontrolplane-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "CAPTControlPlane")
 		os.Exit(1)
 	}
 
 	if err = (&controlplanecontroller.CaptControlPlaneTemplateReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("captcontrolplanetemplate-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "CaptControlPlaneTemplate")
 		os.Exit(1)

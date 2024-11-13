@@ -27,15 +27,15 @@ spec:
             value: /tmp/.helmcache
         vars:
           - key: cluster_name
-            value: "demo-cluster"
+            value: "${cluster_name}"
           - key: kubernetes_version
-            value: "1.31"
+            value: "${kubernetes_version}"
         varFiles:
           - source: SecretKey
             format: HCL
             secretKeyRef:
               namespace: default
-              name: "${WORKSPACE_NAME}-vpc-connection"
+              name: "${cluster_name}-vpc-vpc-connection"
               key: vpc_config
         module: |
           module "eks" {
@@ -184,12 +184,6 @@ spec:
           output "oidc_provider_arn" {
             description = "The ARN of the OIDC Provider"
             value       = module.eks.oidc_provider_arn
-          }
-
-          output "pod_execution_role_arn" {
-            description = "The ARN of the pod execution role for Fargate profiles"
-            value       = module.eks.fargate_profile_pod_execution_role_arn
-            sensitive   = true
           }
 
           output "kubeconfig" {

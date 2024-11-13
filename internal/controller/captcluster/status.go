@@ -58,8 +58,7 @@ func (r *Reconciler) updateStatus(ctx context.Context, captCluster *infrastructu
 	if cluster != nil {
 		logger.Info("Updating cluster status",
 			"InfrastructureReady", cluster.Status.InfrastructureReady,
-			"ControlPlaneReady", cluster.Status.ControlPlaneReady,
-			"CurrentPhase", cluster.Status.Phase)
+			"ControlPlaneReady", cluster.Status.ControlPlaneReady)
 
 		patch := client.MergeFrom(cluster.DeepCopy())
 
@@ -67,34 +66,11 @@ func (r *Reconciler) updateStatus(ctx context.Context, captCluster *infrastructu
 		cluster.Status.InfrastructureReady = captCluster.Status.Ready
 		logger.Info("Set InfrastructureReady", "value", cluster.Status.InfrastructureReady)
 
-		// Update failure reason and message if present
-		if captCluster.Status.FailureReason != nil {
-			reason := capierrors.ClusterStatusError(*captCluster.Status.FailureReason)
-			cluster.Status.FailureReason = &reason
-			logger.Info("Updated failure reason", "reason", *captCluster.Status.FailureReason)
-		}
-		if captCluster.Status.FailureMessage != nil {
-			cluster.Status.FailureMessage = captCluster.Status.FailureMessage
-			logger.Info("Updated failure message", "message", *captCluster.Status.FailureMessage)
-		}
-
-		// Update failure domains if present
-		if len(captCluster.Status.FailureDomains) > 0 {
-			cluster.Status.FailureDomains = captCluster.Status.FailureDomains
-			logger.Info("Updated failure domains", "count", len(captCluster.Status.FailureDomains))
-		}
-
-		// Update conditions when infrastructure is ready
+		// Clear failure status if ready
 		if captCluster.Status.Ready {
-			// Set ControlPlaneInitialized condition
-			conditions.Set(cluster, &v1beta1.Condition{
-				Type:               ControlPlaneInitializedCondition,
-				Status:             corev1.ConditionTrue,
-				LastTransitionTime: metav1.Now(),
-				Reason:             "ControlPlaneInitialized",
-				Message:            "Control plane has been initialized",
-			})
-			logger.Info("Set ControlPlaneInitialized condition to True")
+			cluster.Status.FailureReason = nil
+			cluster.Status.FailureMessage = nil
+			logger.Info("Cleared failure status due to ready state")
 
 			// Set InfrastructureReady condition
 			conditions.Set(cluster, &v1beta1.Condition{
@@ -105,10 +81,31 @@ func (r *Reconciler) updateStatus(ctx context.Context, captCluster *infrastructu
 				Message:            "Infrastructure is ready",
 			})
 			logger.Info("Set InfrastructureReady condition to True")
+		} else if captCluster.Status.FailureReason != nil {
+			// Update failure reason and message only if not ready
+			reason := capierrors.ClusterStatusError(*captCluster.Status.FailureReason)
+			cluster.Status.FailureReason = &reason
+			cluster.Status.FailureMessage = captCluster.Status.FailureMessage
+			logger.Info("Updated failure status",
+				"reason", *captCluster.Status.FailureReason,
+				"message", *captCluster.Status.FailureMessage)
+
+			// Set InfrastructureReady condition to false
+			conditions.Set(cluster, &v1beta1.Condition{
+				Type:               InfrastructureReadyCondition,
+				Status:             corev1.ConditionFalse,
+				LastTransitionTime: metav1.Now(),
+				Reason:             string(reason),
+				Message:            *captCluster.Status.FailureMessage,
+			})
+			logger.Info("Set InfrastructureReady condition to False")
 		}
 
-		// Note: We don't update the Phase here as it's managed by the Control Plane controller
-		logger.Info("Current cluster phase", "phase", cluster.Status.Phase)
+		// Update failure domains if present
+		if len(captCluster.Status.FailureDomains) > 0 {
+			cluster.Status.FailureDomains = captCluster.Status.FailureDomains
+			logger.Info("Updated failure domains", "count", len(captCluster.Status.FailureDomains))
+		}
 
 		if err := r.Status().Patch(ctx, cluster, patch); err != nil {
 			logger.Error(err, "Failed to patch cluster status")

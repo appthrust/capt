@@ -12,9 +12,9 @@ import (
 )
 
 // GetVPCIDFromWorkspace attempts to get the VPC ID from a Workspace
-func GetVPCIDFromWorkspace(ctx context.Context, c client.Client, workspaceName string) (string, error) {
+func GetVPCIDFromWorkspace(ctx context.Context, c client.Client, namespace, workspaceName string) (string, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Attempting to get VPC ID from workspace", "workspaceName", workspaceName)
+	logger.Info("Attempting to get VPC ID from workspace", "namespace", namespace, "workspaceName", workspaceName)
 
 	// Define Workspace GVK
 	workspaceGVK := schema.GroupVersionKind{
@@ -26,8 +26,8 @@ func GetVPCIDFromWorkspace(ctx context.Context, c client.Client, workspaceName s
 	// Get Workspace
 	workspace := &unstructured.Unstructured{}
 	workspace.SetGroupVersionKind(workspaceGVK)
-	if err := c.Get(ctx, types.NamespacedName{Name: workspaceName}, workspace); err != nil {
-		logger.Error(err, "Failed to get Workspace", "workspaceName", workspaceName)
+	if err := c.Get(ctx, types.NamespacedName{Namespace: namespace, Name: workspaceName}, workspace); err != nil {
+		logger.Error(err, "Failed to get Workspace", "namespace", namespace, "workspaceName", workspaceName)
 		return "", fmt.Errorf("failed to get Workspace: %w", err)
 	}
 

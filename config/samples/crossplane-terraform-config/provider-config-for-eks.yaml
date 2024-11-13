@@ -1,7 +1,7 @@
 apiVersion: tf.upbound.io/v1beta1
 kind: ProviderConfig
 metadata:
-  name: aws-provider-for-eks-test
+  name: aws-provider-for-eks
 spec:
   credentials:
     - filename: aws-creds.ini
@@ -17,6 +17,10 @@ spec:
           source  = "hashicorp/aws"
           version = ">= 5.67.0, < 6.0.0"
         }
+        kubectl = {
+          source  = "alekc/kubectl"
+          version = ">= 2.0.0"
+        }
         helm = {
           source  = "hashicorp/helm"
           version = "~> 2.5"
@@ -31,6 +35,16 @@ spec:
     provider "aws" {
       shared_credentials_files = ["${path.module}/aws-creds.ini"]
       region = "ap-northeast-1"
+    }
+    provider "kubectl" {
+      host                   = module.eks.cluster_endpoint
+      cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
+      exec {
+        api_version = "client.authentication.k8s.io/v1beta1"
+        command     = "sh"
+        args        = ["-c", "AWS_CONFIG_FILE=${path.module}/aws-creds.ini aws eks get-token --cluster-name ${module.eks.cluster_name}"]
+      }
+      load_config_file       = false
     }
     provider "helm" {
       kubernetes {

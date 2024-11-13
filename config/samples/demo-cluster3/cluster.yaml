@@ -2,7 +2,7 @@
 apiVersion: cluster.x-k8s.io/v1beta1
 kind: Cluster
 metadata:
-  name: demo-cluster2
+  name: demo-cluster3
   namespace: default
 spec:
   clusterNetwork:
@@ -14,10 +14,10 @@ spec:
   infrastructureRef:
     apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
     kind: CAPTCluster
-    name: demo-cluster
+    name: demo-cluster3
     namespace: default
   controlPlaneRef:
     apiVersion: controlplane.cluster.x-k8s.io/v1beta1
     kind: CAPTControlPlane
-    name: demo-cluster
+    name: demo-cluster3
     namespace: default

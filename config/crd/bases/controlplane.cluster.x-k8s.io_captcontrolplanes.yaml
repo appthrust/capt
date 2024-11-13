@@ -250,6 +250,11 @@ spec:
               ready:
                 description: Ready denotes that the control plane is ready
                 type: boolean
+              secretsReady:
+                default: false
+                description: SecretsReady denotes that all required secrets have been
+                  created and are ready
+                type: boolean
               workspaceTemplateStatus:
                 description: WorkspaceTemplateStatus contains the status of the WorkspaceTemplate
                 properties:

@@ -31,7 +31,7 @@ spec:
           - key: kubernetes_version
             value: "${kubernetes_version}"
           - key: region
-            value: "${region}"  # Updated to use simple variable name
+            value: "${region}"
         varFiles:
           - source: SecretKey
             format: HCL

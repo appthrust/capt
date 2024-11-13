@@ -56,6 +56,10 @@ func (r *Reconciler) reconcileSecrets(ctx context.Context, controlPlane *control
 		Namespace: workspaceApply.Namespace,
 	}, workspace); err != nil {
 		logger.Error(err, "Failed to get workspace")
+		_, setErr := r.setFailedStatus(ctx, controlPlane, cluster, ReasonEndpointError, fmt.Sprintf("Failed to get workspace: %v", err))
+		if setErr != nil {
+			logger.Error(setErr, "Failed to set status")
+		}
 		return nil
 	}
 
@@ -65,6 +69,10 @@ func (r *Reconciler) reconcileSecrets(ctx context.Context, controlPlane *control
 	if secretRef == nil {
 		err := fmt.Errorf("workspace connection secret reference is not set")
 		logger.Error(err, "Failed to get secret reference")
+		_, setErr := r.setFailedStatus(ctx, controlPlane, cluster, ReasonSecretError, err.Error())
+		if setErr != nil {
+			logger.Error(setErr, "Failed to set status")
+		}
 		return nil
 	}
 
@@ -74,6 +82,10 @@ func (r *Reconciler) reconcileSecrets(ctx context.Context, controlPlane *control
 	}, secret); err != nil {
 		if !apierrors.IsNotFound(err) {
 			logger.Error(err, "Failed to get secret")
+			_, setErr := r.setFailedStatus(ctx, controlPlane, cluster, ReasonSecretError, fmt.Sprintf("Failed to get secret: %v", err))
+			if setErr != nil {
+				logger.Error(setErr, "Failed to set status")
+			}
 			return nil
 		}
 		// If secret is not found, wait for it to be created
@@ -88,6 +100,10 @@ func (r *Reconciler) reconcileSecrets(ctx context.Context, controlPlane *control
 	endpoint, err := secretManager.GetClusterEndpoint(ctx, workspace, secret)
 	if err != nil {
 		logger.Error(err, "Failed to get cluster endpoint")
+		_, setErr := r.setFailedStatus(ctx, controlPlane, cluster, ReasonEndpointError, fmt.Sprintf("Failed to get cluster endpoint: %v", err))
+		if setErr != nil {
+			logger.Error(setErr, "Failed to set status")
+		}
 		return nil
 	}
 
@@ -101,6 +117,10 @@ func (r *Reconciler) reconcileSecrets(ctx context.Context, controlPlane *control
 	caData, err := secretManager.GetCertificateAuthorityData(ctx, secret)
 	if err != nil {
 		logger.Error(err, "Failed to get certificate authority data")
+		_, setErr := r.setFailedStatus(ctx, controlPlane, cluster, ReasonSecretError, fmt.Sprintf("Failed to get certificate authority data: %v", err))
+		if setErr != nil {
+			logger.Error(setErr, "Failed to set status")
+		}
 		return nil
 	}
 
@@ -119,7 +139,7 @@ func (r *Reconciler) reconcileSecrets(ctx context.Context, controlPlane *control
 		kubeconfigSecretExists = false
 	}
 
-	// Create or update kubeconfig secret only if needed
+	// Create kubeconfig secret if it doesn't exist
 	if !kubeconfigSecretExists {
 		kubeconfigSecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
@@ -158,7 +178,7 @@ func (r *Reconciler) reconcileSecrets(ctx context.Context, controlPlane *control
 		caSecretExists = false
 	}
 
-	// Create or update CA secret only if needed
+	// Create CA secret if it doesn't exist
 	if !caSecretExists {
 		caSecret := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{

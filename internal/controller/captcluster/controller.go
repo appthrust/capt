@@ -53,23 +53,21 @@ type Reconciler struct {
 func (r *Reconciler) getOwnerCluster(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster) (*clusterv1.Cluster, error) {
 	logger := log.FromContext(ctx)
 
-	// OwnerReferencesから親Clusterの参照を取得
-	for _, ref := range captCluster.OwnerReferences {
-		if ref.APIVersion == clusterv1.GroupVersion.String() && ref.Kind == "Cluster" {
-			// 親Clusterを取得
-			cluster := &clusterv1.Cluster{}
-			key := types.NamespacedName{
-				Namespace: captCluster.Namespace,
-				Name:      ref.Name,
-			}
-			if err := r.Get(ctx, key, cluster); err != nil {
-				logger.Error(err, "Failed to get owner Cluster", "name", ref.Name)
-				return nil, err
-			}
-			return cluster, nil
-		}
+	// Get Cluster by name
+	cluster := &clusterv1.Cluster{}
+	key := types.NamespacedName{
+		Namespace: captCluster.Namespace,
+		Name:      captCluster.Name,
 	}
-	return nil, fmt.Errorf("no owner cluster found")
+	if err := r.Get(ctx, key, cluster); err != nil {
+		if !apierrors.IsNotFound(err) {
+			logger.Error(err, "Failed to get Cluster")
+			return nil, err
+		}
+		return nil, fmt.Errorf("no owner cluster found")
+	}
+
+	return cluster, nil
 }
 
 // ensureClusterLabels ensures that the required Cluster API labels are set
@@ -125,13 +123,19 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (Result, e
 		return Result{Requeue: true}, nil
 	}
 
-	// Get owner Cluster using OwnerReferences
+	// Get owner Cluster
 	cluster, err := r.getOwnerCluster(ctx, captCluster)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return r.handleMissingCluster(ctx, captCluster)
 		}
 		logger.Error(err, "Failed to get owner Cluster")
+		return Result{}, err
+	}
+
+	// Set owner reference if cluster exists
+	if err := controllerutil.SetControllerReference(cluster, captCluster, r.Scheme); err != nil {
+		logger.Error(err, "Failed to set owner reference")
 		return Result{}, err
 	}
 

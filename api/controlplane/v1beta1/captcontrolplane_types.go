@@ -162,6 +162,11 @@ type CAPTControlPlaneStatus struct {
 	// +optional
 	Initialized bool `json:"initialized"`
 
+	// SecretsReady denotes that all required secrets have been created and are ready
+	// +optional
+	// +kubebuilder:default=false
+	SecretsReady bool `json:"secretsReady"`
+
 	// WorkspaceTemplateStatus contains the status of the WorkspaceTemplate
 	// +optional
 	WorkspaceTemplateStatus *WorkspaceTemplateStatus `json:"workspaceTemplateStatus,omitempty"`

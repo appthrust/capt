@@ -20,7 +20,7 @@ spec:
         source: Inline
         vars:
           - key: name
-            value: demo-cluster-vpc
+            value: "${cluster_name}"
         module: |
           data "aws_availability_zones" "available" {
             filter {
@@ -57,7 +57,7 @@ spec:
               "kubernetes.io/role/elb" = "1"
             }
             private_subnet_tags = {
-              "karpenter.sh/discovery"          = "$${local.name}"
+              "karpenter.sh/discovery"          = "${local.name}"
               "kubernetes.io/role/internal-elb" = "1"
             }
             tags = {

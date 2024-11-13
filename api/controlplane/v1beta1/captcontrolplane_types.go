@@ -111,7 +111,7 @@ type TimeoutConfig struct {
 type ControlPlaneConfig struct {
 	// Region specifies the AWS region where the control plane will be created
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Pattern=^[a-z]{2}-[a-z]+-[0-9]{1}$
+	// +kubebuilder:validation:Pattern="^[a-z]{2}-[a-z]+-[0-9]$"
 	Region string `json:"region"`
 
 	// EndpointAccess defines the access configuration for the API server endpoint

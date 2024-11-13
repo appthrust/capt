@@ -114,7 +114,7 @@ func TestReconcile(t *testing.T) {
 					},
 				},
 			},
-			expectedResult: ctrl.Result{RequeueAfter: requeueInterval},
+			expectedResult: ctrl.Result{RequeueAfter: initializationRequeueInterval},
 			expectedError:  false,
 			validate: func(t *testing.T, client client.Client, result ctrl.Result, err error) {
 				controlPlane := &controlplanev1beta1.CAPTControlPlane{}
@@ -205,7 +205,7 @@ func TestReconcile(t *testing.T) {
 					},
 				},
 			},
-			expectedResult: ctrl.Result{RequeueAfter: requeueInterval},
+			expectedResult: ctrl.Result{RequeueAfter: defaultRequeueInterval},
 			expectedError:  false,
 			validate: func(t *testing.T, client client.Client, result ctrl.Result, err error) {
 				controlPlane := &controlplanev1beta1.CAPTControlPlane{}

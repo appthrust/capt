@@ -63,7 +63,7 @@ func TestReconcileWorkspace(t *testing.T) {
 				},
 			},
 			expectedError:  false,
-			expectedResult: ctrl.Result{RequeueAfter: requeueInterval},
+			expectedResult: ctrl.Result{RequeueAfter: defaultRequeueInterval},
 			validate: func(t *testing.T, c client.Client) {
 				workspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
 				err := c.Get(context.Background(), types.NamespacedName{
@@ -109,7 +109,7 @@ func TestReconcileWorkspace(t *testing.T) {
 				},
 			},
 			expectedError:  false,
-			expectedResult: ctrl.Result{RequeueAfter: requeueInterval},
+			expectedResult: ctrl.Result{RequeueAfter: defaultRequeueInterval},
 			validate: func(t *testing.T, c client.Client) {
 				workspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
 				err := c.Get(context.Background(), types.NamespacedName{

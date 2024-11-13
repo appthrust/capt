@@ -124,7 +124,8 @@ func (r *Reconciler) handleNotReadyStatus(
 		}
 	}
 
-	return ctrl.Result{RequeueAfter: requeueInterval}, nil
+	// Use initialization interval for not-ready state
+	return ctrl.Result{RequeueAfter: initializationRequeueInterval}, nil
 }
 
 // handleReadyStatus updates the status for a ready control plane
@@ -198,8 +199,8 @@ func (r *Reconciler) handleReadyStatus(
 		}
 	}
 
-	// Always requeue with interval to ensure periodic reconciliation
-	return ctrl.Result{RequeueAfter: requeueInterval}, nil
+	// Use default interval for ready state
+	return ctrl.Result{RequeueAfter: defaultRequeueInterval}, nil
 }
 
 // setFailedStatus sets the status to failed with the given reason and message
@@ -247,5 +248,6 @@ func (r *Reconciler) setFailedStatus(
 		}
 	}
 
-	return ctrl.Result{RequeueAfter: requeueInterval}, nil
+	// Use error interval for failed state
+	return ctrl.Result{RequeueAfter: errorRequeueInterval}, nil
 }

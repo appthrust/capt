@@ -9,8 +9,12 @@ import (
 )
 
 const (
-	// requeueInterval is the interval to requeue reconciliation
-	requeueInterval = 10 * time.Second
+	// defaultRequeueInterval is the default interval to requeue reconciliation
+	defaultRequeueInterval = 30 * time.Second
+	// errorRequeueInterval is the interval to requeue reconciliation when in error state
+	errorRequeueInterval = 10 * time.Second
+	// initializationRequeueInterval is the interval to requeue reconciliation during initialization
+	initializationRequeueInterval = 5 * time.Second
 )
 
 // Reconciler reconciles a CAPTControlPlane object

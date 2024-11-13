@@ -75,6 +75,9 @@ const (
 
 	// Finalizer
 	workspaceTemplateApplyFinalizer = "infrastructure.cluster.x-k8s.io/finalizer"
+
+	// Suffixes
+	applySuffix = "-apply"
 )
 
 // WorkspaceTemplateApplyGroupKind is the group and kind of the WorkspaceTemplateApply resource
@@ -91,6 +94,13 @@ func FindStatusCondition(conditions []xpv1.Condition, conditionType xpv1.Conditi
 		}
 	}
 	return nil
+}
+
+// generateWorkspaceName generates a consistent workspace name from a WorkspaceTemplateApply name
+func generateWorkspaceName(applyName string) string {
+	// Remove "-apply" suffix if present
+	name := strings.TrimSuffix(applyName, applySuffix)
+	return name
 }
 
 // waitForDependentWorkspaces checks if all dependent workspaces are ready
@@ -168,9 +178,12 @@ func replaceTemplateVariables(template *v1beta1.WorkspaceTemplate, cr *v1beta1.W
 		return nil, fmt.Errorf("failed to marshal template spec: %w", err)
 	}
 
-	// Replace workspace name variable with the WorkspaceTemplateApply name
+	// Generate workspace name
+	workspaceName := generateWorkspaceName(cr.Name)
+
+	// Replace workspace name variable with the generated name
 	specStr := string(specJSON)
-	specStr = strings.ReplaceAll(specStr, workspaceNameVar, cr.Name)
+	specStr = strings.ReplaceAll(specStr, workspaceNameVar, workspaceName)
 
 	// Replace other variables from cr.Spec.Variables
 	for key, value := range cr.Spec.Variables {
@@ -260,7 +273,7 @@ func (r *workspaceTemplateApplyReconciler) Reconcile(ctx context.Context, req ct
 	}
 
 	// Generate workspace name
-	workspaceName := cr.Name + "-workspace"
+	workspaceName := generateWorkspaceName(cr.Name)
 
 	// Replace template variables
 	template, err := replaceTemplateVariables(template, cr)

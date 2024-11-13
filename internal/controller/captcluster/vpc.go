@@ -46,8 +46,14 @@ func (r *Reconciler) handleExistingVPC(ctx context.Context, captCluster *infrast
 	logger := log.FromContext(ctx)
 	logger.Info("Using existing VPC", "vpcId", captCluster.Spec.ExistingVPCID)
 
+	// Initialize WorkspaceTemplateStatus if not exists
+	if captCluster.Status.WorkspaceTemplateStatus == nil {
+		captCluster.Status.WorkspaceTemplateStatus = &infrastructurev1beta1.CAPTClusterWorkspaceStatus{}
+	}
+
 	captCluster.Status.VPCID = captCluster.Spec.ExistingVPCID
 	captCluster.Status.Ready = true
+	captCluster.Status.WorkspaceTemplateStatus.Ready = true
 	meta.SetStatusCondition(&captCluster.Status.Conditions, metav1.Condition{
 		Type:               infrastructurev1beta1.VPCReadyCondition,
 		Status:             metav1.ConditionTrue,
@@ -77,9 +83,14 @@ func (r *Reconciler) handleVPCTemplate(ctx context.Context, captCluster *infrast
 		return Result{}, fmt.Errorf("failed to get VPC WorkspaceTemplate: %v", err)
 	}
 
-	// Get or create WorkspaceTemplateApply
+	// Get or create WorkspaceTemplateApply with retry
 	workspaceApply, err := r.getOrCreateWorkspaceTemplateApply(ctx, captCluster)
 	if err != nil {
+		if apierrors.IsConflict(err) {
+			// If there's a conflict, requeue and try again
+			logger.Info("Conflict detected while updating WorkspaceTemplateApply, will retry")
+			return Result{Requeue: true}, nil
+		}
 		return Result{}, err
 	}
 
@@ -109,19 +120,29 @@ func (r *Reconciler) getOrCreateWorkspaceTemplateApply(ctx context.Context, capt
 	workspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
 	err := r.Get(ctx, types.NamespacedName{Name: applyName, Namespace: captCluster.Namespace}, workspaceApply)
 	if err == nil {
-		// Update existing WorkspaceTemplateApply if needed
-		workspaceApply.Spec = infrastructurev1beta1.WorkspaceTemplateApplySpec{
+		// Get the latest version before updating
+		latest := &infrastructurev1beta1.WorkspaceTemplateApply{}
+		if err := r.Get(ctx, types.NamespacedName{Name: applyName, Namespace: captCluster.Namespace}, latest); err != nil {
+			return nil, err
+		}
+
+		// Update existing WorkspaceTemplateApply
+		latest.Spec = infrastructurev1beta1.WorkspaceTemplateApplySpec{
 			TemplateRef: *captCluster.Spec.VPCTemplateRef,
 			Variables: map[string]string{
 				"name":        fmt.Sprintf("%s-vpc", captCluster.Name),
 				"environment": "production", // TODO: Make this configurable
 			},
 		}
-		if err := r.Update(ctx, workspaceApply); err != nil {
+		if err := r.Update(ctx, latest); err != nil {
+			if apierrors.IsConflict(err) {
+				logger.Info("Conflict detected while updating WorkspaceTemplateApply")
+				return nil, err
+			}
 			logger.Error(err, "Failed to update WorkspaceTemplateApply")
 			return nil, fmt.Errorf("failed to update WorkspaceTemplateApply: %v", err)
 		}
-		return workspaceApply, nil
+		return latest, nil
 	}
 
 	if err != nil && !apierrors.IsNotFound(err) {
@@ -150,6 +171,11 @@ func (r *Reconciler) getOrCreateWorkspaceTemplateApply(ctx context.Context, capt
 	}
 
 	if err := r.Create(ctx, workspaceApply); err != nil {
+		if apierrors.IsAlreadyExists(err) {
+			// If the resource already exists, requeue and try again
+			logger.Info("WorkspaceTemplateApply already exists, will retry")
+			return nil, err
+		}
 		logger.Error(err, "Failed to create WorkspaceTemplateApply")
 		return nil, fmt.Errorf("failed to create WorkspaceTemplateApply: %v", err)
 	}
@@ -217,6 +243,7 @@ func (r *Reconciler) updateVPCStatus(ctx context.Context, captCluster *infrastru
 
 		captCluster.Status.Ready = false
 		captCluster.Status.WorkspaceTemplateStatus.Ready = false
+
 		if errorMessage != "" {
 			captCluster.Status.WorkspaceTemplateStatus.LastFailureMessage = errorMessage
 			if workspaceApply.Status.LastAppliedTime != nil {
@@ -241,7 +268,7 @@ func (r *Reconciler) verifyVPCID(ctx context.Context, captCluster *infrastructur
 		return Result{RequeueAfter: requeueInterval}, nil
 	}
 
-	vpcID, err := endpoint.GetVPCIDFromWorkspace(ctx, r.Client, workspaceApply.Status.WorkspaceName)
+	vpcID, err := endpoint.GetVPCIDFromWorkspace(ctx, r.Client, captCluster.Namespace, workspaceApply.Status.WorkspaceName)
 	if err != nil {
 		logger.Error(err, "Failed to get VPC ID from workspace")
 		return Result{RequeueAfter: requeueInterval}, nil
@@ -266,7 +293,14 @@ func (r *Reconciler) verifyVPCID(ctx context.Context, captCluster *infrastructur
 
 	captCluster.Status.Ready = true
 	captCluster.Status.WorkspaceTemplateStatus.Ready = true
-	captCluster.Status.WorkspaceTemplateStatus.LastAppliedRevision = workspaceApply.Status.LastAppliedTime.String()
+	if workspaceApply.Status.LastAppliedTime != nil {
+		captCluster.Status.WorkspaceTemplateStatus.LastAppliedRevision = workspaceApply.Status.LastAppliedTime.String()
+	}
+
+	// Clear any previous failure status
+	captCluster.Status.FailureReason = nil
+	captCluster.Status.FailureMessage = nil
+	captCluster.Status.WorkspaceTemplateStatus.LastFailureMessage = ""
 
 	logger.Info("Updating final status",
 		"ready", captCluster.Status.Ready,

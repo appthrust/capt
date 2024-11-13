@@ -2,12 +2,12 @@
 apiVersion: controlplane.cluster.x-k8s.io/v1beta1
 kind: CAPTControlPlane
 metadata:
-  name: demo-cluster2
+  name: demo-cluster3
   namespace: default
 spec:
   version: "1.31"
   workspaceTemplateRef:
-    name: eks-controlplane-template
+    name: eks-controlplane-template-v2
     namespace: default
   controlPlaneConfig:
     endpointAccess:
@@ -16,3 +16,4 @@ spec:
   additionalTags:
     Environment: "dev"
     ManagedBy: "capt"
+    Region: "ap-northeast-1"  # Added region as a tag for temporary solution

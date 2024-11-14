@@ -4,7 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.1.2] - 2024-11-13
+## [v0.1.4] - 2024-11-14
+
+### Changed
+- Improved EC2 Spot Service-Linked Role handling using WorkspaceTemplate
+- Separated role management from EKS template for better control
+
+### Added
+- CAPTEP-0023: Documentation for improved EC2 Spot Service-Linked Role handling
+
+## [v0.1.3] - 2024-11-13
 
 ### Fixed
 - Fixed EC2 Spot Instance provisioning failure

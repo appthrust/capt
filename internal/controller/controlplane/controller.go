@@ -187,6 +187,16 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
+	// Ensure EC2 Spot Service-Linked Role exists
+	if err := r.reconcileSpotServiceLinkedRole(ctx, controlPlane); err != nil {
+		logger.Error(err, "Failed to reconcile Spot Service-Linked Role")
+		result, setErr := r.setFailedStatus(ctx, controlPlane, cluster, "SpotServiceLinkedRoleFailed", fmt.Sprintf("Failed to reconcile Spot Service-Linked Role: %v", err))
+		if setErr != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set status: %v (original error: %v)", setErr, err)
+		}
+		return result, err
+	}
+
 	// Get or create WorkspaceTemplateApply
 	workspaceApply, err := r.getOrCreateWorkspaceTemplateApply(ctx, controlPlane, workspaceTemplate)
 	if err != nil {

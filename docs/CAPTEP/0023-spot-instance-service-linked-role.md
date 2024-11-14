@@ -1,134 +1,114 @@
-# CAPTEP-0023: EC2 Spotインスタンス用Service-Linked Role作成の自動化
+# CAPTEP-0023: EC2 Spot Service-Linked Role Management
 
-## 概要
+## Summary
 
-CAPTControlPlaneが作成したEKSでFargateからEC2 Spotインスタンスの調達が失敗する問題が発生しています。
-これは、EC2 Spotインスタンス用のService-Linked Roleが存在せず、作成権限もない状態で発生しています。
+This CAPTEP describes the implementation of EC2 Spot Service-Linked Role management in the CAPT controller. The implementation ensures that the required IAM Service-Linked Role for EC2 Spot instances exists before creating EKS clusters.
 
-## 背景
+## Motivation
 
-### 現状の実装
+When creating an EKS cluster that uses Spot instances, AWS requires the existence of a Service-Linked Role named `AWSServiceRoleForEC2Spot`. If this role doesn't exist, cluster creation fails with the error:
 
-1. CAPTControlPlaneは、KarpenterをEKSクラスターにデプロイし、必要に応じてEC2インスタンスを自動でプロビジョニングします。
+```
+cannot apply Terraform configuration: Terraform encountered an error. Summary: creating IAM Service Linked Role (spot.amazonaws.com): operation error IAM: CreateServiceLinkedRole, https response error StatusCode: 400, RequestID: f68669ec-fb16-49a9-82bf-0f6920aa66db, InvalidInput: Service role name AWSServiceRoleForEC2Spot has been taken in this account, please try a different suffix.
+```
 
-2. Karpenterの設定では、コスト最適化のためにSpotインスタンスを使用するように設定されています：
+This implementation aims to:
+1. Check for the existence of the required role
+2. Create the role if it doesn't exist
+3. Handle the process in a Kubernetes-native way using WorkspaceTemplates
+
+## Implementation Details
+
+### WorkspaceTemplates
+
+Two WorkspaceTemplates are used:
+
+1. `spot-role-check.yaml`: Checks if the role exists
 ```yaml
-apiVersion: karpenter.sh/v1
-kind: NodePool
-metadata:
-  name: default
-spec:
-  template:
-    spec:
-      requirements:
-        - key: "karpenter.k8s.aws/instance-category"
-          operator: In
-          values: ["c", "m", "r"]
-```
-
-### 問題点
-
-1. EC2 Spotインスタンスを使用するには、AWSアカウントに`AWSServiceRoleForEC2Spot`というService-Linked Roleが必要です。
-
-2. このRoleが存在しない場合、以下のエラーが発生します：
-```
-AuthFailure.ServiceLinkedRoleCreationNotPermitted: The provided credentials do not have permission to create the service-linked role for EC2 Spot Instances.
-```
-
-## 解決策
-
-### 1. Service-Linked Roleの条件付き作成
-
-eks-controlplane-template-v2.yamlのTerraformモジュールに以下を追加：
-
-```hcl
-# Check if the service-linked role already exists
-data "aws_iam_role" "spot" {
-  name = "AWSServiceRoleForEC2Spot"
-  
-  # Roleが存在しない場合はエラーを無視
-  count = 0
-}
-
-# Create the service-linked role only if it doesn't exist
-resource "aws_iam_service_linked_role" "spot" {
-  aws_service_name = "spot.amazonaws.com"
-  description      = "Service-linked role for EC2 Spot Instances"
-
-  # Roleが存在する場合は作成をスキップ
-  lifecycle {
-    ignore_changes = [aws_service_name]
+module: |
+  data "aws_iam_roles" "spot" {
+    name_regex = "^AWSServiceRoleForEC2Spot$"
   }
-}
+
+  output "role_exists" {
+    value = length(data.aws_iam_roles.spot.arns) > 0
+  }
 ```
 
-### 2. 依存関係の設定
+2. `spot-role-create.yaml`: Creates the role if needed
+```yaml
+module: |
+  resource "aws_iam_service_linked_role" "spot" {
+    aws_service_name = "spot.amazonaws.com"
+    description      = "Service-linked role for EC2 Spot Instances"
+  }
 
-1. KarpenterのNodePool作成前にService-Linked Roleが作成されるように依存関係を設定：
-
-```hcl
-resource "kubectl_manifest" "node_pool" {
-  # ... existing configuration ...
-
-  depends_on = [
-    kubectl_manifest.ec2_node_class,
-    aws_iam_service_linked_role.spot
-  ]
-}
+  output "role_arn" {
+    value = aws_iam_service_linked_role.spot.arn
+  }
 ```
 
-## 実装の注意点
+### Controller Implementation
 
-1. Service-Linked Roleの重複作成について：
-   - Service-Linked Roleがすでに存在する場合、Terraformは`EntityAlreadyExists`エラーを返します
-   - このエラーは無害で、実行に影響を与えません
-   - `lifecycle { ignore_changes = [aws_service_name] }`を使用することで、既存のRoleに対する変更を無視します
+The controller:
+1. Creates a WorkspaceTemplateApply for checking role existence
+2. Waits for the check workspace to be ready
+3. If role doesn't exist, creates another WorkspaceTemplateApply for role creation
+4. Waits for the create workspace to be ready and verifies the role ARN
 
-2. エラーハンドリング：
-   - Roleの作成に失敗した場合でも、すでにRoleが存在する場合は処理を継続できます
-   - 権限不足などの他のエラーの場合は、適切なエラーメッセージを表示します
+Key points in the implementation:
+- Uses WorkspaceTemplateApply for consistent resource management
+- Proper error handling and logging
+- Status checking with appropriate requeuing
+- Owner references for proper resource cleanup
 
-## 実装計画
+## Test Results
 
-1. eks-controlplane-template-v2.yamlの修正
-   - Service-Linked Role作成用のリソースを追加
-   - 依存関係の設定を追加
-   - エラーハンドリングの実装
+Manual testing confirmed:
 
-2. テスト
-   - 新規アカウントでの動作確認（Roleが存在しない場合）
-   - 既存アカウントでの動作確認（Roleが存在する場合）
-   - エラーケースのテスト
+1. Role Check:
+   - Correctly identifies when role exists/doesn't exist
+   - Outputs boolean value properly
 
-## 代替案
+2. Role Creation:
+   - Successfully creates the role when missing
+   - Provides role ARN in outputs
+   - Handles existing role case gracefully
 
-### 1. 手動でのService-Linked Role作成
+3. Error Cases:
+   - Handles IAM permission errors
+   - Manages deletion restrictions (when role is in use)
 
-```bash
-aws iam create-service-linked-role --aws-service-name spot.amazonaws.com
-```
+## Lessons Learned
 
-- メリット：一度だけの作業で済む
-- デメリット：自動化されない、新規アカウントでの展開時に手動作業が必要
+1. Service-Linked Role Characteristics:
+   - Cannot be deleted while in use by resources (e.g., Spot instances)
+   - Deletion is asynchronous with a task ID
+   - Must use specific API calls for management
 
-### 2. Spotインスタンスを使用しない設定
+2. Implementation Considerations:
+   - Using WorkspaceTemplate provides better abstraction
+   - Provider configuration should be template-defined
+   - Proper status checking is crucial
 
-- NodePoolの設定からSpotインスタンスの使用を除外
-- メリット：Service-Linked Roleが不要
-- デメリット：コスト最適化の機会を失う
+## Implementation Impact
 
-## 実装履歴
+This implementation:
+1. Improves cluster creation reliability
+2. Reduces manual intervention
+3. Handles edge cases gracefully
 
-- [x] 2024-11-13: 初期提案
-- [x] 2024-11-13: 問題の原因特定（Service-Linked Role不足）
-- [x] 2024-11-13: 既存Roleの処理方法を追加
-- [ ] eks-controlplane-template-v2.yamlの修正
-- [ ] テスト実施
-- [ ] ドキュメント更新
+## Alternatives Considered
 
-## 参考資料
+1. Direct AWS API calls:
+   - Rejected due to lack of declarative nature
+   - Would require additional AWS SDK dependencies
 
-- [AWS Service-Linked Roles](https://docs.aws.amazon.com/IAM/latest/UserGuide/using-service-linked-roles.html)
-- [EC2 Spot Instances](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-spot-instances.html)
-- [Terraform aws_iam_service_linked_role](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/iam_service_linked_role)
-- [Terraform Lifecycle Configuration](https://www.terraform.io/docs/language/meta-arguments/lifecycle.html)
+2. Single Terraform workspace:
+   - Rejected due to potential race conditions
+   - Separate check/create provides better control
+
+## References
+
+- [AWS Service-Linked Role Documentation](https://docs.aws.amazon.com/IAM/latest/UserGuide/using-service-linked-roles.html)
+- [EKS Spot Instances Documentation](https://docs.aws.amazon.com/eks/latest/userguide/managed-node-groups.html#managed-node-group-capacity-types)

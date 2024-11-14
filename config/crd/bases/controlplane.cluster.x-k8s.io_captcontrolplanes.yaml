@@ -107,6 +107,11 @@ spec:
                           type: string
                         type: array
                     type: object
+                  region:
+                    description: Region specifies the AWS region where the control
+                      plane will be created
+                    pattern: ^[a-z]{2}-[a-z]+-[0-9]$
+                    type: string
                   timeouts:
                     description: Timeouts defines timeout settings for various operations
                     properties:
@@ -123,6 +128,8 @@ spec:
                         minimum: 1
                         type: integer
                     type: object
+                required:
+                - region
                 type: object
               controlPlaneEndpoint:
                 description: ControlPlaneEndpoint represents the endpoint used to

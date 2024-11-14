@@ -1,5 +1,6 @@
 # Image URL to use all building/pushing image targets
-IMG ?= controller:latest
+VERSION ?= 0.1.0
+IMG ?= ghcr.io/appthrust/capt:v$(VERSION)
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.31.0
 
@@ -103,7 +104,8 @@ docker-push: ## Push docker image with the manager.
 # - have enabled BuildKit. More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 # - be able to push the image to your registry (i.e. if you do not set a valid value via IMG=<myregistry/image:<tag>> then the export will fail)
 # To adequately provide solutions that are compatible with multiple platforms, you should consider using this option.
-PLATFORMS ?= linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
+# PLATFORMS ?= linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
+PLATFORMS ?= linux/arm64,linux/amd64
 .PHONY: docker-buildx
 docker-buildx: ## Build and push docker image for the manager for cross-platform support
 	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
@@ -118,7 +120,7 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
 	mkdir -p dist
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/default > dist/install.yaml
+	$(KUSTOMIZE) build config/default > dist/capt.yaml
 
 ##@ Deployment
 
@@ -142,6 +144,29 @@ deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in
 .PHONY: undeploy
 undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
+
+##@ Release
+
+.PHONY: release
+release: update-version update-changelog docker-buildx build-installer create-github-release ## Perform a release
+
+.PHONY: update-version
+update-version: ## Update version number
+	@echo "Updating version number to $(VERSION)"
+	@sed -i 's/^VERSION = .*/VERSION = $(VERSION)/' VERSION
+
+.PHONY: update-changelog
+update-changelog: ## Update CHANGELOG.md
+	@echo "Updating CHANGELOG.md"
+	@sed -i '/^## \[Unreleased\]/a \n## [$(VERSION)] - $(shell date +%Y-%m-%d)\n' CHANGELOG.md
+
+.PHONY: create-github-release
+create-github-release: ## Create a GitHub release
+	@echo "Creating GitHub release v$(VERSION)"
+	@gh release create v$(VERSION) dist/capt.yaml \
+		--title "Release v$(VERSION)" \
+		--notes-file CHANGELOG.md \
+		--draft
 
 ##@ Dependencies
 

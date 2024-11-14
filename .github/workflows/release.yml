@@ -11,7 +11,8 @@ env:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    # runs-on: ubuntu-latest
+    runs-on: chimera-third-main
     permissions:
       contents: write
       packages: write

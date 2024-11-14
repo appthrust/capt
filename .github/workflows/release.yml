@@ -7,15 +7,15 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: ${{ github.repository_owner }}/capt
 
 jobs:
   release:
-    # runs-on: ubuntu-latest
-    runs-on: chimera-third-main
+    runs-on: ubuntu-latest
     permissions:
       contents: write
       packages: write
+      id-token: write
 
     steps:
       - name: Checkout repository
@@ -24,7 +24,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: '1.21'
+          go-version: '1.23.3'
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3

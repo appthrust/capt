@@ -107,6 +107,13 @@ func (r *Reconciler) handleVPCTemplate(ctx context.Context, captCluster *infrast
 	return Result{}, nil
 }
 
+func (r *Reconciler) getVPCName(captCluster *infrastructurev1beta1.CAPTCluster) string {
+	if captCluster.Spec.VPCConfig != nil && captCluster.Spec.VPCConfig.Name != "" {
+		return captCluster.Spec.VPCConfig.Name
+	}
+	return fmt.Sprintf("%s-vpc", captCluster.Name)
+}
+
 func (r *Reconciler) getOrCreateWorkspaceTemplateApply(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster) (*infrastructurev1beta1.WorkspaceTemplateApply, error) {
 	logger := log.FromContext(ctx)
 
@@ -115,6 +122,9 @@ func (r *Reconciler) getOrCreateWorkspaceTemplateApply(ctx context.Context, capt
 	if applyName == "" {
 		applyName = fmt.Sprintf("%s-vpc", captCluster.Name)
 	}
+
+	// Get VPC name
+	vpcName := r.getVPCName(captCluster)
 
 	// Try to find existing WorkspaceTemplateApply
 	workspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
@@ -130,8 +140,9 @@ func (r *Reconciler) getOrCreateWorkspaceTemplateApply(ctx context.Context, capt
 		latest.Spec = infrastructurev1beta1.WorkspaceTemplateApplySpec{
 			TemplateRef: *captCluster.Spec.VPCTemplateRef,
 			Variables: map[string]string{
-				"name":        fmt.Sprintf("%s-vpc", captCluster.Name),
-				"environment": "production", // TODO: Make this configurable
+				"cluster_name": captCluster.Name,
+				"vpc_name":     vpcName,
+				"environment":  "production", // TODO: Make this configurable
 			},
 		}
 		if err := r.Update(ctx, latest); err != nil {
@@ -158,8 +169,9 @@ func (r *Reconciler) getOrCreateWorkspaceTemplateApply(ctx context.Context, capt
 		Spec: infrastructurev1beta1.WorkspaceTemplateApplySpec{
 			TemplateRef: *captCluster.Spec.VPCTemplateRef,
 			Variables: map[string]string{
-				"name":        fmt.Sprintf("%s-vpc", captCluster.Name),
-				"environment": "production", // TODO: Make this configurable
+				"cluster_name": captCluster.Name,
+				"vpc_name":     vpcName,
+				"environment":  "production", // TODO: Make this configurable
 			},
 		},
 	}

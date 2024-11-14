@@ -20,6 +20,8 @@ spec:
         source: Inline
         vars:
           - key: name
+            value: "${vpc_name}"
+          - key: cluster_name
             value: "${cluster_name}"
         module: |
           data "aws_availability_zones" "available" {
@@ -32,6 +34,7 @@ spec:
           locals {
             azs = slice(data.aws_availability_zones.available.names, 0, 3)
             name = try(var.name, basename(path.cwd))
+            cluster_name = var.cluster_name
             tags = {
               Module     = basename(path.cwd)
               GithubRepo = "github.com/appthrust/terraform-aws"
@@ -41,6 +44,11 @@ spec:
           variable "name" {
             type        = string
             description = "Name of the VPC"
+          }
+
+          variable "cluster_name" {
+            type        = string
+            description = "Name of the cluster"
           }
 
           module "vpc" {
@@ -57,7 +65,7 @@ spec:
               "kubernetes.io/role/elb" = "1"
             }
             private_subnet_tags = {
-              "karpenter.sh/discovery"          = "${local.name}"
+              "karpenter.sh/discovery"          = "${local.cluster_name}"
               "kubernetes.io/role/internal-elb" = "1"
             }
             tags = {

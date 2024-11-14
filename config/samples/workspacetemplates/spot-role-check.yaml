@@ -1,0 +1,28 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplate
+metadata:
+  name: spot-role-check
+  namespace: default
+spec:
+  template:
+    metadata:
+      description: "Template for checking EC2 Spot Service-Linked Role existence"
+      version: "1.0.0"
+      tags:
+        provider: "aws"
+        resource: "iam"
+        type: "service-linked-role"
+    spec:
+      providerConfigRef:
+        name: aws-provider-for-eks
+      forProvider:
+        source: Inline
+        enableTerraformCLILogging: true
+        module: |
+          data "aws_iam_roles" "spot" {
+            name_regex = "^AWSServiceRoleForEC2Spot$"
+          }
+
+          output "role_exists" {
+            value = length(data.aws_iam_roles.spot.arns) > 0
+          }

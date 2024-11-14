@@ -1,0 +1,29 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplate
+metadata:
+  name: spot-role-create
+  namespace: default
+spec:
+  template:
+    metadata:
+      description: "Template for creating EC2 Spot Service-Linked Role"
+      version: "1.0.0"
+      tags:
+        provider: "aws"
+        resource: "iam"
+        type: "service-linked-role"
+    spec:
+      providerConfigRef:
+        name: aws-provider-for-eks
+      forProvider:
+        source: Inline
+        enableTerraformCLILogging: true
+        module: |
+          resource "aws_iam_service_linked_role" "spot" {
+            aws_service_name = "spot.amazonaws.com"
+            description      = "Service-linked role for EC2 Spot Instances"
+          }
+
+          output "role_arn" {
+            value = aws_iam_service_linked_role.spot.arn
+          }

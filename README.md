@@ -83,30 +83,146 @@ graph TD
 - Extensibility through Custom Resource Definitions (CRDs)
 - ClusterTopology support for advanced cluster management
 
-## Prerequisites
+## Quick Start Guide
 
-- Kubernetes cluster (v1.19+)
-- Cluster API (v1.0+)
-- AWS credentials with appropriate permissions
-- Crossplane with Terraform Provider installed
+This guide will help you get started with CAPT, deploy it on your Kubernetes cluster, and set up a basic integration with Cluster API.
 
-## Installation
+### Prerequisites
 
-1. Install the CRDs:
-```bash
-kubectl apply -f config/crd/bases
-```
+Before you begin, ensure you have the following:
 
-2. Deploy the controller:
-```bash
-kubectl apply -f config/default
-```
+1. A Kubernetes cluster (v1.19+)
+2. kubectl installed and configured to access your cluster
+3. Cluster API (v1.0+) installed on your cluster
+4. AWS credentials with appropriate permissions
+5. Crossplane with Terraform Provider installed
 
-3. Configure AWS credentials:
-```bash
-kubectl apply -f crossplane-terraform-config/aws-creds-secre-sample.yaml
-kubectl apply -f crossplane-terraform-config/provider-config.yaml
-```
+### Step 1: Install CAPT
+
+1. Download the latest CAPT release:
+   ```
+   curl -LO https://github.com/appthrust/capt/releases/latest/download/capt.yaml
+   ```
+
+2. Install CAPT:
+   ```
+   kubectl apply -f capt.yaml
+   ```
+
+   Note: The `capt.yaml` file includes all necessary Custom Resource Definitions (CRDs), RBAC settings, and the CAPT controller deployment.
+
+3. Verify the controller is running:
+   ```
+   kubectl get pods -n capt-system
+   ```
+
+Important: The default installation uses the `controller:latest` image tag. For production use, it's recommended to use a specific version tag. You can modify the image tag in the `capt.yaml` file before applying it.
+
+### Step 2: Configure AWS Credentials
+
+1. Create a Kubernetes secret with your AWS credentials:
+   ```
+   kubectl create secret generic aws-credentials \
+     --from-literal=AWS_ACCESS_KEY_ID=<your-access-key> \
+     --from-literal=AWS_SECRET_ACCESS_KEY=<your-secret-key> \
+     -n capt-system
+   ```
+
+2. Apply the Crossplane Terraform Provider configuration:
+   ```
+   kubectl apply -f crossplane-terraform-config/provider-config.yaml
+   ```
+
+### Step 3: Create a Simple EKS Cluster
+
+1. Create a VPC WorkspaceTemplate:
+   ```yaml
+   apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+   kind: WorkspaceTemplate
+   metadata:
+     name: simple-vpc
+   spec:
+     template:
+       metadata:
+         description: "Simple VPC configuration"
+       spec:
+         module:
+           source: "terraform-aws-modules/vpc/aws"
+           version: "5.0.0"
+         variables:
+           name:
+             value: "simple-vpc"
+           cidr:
+             value: "10.0.0.0/16"
+   ```
+   Save this as `simple-vpc.yaml` and apply it:
+   ```
+   kubectl apply -f simple-vpc.yaml
+   ```
+
+2. Create a CAPTCluster resource:
+   ```yaml
+   apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+   kind: CAPTCluster
+   metadata:
+     name: simple-cluster
+   spec:
+     region: us-west-2
+     vpcTemplateRef:
+       name: simple-vpc
+   ```
+   Save this as `simple-cluster.yaml` and apply it:
+   ```
+   kubectl apply -f simple-cluster.yaml
+   ```
+
+3. Create a Cluster resource:
+   ```yaml
+   apiVersion: cluster.x-k8s.io/v1beta1
+   kind: Cluster
+   metadata:
+     name: simple-cluster
+   spec:
+     infrastructureRef:
+       apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+       kind: CAPTCluster
+       name: simple-cluster
+   ```
+   Save this as `cluster.yaml` and apply it:
+   ```
+   kubectl apply -f cluster.yaml
+   ```
+
+### Step 4: Monitor Cluster Creation
+
+1. Check the status of your cluster:
+   ```
+   kubectl get clusters
+   ```
+
+2. View the CAPTCluster resource:
+   ```
+   kubectl get captclusters
+   ```
+
+3. Check the WorkspaceTemplateApply resources:
+   ```
+   kubectl get workspacetemplateapplies
+   ```
+
+### Step 5: Access Your EKS Cluster
+
+Once the cluster is ready:
+
+1. Get the kubeconfig for your new EKS cluster:
+   ```
+   aws eks get-token --cluster-name simple-cluster > kubeconfig
+   ```
+
+2. Use the new kubeconfig to interact with your EKS cluster:
+   ```
+   kubectl --kubeconfig=./kubeconfig get nodes
+   ```
 
 ## Usage
 
@@ -332,6 +448,22 @@ Note: WorkspaceTemplateApply resources are automatically created and managed by 
 3. Commit your changes
 4. Push to the branch
 5. Create a Pull Request
+
+## Releasing
+
+When creating a new release:
+
+1. Update the version number in relevant files (e.g., `VERSION`, `Chart.yaml`, etc.)
+2. Update the CHANGELOG.md file with the new version and its changes
+3. Create a new tag with the version number (e.g., `v1.0.0`)
+4. Push the tag to the repository
+5. The CI/CD pipeline will automatically:
+   - Build the project
+   - Generate the `capt.yaml` file
+   - Create a new GitHub release
+   - Attach the `capt.yaml` file to the release
+
+Users can then download and apply the `capt.yaml` file to install or upgrade CAPT.
 
 ## License
 

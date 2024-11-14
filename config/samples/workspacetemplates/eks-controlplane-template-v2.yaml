@@ -47,17 +47,6 @@ spec:
             }
           }
 
-          # Create Service-Linked Role for EC2 Spot Instances if it doesn't exist
-          resource "aws_iam_service_linked_role" "spot" {
-            aws_service_name = "spot.amazonaws.com"
-            description      = "Service-linked role for EC2 Spot Instances"
-
-            # Roleが存在する場合は作成をスキップ
-            lifecycle {
-              ignore_changes = [aws_service_name]
-            }
-          }
-
           module "kms" {
             source  = "terraform-aws-modules/kms/aws"
             version = "~> 2.1"
@@ -208,9 +197,6 @@ spec:
             irsa_oidc_provider_arn          = module.eks.oidc_provider_arn
 
             tags = local.tags
-
-            # Ensure Service-Linked Role is created before Karpenter
-            depends_on = [aws_iam_service_linked_role.spot]
           }
 
           resource "helm_release" "karpenter" {
@@ -241,8 +227,6 @@ spec:
                 enabled: false
               EOT
             ]
-
-            depends_on = [aws_iam_service_linked_role.spot]
           }
 
           resource "kubectl_manifest" "ec2_node_class" {
@@ -266,8 +250,7 @@ spec:
           YAML
 
             depends_on = [
-              resource.helm_release.karpenter,
-              aws_iam_service_linked_role.spot
+              resource.helm_release.karpenter
             ]
           }
 
@@ -308,8 +291,7 @@ spec:
           YAML
 
             depends_on = [
-              kubectl_manifest.ec2_node_class,
-              aws_iam_service_linked_role.spot
+              kubectl_manifest.ec2_node_class
             ]
           }
 

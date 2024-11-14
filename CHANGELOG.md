@@ -15,8 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Support for customizing VPC name through CaptCluster spec
+- CAPTEP-0024: Documentation for VPC name customization
+
 ### Changed
-- Updated vpc.yaml template to use ${cluster_name} variable instead of hardcoded VPC name
+- Updated vpc.yaml template to use ${vpc_name} and ${cluster_name} variables
+- Modified VPC naming to use cluster name as default with -vpc suffix
 
 ## [v0.1.1] - 2024-11-13
 

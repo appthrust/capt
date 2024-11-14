@@ -1,0 +1,55 @@
+# CAPTCluster
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: CAPTCluster
+metadata:
+  name: demo-cluster6
+  namespace: default
+spec:
+  region: "ap-northeast-1"
+  vpcTemplateRef:
+    name: vpc-template
+    namespace: default
+---
+# Cluster
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: demo-cluster6
+  namespace: default
+spec:
+  clusterNetwork:
+    services:
+      cidrBlocks: ["10.96.0.0/12"]
+    pods:
+      cidrBlocks: ["192.168.0.0/16"]
+    serviceDomain: "cluster.local"
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: CAPTCluster
+    name: demo-cluster6
+    namespace: default
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    kind: CAPTControlPlane
+    name: demo-cluster6
+    namespace: default
+---
+# CAPTControlPlane
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: CAPTControlPlane
+metadata:
+  name: demo-cluster6
+  namespace: default
+spec:
+  version: "1.31"
+  workspaceTemplateRef:
+    name: eks-controlplane-template-v2
+    namespace: default
+  controlPlaneConfig:
+    region: "ap-northeast-1"
+    endpointAccess:
+      public: true
+      private: true
+  additionalTags:
+    Environment: "dev"
+    ManagedBy: "capt"

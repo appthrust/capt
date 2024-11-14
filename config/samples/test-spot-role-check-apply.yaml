@@ -1,0 +1,9 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplateApply
+metadata:
+  name: test-spot-role-check
+  namespace: default
+spec:
+  templateRef:
+    name: spot-role-check
+    namespace: default

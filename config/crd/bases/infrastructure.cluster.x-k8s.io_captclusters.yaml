@@ -63,6 +63,15 @@ spec:
                   This is useful when the VPC is shared among multiple projects
                   This field is only effective when VPCTemplateRef is set
                 type: boolean
+              vpcConfig:
+                description: VPCConfig contains VPC-specific configuration
+                properties:
+                  name:
+                    description: |-
+                      Name is the name of the VPC
+                      If not specified, defaults to {cluster-name}-vpc
+                    type: string
+                type: object
               vpcTemplateRef:
                 description: |-
                   VPCTemplateRef is a reference to a WorkspaceTemplate resource for VPC configuration

@@ -23,6 +23,14 @@ import (
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 
+// VPCConfig contains configuration for the VPC
+type VPCConfig struct {
+	// Name is the name of the VPC
+	// If not specified, defaults to {cluster-name}-vpc
+	// +optional
+	Name string `json:"name,omitempty"`
+}
+
 // CAPTClusterSpec defines the desired state of CAPTCluster
 type CAPTClusterSpec struct {
 	// Region is the AWS region where the cluster will be created
@@ -43,6 +51,10 @@ type CAPTClusterSpec struct {
 	// This field is only effective when VPCTemplateRef is set
 	// +optional
 	RetainVPCOnDelete bool `json:"retainVpcOnDelete,omitempty"`
+
+	// VPCConfig contains VPC-specific configuration
+	// +optional
+	VPCConfig *VPCConfig `json:"vpcConfig,omitempty"`
 
 	// WorkspaceTemplateApplyName is the name of the WorkspaceTemplateApply used for this cluster.
 	// This field is managed by the controller and should not be modified manually.

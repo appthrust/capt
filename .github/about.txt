@@ -1,0 +1,1 @@
+CAPT (Cluster API Provider Terraform) - A Kubernetes-native solution for managing EKS clusters using Terraform and Crossplane. Enables modular infrastructure management with workspace templates, ClusterClass support, and secure configuration handling.

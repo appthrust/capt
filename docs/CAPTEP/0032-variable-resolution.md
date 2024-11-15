@@ -1,49 +1,24 @@
 # CAPTEP-0032: Variable Resolution for ClusterResourceSet
 
 ## Summary
-ClusterResourceSetで使用する変数を、WorkspaceTemplateのOutputsとSecretから解決する方法を提案します。
+WorkspaceTemplateが生成するSecretの値をHelmReleaseのtargetPath機能を使用して直接参照する方法を提案します。
 
 ## Motivation
-ClusterResourceSetを使用してアドオンをインストールする際、設定値の多くはWorkspaceTemplateによって作成されたリソースから取得する必要があります。これらの値を安全かつ効率的に解決する方法が必要です。
+WorkspaceTemplateは必要な設定値をSecretとして生成します。これらの値をKarpenterなどのHelmチャートで使用する際、FluxCDのHelmReleaseのtargetPath機能を活用することで、値を直接マージできます。
 
 ### Goals
-- WorkspaceTemplateのOutputsとSecretからの変数解決
-- 変数解決プロセスの自動化
+- WorkspaceTemplateが生成するSecretの値を直接利用
+- 形式変換なしでの値の参照
 - セキュアな変数管理
 
 ### Non-Goals
-- 一般的な設定管理の方法の定義
-- WorkspaceTemplate以外の変数ソースの対応
-- 動的な変数解決の実装
+- WorkspaceTemplateのSecret生成形式の変更
+- 複雑な変数解決メカニズムの実装
+- Secret管理方法の変更
 
 ## Proposal
 
-### WorkspaceTemplateのOutputs定義
-
-```hcl
-# eks-controlplane-template-v2.yaml内のOutputs
-output "cluster_endpoint" {
-  description = "Endpoint for EKS control plane"
-  value       = module.eks.cluster_endpoint
-}
-
-output "cluster_name" {
-  description = "The name of the EKS cluster"
-  value       = module.eks.cluster_name
-}
-
-output "karpenter_iam_role_arn" {
-  description = "IAM role ARN for Karpenter"
-  value       = module.karpenter.iam_role_arn
-}
-
-output "karpenter_queue_name" {
-  description = "SQS queue name for Karpenter"
-  value       = module.karpenter.queue_name
-}
-```
-
-### ConnectionSecret構造
+### WorkspaceTemplateのSecret形式
 
 ```yaml
 apiVersion: v1
@@ -52,124 +27,102 @@ metadata:
   name: ${WORKSPACE_NAME}-eks-connection
   namespace: default
 type: Opaque
-stringData:
-  cluster_endpoint: ${cluster_endpoint}
-  cluster_name: ${cluster_name}
-  karpenter_iam_role_arn: ${karpenter_iam_role_arn}
-  karpenter_queue_name: ${karpenter_queue_name}
+data:
+  cluster_endpoint: <base64_encoded_value>
+  cluster_name: <base64_encoded_value>
+  karpenter_iam_role_arn: <base64_encoded_value>
+  karpenter_queue_name: <base64_encoded_value>
 ```
 
-### 変数解決の実装
+### HelmReleaseでのSecret参照
 
-1. CAPTコントローラーでの変数解決
-```go
-// CAPTコントローラー内での実装
-type VariableResolver struct {
-    Client client.Client
-}
-
-func (r *VariableResolver) ResolveVariables(ctx context.Context, cluster *clusterv1.Cluster, configMap *corev1.ConfigMap) error {
-    // WorkspaceTemplateApplyから関連するSecretを取得
-    secret := &corev1.Secret{}
-    secretName := fmt.Sprintf("%s-eks-connection", workspaceName)
-    if err := r.Client.Get(ctx, types.NamespacedName{
-        Namespace: cluster.Namespace,
-        Name: secretName,
-    }, secret); err != nil {
-        return fmt.Errorf("failed to get connection secret: %w", err)
-    }
-
-    // 変数マッピングの定義
-    varMapping := map[string]string{
-        "${CLUSTER_NAME}": string(secret.Data["cluster_name"]),
-        "${CLUSTER_ENDPOINT}": string(secret.Data["cluster_endpoint"]),
-        "${KARPENTER_IAM_ROLE_ARN}": string(secret.Data["karpenter_iam_role_arn"]),
-        "${KARPENTER_QUEUE_NAME}": string(secret.Data["karpenter_queue_name"]),
-    }
-
-    // ConfigMap内の変数を置換
-    for k, v := range varMapping {
-        for key, content := range configMap.Data {
-            configMap.Data[key] = strings.ReplaceAll(content, k, v)
-        }
-    }
-
-    return nil
-}
+```yaml
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: karpenter
+  namespace: karpenter
+spec:
+  interval: 5m
+  chart:
+    spec:
+      chart: karpenter
+      version: 1.0.7
+      sourceRef:
+        kind: HelmRepository
+        name: karpenter
+        namespace: karpenter
+  valuesFrom:
+    - kind: Secret
+      name: ${WORKSPACE_NAME}-eks-connection
+      valuesKey: cluster_name
+      targetPath: settings.clusterName
+    - kind: Secret
+      name: ${WORKSPACE_NAME}-eks-connection
+      valuesKey: cluster_endpoint
+      targetPath: settings.clusterEndpoint
+    - kind: Secret
+      name: ${WORKSPACE_NAME}-eks-connection
+      valuesKey: karpenter_iam_role_arn
+      targetPath: serviceAccount.annotations.eks\.amazonaws\.com/role-arn
+    - kind: Secret
+      name: ${WORKSPACE_NAME}-eks-connection
+      valuesKey: karpenter_queue_name
+      targetPath: settings.interruptionQueue
 ```
 
-2. 変数解決のトリガー
-```go
-func (r *ClusterResourceSetReconciler) reconcileConfigMap(ctx context.Context, cluster *clusterv1.Cluster, configMap *corev1.ConfigMap) error {
-    // 変数解決が必要かチェック
-    if needsVariableResolution(configMap) {
-        resolver := &VariableResolver{Client: r.Client}
-        if err := resolver.ResolveVariables(ctx, cluster, configMap); err != nil {
-            return err
-        }
-    }
+### ClusterResourceSetでのSecret転送
 
-    // 解決済みConfigMapをクラスターに適用
-    return r.applyConfigMap(ctx, cluster, configMap)
-}
-```
-
-### エラーハンドリング
-
-1. 変数が見つからない場合
-```go
-func (r *VariableResolver) handleMissingVariable(varName string) error {
-    return &MissingVariableError{
-        Variable: varName,
-        Message: fmt.Sprintf("variable %s not found in connection secret", varName),
-    }
-}
-```
-
-2. 変数解決の再試行
-```go
-func (r *VariableResolver) resolveWithRetry(ctx context.Context, cluster *clusterv1.Cluster, configMap *corev1.ConfigMap) error {
-    return retry.OnError(retry.DefaultRetry, func() error {
-        return r.ResolveVariables(ctx, cluster, configMap)
-    })
-}
+```yaml
+apiVersion: addons.cluster.x-k8s.io/v1alpha3
+kind: ClusterResourceSet
+metadata:
+  name: karpenter-config
+  namespace: default
+spec:
+  clusterSelector:
+    matchLabels:
+      karpenter.sh/enabled: "true"
+  resources:
+    - name: ${WORKSPACE_NAME}-eks-connection
+      kind: Secret
 ```
 
 ## Implementation Details
 
-### Phase 1: 基本実装
-1. WorkspaceTemplateのOutputs定義の追加
-2. ConnectionSecret構造の実装
-3. 基本的な変数解決機能の実装
+### Phase 1: 基本設定
+1. ClusterResourceSetの設定
+2. HelmReleaseマニフェストの作成
+3. 基本的なテストの実装
 
-### Phase 2: エラーハンドリング
-1. エラー検出と報告の実装
-2. リトライメカニズムの追加
-3. エラーメッセージの改善
+### Phase 2: 検証
+1. 値の参照テスト
+2. エラーケースの確認
+3. 統合テストの実装
 
-### Phase 3: テストと検証
-1. ユニットテストの実装
-2. 統合テストの実装
-3. エッジケースの検証
+### Phase 3: ドキュメント化
+1. 設定ガイドの作成
+2. トラブルシューティングガイドの作成
+3. 運用手順の整備
 
 ## Risks and Mitigations
 
-### リスク1: 変数解決の失敗
-- リスク: 必要な変数が見つからない
+### リスク1: Secret値の更新
+- リスク: Secret値が更新された場合の反映
 - 緩和策:
-  - デフォルト値の設定
-  - 明確なエラーメッセージ
-  - リトライメカニズム
+  - HelmReleaseのinterval設定の最適化
+  - 更新状態の監視
+  - 手動更新トリガーの提供
 
-### リスク2: パフォーマンス
-- リスク: 大量の変数解決による遅延
+### リスク2: パス指定のエラー
+- リスク: targetPathの指定ミス
 - 緩和策:
-  - キャッシング機能の実装
-  - バッチ処理の最適化
-  - タイムアウト設定
+  - バリデーション機能の実装
+  - エラーメッセージの改善
+  - デフォルト値の設定
 
 ## References
 
-- [Cluster API Variable Substitution](https://cluster-api.sigs.k8s.io/developer/architecture/controllers/variable-substitution.html)
+- [FluxCD HelmRelease Values](https://fluxcd.io/flux/components/helm/helmreleases/#values)
+- [Cluster API ClusterResourceSet](https://cluster-api.sigs.k8s.io/tasks/experimental-features/cluster-resource-set)
 - [Kubernetes Secrets](https://kubernetes.io/docs/concepts/configuration/secret/)
-- [Go Client for Kubernetes](https://github.com/kubernetes/client-go)

@@ -42,7 +42,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: Dockerfile.test
+          file: ./Dockerfile.rc
           platforms: linux/amd64
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.TEST_IMAGE_NAME }}:${{ github.ref_name }}

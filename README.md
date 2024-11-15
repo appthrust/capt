@@ -85,85 +85,19 @@ graph TD
 
 ## Quick Start Guide
 
-This guide will help you get started with CAPT, deploy it on your Kubernetes cluster, and set up a basic integration with Cluster API.
+For detailed installation instructions, please refer to [INSTALL.md](INSTALL.md).
+
+This guide will help you get started with using CAPT to manage your EKS clusters.
 
 ### Prerequisites
 
-Before you begin, ensure you have the following:
+Before you begin, ensure you have:
 
-1. A Kubernetes cluster (v1.19+)
-2. kubectl installed and configured to access your cluster
-3. Cluster API (v1.0+) installed on your cluster
-4. AWS credentials with appropriate permissions
-5. Crossplane with Terraform Provider installed
+1. CAPT installed (see [INSTALL.md](INSTALL.md))
+2. AWS credentials properly configured
+3. A running Kubernetes cluster with Cluster API and CAPT
 
-### Step 1: Install CAPT
-
-There are two ways to install CAPT:
-
-#### Option 1: Using the Release Installer (Recommended)
-
-1. Download the latest CAPT release installer:
-   ```bash
-   # Latest stable release
-   curl -LO https://github.com/appthrust/capt/releases/latest/download/capt.yaml
-
-   # Specific version
-   curl -LO https://github.com/appthrust/capt/releases/download/v1.0.0/capt.yaml
-   ```
-
-2. Install CAPT:
-   ```bash
-   kubectl apply -f capt.yaml
-   ```
-
-#### Option 2: Using Container Images Directly
-
-CAPT provides multi-architecture container images (amd64/arm64) through GitHub Container Registry:
-
-1. Create a deployment manifest:
-   ```yaml
-   apiVersion: apps/v1
-   kind: Deployment
-   metadata:
-     name: capt-controller
-     namespace: capt-system
-   spec:
-     template:
-       spec:
-         containers:
-         - name: manager
-           image: ghcr.io/appthrust/capt:v1.0.0  # Replace with desired version
-   ```
-
-2. Apply the manifest:
-   ```bash
-   kubectl apply -f deployment.yaml
-   ```
-
-3. Verify the installation:
-   ```bash
-   kubectl get pods -n capt-system
-   ```
-
-Note: For production use, always specify a version tag (e.g., `v1.0.0`) instead of using `latest`.
-
-### Step 2: Configure AWS Credentials
-
-1. Create a Kubernetes secret with your AWS credentials:
-   ```bash
-   kubectl create secret generic aws-credentials \
-     --from-literal=AWS_ACCESS_KEY_ID=<your-access-key> \
-     --from-literal=AWS_SECRET_ACCESS_KEY=<your-secret-key> \
-     -n capt-system
-   ```
-
-2. Apply the Crossplane Terraform Provider configuration:
-   ```bash
-   kubectl apply -f crossplane-terraform-config/provider-config.yaml
-   ```
-
-### Step 3: Create a Simple EKS Cluster
+### Creating Your First EKS Cluster
 
 1. Create a VPC WorkspaceTemplate:
    ```yaml
@@ -223,7 +157,7 @@ Note: For production use, always specify a version tag (e.g., `v1.0.0`) instead 
    kubectl apply -f cluster.yaml
    ```
 
-### Step 4: Monitor Cluster Creation
+### Monitoring Cluster Creation
 
 1. Check the status of your cluster:
    ```bash
@@ -240,7 +174,7 @@ Note: For production use, always specify a version tag (e.g., `v1.0.0`) instead 
    kubectl get workspacetemplateapplies
    ```
 
-### Step 5: Access Your EKS Cluster
+### Accessing Your EKS Cluster
 
 Once the cluster is ready:
 

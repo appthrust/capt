@@ -17,6 +17,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+//+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanes,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanes/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanes/finalizers,verbs=update
+
 const (
 	// CAPTControlPlaneFinalizer is the finalizer added to CAPTControlPlane instances
 	CAPTControlPlaneFinalizer = "controlplane.cluster.x-k8s.io/captcontrolplane"

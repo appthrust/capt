@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CAPTEP-0026: Documentation for release workflow optimization
 - Improved GitHub Container Registry integration
 - Enhanced release automation process
+- CAPTEP-0028: Documentation for RBAC and CRD installation issues
+
+### Fixed
+- RBAC permissions for CAPTControlPlane controller
+- Added missing RBAC markers for proper permission generation
 
 ## [v0.1.6] - 2024-11-15
 

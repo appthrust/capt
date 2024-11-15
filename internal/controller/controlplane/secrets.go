@@ -31,12 +31,6 @@ func (r *Reconciler) reconcileSecrets(ctx context.Context, controlPlane *control
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling secrets")
 
-	// Skip if secrets are already reconciled
-	if controlPlane.Status.SecretsReady {
-		logger.V(4).Info("Secrets already reconciled")
-		return nil
-	}
-
 	// Verify WorkspaceTemplateApply is ready and has a workspace name
 	if workspaceApply.Status.WorkspaceName == "" {
 		logger.Info("Workspace name not set, waiting for WorkspaceTemplateApply to be ready")
@@ -125,7 +119,7 @@ func (r *Reconciler) reconcileSecrets(ctx context.Context, controlPlane *control
 	}
 
 	// Check if kubeconfig secret already exists
-	kubeconfigSecretName := fmt.Sprintf("%s-control-plane-kubeconfig", controlPlane.Name)
+	kubeconfigSecretName := fmt.Sprintf("%s-kubeconfig", cluster.Name)
 	existingKubeconfigSecret := &corev1.Secret{}
 	kubeconfigSecretExists := true
 	if err := r.Get(ctx, client.ObjectKey{
@@ -145,7 +139,11 @@ func (r *Reconciler) reconcileSecrets(ctx context.Context, controlPlane *control
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      kubeconfigSecretName,
 				Namespace: controlPlane.Namespace,
+				Labels: map[string]string{
+					"cluster.x-k8s.io/cluster-name": cluster.Name,
+				},
 			},
+			Type: "cluster.x-k8s.io/secret",
 			Data: map[string][]byte{
 				"value": secret.Data["kubeconfig"],
 			},

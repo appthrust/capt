@@ -367,23 +367,12 @@ spec:
             users:
             - name: rancher-installer@${module.eks.cluster_name}.${var.region}.eksctl.io
               user:
-                exec:
-                  apiVersion: client.authentication.k8s.io/v1beta1
-                  args:
-                  - eks
-                  - get-token
-                  - --output
-                  - json
-                  - --cluster-name
-                  - ${module.eks.cluster_name}
-                  - --region
-                  - ${var.region}
-                  command: aws
-                  env:
-                  - name: AWS_STS_REGIONAL_ENDPOINTS
-                    value: regional
-                  provideClusterInfo: false
+                token: "${data.external.eks_token.result.token}"
             EOT
           }
 
           data "aws_caller_identity" "current" {}
+
+          data "external" "eks_token" {
+            program = ["sh", "-c", "aws eks get-token --output json --cluster-name ${module.eks.cluster_name} --region ${var.region} | jq -r '{token: .status.token}'"]
+          }

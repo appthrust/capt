@@ -9,7 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - CAPTEP-0029: Standardization of Enhancement Proposal format
 - ADR-0002: Decision to use Enhancement Proposals for significant changes
-- CAPTEP-0030: Proposal for improving Karpenter installation reliability using ClusterResourceSet
+- CAPTEP-0030: Strategy for improving Karpenter installation reliability
+- CAPTEP-0031: FluxCD integration with ClusterResourceSet
+- CAPTEP-0032: Variable resolution mechanism for ClusterResourceSet
 
 ## [v0.1.10] - 2024-11-15
 

@@ -32,6 +32,7 @@ rules:
 - apiGroups:
   - controlplane.cluster.x-k8s.io
   resources:
+  - captcontrolplanes
   - captcontrolplanetemplates
   verbs:
   - create
@@ -44,12 +45,14 @@ rules:
 - apiGroups:
   - controlplane.cluster.x-k8s.io
   resources:
+  - captcontrolplanes/finalizers
   - captcontrolplanetemplates/finalizers
   verbs:
   - update
 - apiGroups:
   - controlplane.cluster.x-k8s.io
   resources:
+  - captcontrolplanes/status
   - captcontrolplanetemplates/status
   verbs:
   - get

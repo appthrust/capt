@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- CAPTEP-0026: Documentation for release workflow optimization
+- Improved GitHub Container Registry integration
+- Enhanced release automation process
+
 ## [v0.1.6] - 2024-11-15
 
 ### Added

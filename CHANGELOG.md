@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- CAPTEP-0029: Standardization of Enhancement Proposal format
+- ADR-0002: Decision to use Enhancement Proposals for significant changes
+
+## [v0.1.10] - 2024-11-15
+
+### Added
 - CAPTEP-0026: Documentation for release workflow optimization
 - Improved GitHub Container Registry integration
 - Enhanced release automation process
@@ -15,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - RBAC permissions for CAPTControlPlane controller
 - Added missing RBAC markers for proper permission generation
+
+### Changed
+- Updated generated API files
+- Updated configuration files and RBAC roles
 
 ## [v0.1.6] - 2024-11-15
 

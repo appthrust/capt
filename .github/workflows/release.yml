@@ -8,7 +8,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/capt-stable  # Changed from capt to capt-stable
+  IMAGE_NAME: ${{ github.repository_owner }}/capt  # Changed back to original name
   TEST_IMAGE_NAME: ${{ github.repository_owner }}/capt-test
 
 jobs:

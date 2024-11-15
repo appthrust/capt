@@ -30,3 +30,4 @@ docs/journal
 references
 aws-creds-secret.yaml
 debug
+dist

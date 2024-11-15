@@ -99,29 +99,59 @@ Before you begin, ensure you have the following:
 
 ### Step 1: Install CAPT
 
-1. Download the latest CAPT release:
-   ```
+There are two ways to install CAPT:
+
+#### Option 1: Using the Release Installer (Recommended)
+
+1. Download the latest CAPT release installer:
+   ```bash
+   # Latest stable release
    curl -LO https://github.com/appthrust/capt/releases/latest/download/capt.yaml
+
+   # Specific version
+   curl -LO https://github.com/appthrust/capt/releases/download/v1.0.0/capt.yaml
    ```
 
 2. Install CAPT:
-   ```
+   ```bash
    kubectl apply -f capt.yaml
    ```
 
-   Note: The `capt.yaml` file includes all necessary Custom Resource Definitions (CRDs), RBAC settings, and the CAPT controller deployment.
+#### Option 2: Using Container Images Directly
 
-3. Verify the controller is running:
+CAPT provides multi-architecture container images (amd64/arm64) through GitHub Container Registry:
+
+1. Create a deployment manifest:
+   ```yaml
+   apiVersion: apps/v1
+   kind: Deployment
+   metadata:
+     name: capt-controller
+     namespace: capt-system
+   spec:
+     template:
+       spec:
+         containers:
+         - name: manager
+           image: ghcr.io/appthrust/capt:v1.0.0  # Replace with desired version
    ```
+
+2. Apply the manifest:
+   ```bash
+   kubectl apply -f deployment.yaml
+   ```
+
+3. Verify the installation:
+   ```bash
    kubectl get pods -n capt-system
    ```
 
-Important: The default installation uses the `controller:latest` image tag. For production use, it's recommended to use a specific version tag. You can modify the image tag in the `capt.yaml` file before applying it.
+Note: For production use, always specify a version tag (e.g., `v1.0.0`) instead of using `latest`.
 
 ### Step 2: Configure AWS Credentials
 
 1. Create a Kubernetes secret with your AWS credentials:
-   ```
+   ```bash
    kubectl create secret generic aws-credentials \
      --from-literal=AWS_ACCESS_KEY_ID=<your-access-key> \
      --from-literal=AWS_SECRET_ACCESS_KEY=<your-secret-key> \
@@ -129,7 +159,7 @@ Important: The default installation uses the `controller:latest` image tag. For 
    ```
 
 2. Apply the Crossplane Terraform Provider configuration:
-   ```
+   ```bash
    kubectl apply -f crossplane-terraform-config/provider-config.yaml
    ```
 
@@ -156,7 +186,7 @@ Important: The default installation uses the `controller:latest` image tag. For 
              value: "10.0.0.0/16"
    ```
    Save this as `simple-vpc.yaml` and apply it:
-   ```
+   ```bash
    kubectl apply -f simple-vpc.yaml
    ```
 
@@ -172,7 +202,7 @@ Important: The default installation uses the `controller:latest` image tag. For 
        name: simple-vpc
    ```
    Save this as `simple-cluster.yaml` and apply it:
-   ```
+   ```bash
    kubectl apply -f simple-cluster.yaml
    ```
 
@@ -189,24 +219,24 @@ Important: The default installation uses the `controller:latest` image tag. For 
        name: simple-cluster
    ```
    Save this as `cluster.yaml` and apply it:
-   ```
+   ```bash
    kubectl apply -f cluster.yaml
    ```
 
 ### Step 4: Monitor Cluster Creation
 
 1. Check the status of your cluster:
-   ```
+   ```bash
    kubectl get clusters
    ```
 
 2. View the CAPTCluster resource:
-   ```
+   ```bash
    kubectl get captclusters
    ```
 
 3. Check the WorkspaceTemplateApply resources:
-   ```
+   ```bash
    kubectl get workspacetemplateapplies
    ```
 
@@ -215,12 +245,12 @@ Important: The default installation uses the `controller:latest` image tag. For 
 Once the cluster is ready:
 
 1. Get the kubeconfig for your new EKS cluster:
-   ```
+   ```bash
    aws eks get-token --cluster-name simple-cluster > kubeconfig
    ```
 
 2. Use the new kubeconfig to interact with your EKS cluster:
-   ```
+   ```bash
    kubectl --kubeconfig=./kubeconfig get nodes
    ```
 
@@ -451,19 +481,34 @@ Note: WorkspaceTemplateApply resources are automatically created and managed by 
 
 ## Releasing
 
-When creating a new release:
+CAPT uses an automated release process through GitHub Actions. When creating a new release:
 
 1. Update the version number in relevant files (e.g., `VERSION`, `Chart.yaml`, etc.)
 2. Update the CHANGELOG.md file with the new version and its changes
-3. Create a new tag with the version number (e.g., `v1.0.0`)
-4. Push the tag to the repository
-5. The CI/CD pipeline will automatically:
-   - Build the project
-   - Generate the `capt.yaml` file
-   - Create a new GitHub release
-   - Attach the `capt.yaml` file to the release
+3. Create and push a new tag:
+   ```bash
+   # For Release Candidates
+   git tag -a v1.0.0-rc1 -m "Release Candidate 1 for v1.0.0"
+   
+   # For Stable Releases
+   git tag -a v1.0.0 -m "Release v1.0.0"
+   
+   git push origin <tag-name>
+   ```
 
-Users can then download and apply the `capt.yaml` file to install or upgrade CAPT.
+The release workflow will automatically:
+- Build and push multi-architecture Docker images (amd64/arm64) to ghcr.io/appthrust/capt
+- Generate the capt.yaml installer
+- Create a GitHub release with:
+  - Release notes from CHANGELOG.md
+  - capt.yaml installer as an asset
+  - Links to the container images
+
+Users can then:
+1. Download and apply the capt.yaml installer
+2. Or use the container images directly from ghcr.io/appthrust/capt
+
+Note: Release Candidates (RC) are tagged with `-rc` suffix and are primarily for testing. Production deployments should use stable releases.
 
 ## License
 

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: karpenter-aws-default-nodepool
+description: A Helm chart for creating EC2NodeClass and NodePool resources for Karpenter
+type: application
+version: 0.1.0
+appVersion: "1.0"

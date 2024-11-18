@@ -346,33 +346,4 @@ spec:
             value       = module.eks.oidc_provider_arn
           }
 
-          output "kubeconfig" {
-            description = "Kubeconfig in YAML format"
-            sensitive   = true
-            value       = <<-EOT
-            apiVersion: v1
-            clusters:
-            - cluster:
-                certificate-authority-data: ${module.eks.cluster_certificate_authority_data}
-                server: ${module.eks.cluster_endpoint}
-              name: ${module.eks.cluster_name}.${var.region}.eksctl.io
-            contexts:
-            - context:
-                cluster: ${module.eks.cluster_name}.${var.region}.eksctl.io
-                user: rancher-installer@${module.eks.cluster_name}.${var.region}.eksctl.io
-              name: rancher-installer@${module.eks.cluster_name}.${var.region}.eksctl.io
-            current-context: rancher-installer@${module.eks.cluster_name}.${var.region}.eksctl.io
-            kind: Config
-            preferences: {}
-            users:
-            - name: rancher-installer@${module.eks.cluster_name}.${var.region}.eksctl.io
-              user:
-                token: "${data.external.eks_token.result.token}"
-            EOT
-          }
-
           data "aws_caller_identity" "current" {}
-
-          data "external" "eks_token" {
-            program = ["sh", "-c", "aws eks get-token --output json --cluster-name ${module.eks.cluster_name} --region ${var.region} | jq -r '{token: .status.token}'"]
-          }

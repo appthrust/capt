@@ -7,8 +7,30 @@ on:
   workflow_dispatch:
 
 jobs:
-  push-charts:
+  plan:
     runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Find all Helm Charts
+        id: find-charts
+        run: |
+          chart_paths=$(find charts -name 'Chart.yaml' -exec dirname {} \; | sort | jq -R -s -c 'split("\n")[:-1]')
+          if [ -z "$chart_paths" ] || [ "$chart_paths" == "[]" ]; then
+            echo "No charts found. Exiting."
+            exit 1
+          fi
+          echo "chart_paths='$chart_paths'" | tee -a $GITHUB_OUTPUT
+
+  push-chart:
+    needs: plan
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        chart: ${{ fromJSON(needs.plan.outputs.chart_paths) }}
 
     env:
       HELM_EXPERIMENTAL_OCI: 1
@@ -19,35 +41,6 @@ jobs:
 
       - name: Setup Helm
         uses: azure/setup-helm@v4
-
-      - name: Find all Helm Charts
-        id: find-charts
-        run: |
-          find charts -name 'Chart.yaml' -exec dirname {} \; | sort > chart_paths.txt
-
-      - name: Load chart paths into matrix
-        run: |
-          echo "chart_paths=$(cat chart_paths.txt | jq -R -s -c 'split("\n")[:-1]')" >> $GITHUB_ENV
-
-  push-chart:
-    needs: push-charts
-    runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        chart: ${{ fromJson(env.chart_paths) }}
-
-    env:
-      HELM_EXPERIMENTAL_OCI: 1
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Setup Helm
-        uses: azure/setup-helm@v3
-        with:
-          version: v3.12.3
 
       - name: Authenticate with GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u $GITHUB_ACTOR --password-stdin

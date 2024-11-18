@@ -1,0 +1,6 @@
+name: default
+clusterName:
+budgets:
+limits:
+  cpu: 1000
+nodeRoleName:

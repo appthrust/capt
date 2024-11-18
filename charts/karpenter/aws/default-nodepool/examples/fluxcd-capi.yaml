@@ -1,0 +1,54 @@
+apiVersion: source.toolkit.fluxcd.io/v1beta2
+kind: OCIRepository
+metadata:
+  name: karpenter-aws-default-nodepool
+  namespace: flux-system
+spec:
+  interval: 1h
+  url: oci://ghcr.io/appthrust/charts
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: stage-kubeconfig
+  namespace: karpenter
+type: Opaque
+data:
+  kubeconfig: <base64-encoded-kubeconfig>
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my-values
+  namespace: karpenter
+type: Opaque
+data:
+  custom-values.yaml: |
+    bmFtZTogZGVmYXVsdA0KY2x1c3Rlck5hbWU6IG15LWNsdXN0ZXINCmJ1ZGdldHM6DQogIGxpbWl0czoNCiAgICBjcHU6IDEwMDA=
+---
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: default-nodepool
+  namespace: karpenter
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: karpenter-aws-default-nodepool
+      sourceRef:
+        kind: OCIRepository
+        name: karpenter-aws-default-nodepool
+        namespace: flux-system
+  install:
+    createNamespace: true
+  kubeConfig:
+    secretRef:
+      name: stage-kubeconfig
+      key: kubeconfig
+  valuesFrom:
+    - kind: Secret
+      name: my-values
+      valuesKey: custom-values.yaml
+  dependsOn:
+    - name: karpenter

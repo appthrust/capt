@@ -1,0 +1,58 @@
+name: Release Helm Charts
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      charts: ${{ steps.plan.outputs.charts }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Plan
+        id: plan
+        run: |
+          CHART_PATHS=$(find charts -name 'Chart.yaml' -exec dirname {} \;)
+          CHARTS_JSON=$(echo "${CHART_PATHS}" | while read -r path; do
+            name=$(yq e '.name' "$path/Chart.yaml")
+            version=$(yq e '.version' "$path/Chart.yaml")
+            echo "{\"path\": \"$path\", \"name\": \"$name\", \"version\": \"$version\"}"
+          done | jq -s -c)
+          echo "charts=${CHARTS_JSON}" | tee -a "$GITHUB_OUTPUT"
+
+  push-chart:
+    needs: [plan]
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        charts: ${{ fromJson(needs.plan.outputs.charts) }}
+
+    env:
+      HELM_EXPERIMENTAL_OCI: 1
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Helm login
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.repository_owner }} --password-stdin
+
+      - name: Package Helm Chart
+        run: |
+          helm package ${{ matrix.charts.path }} --destination packaged
+
+      - name: Push Helm Chart to GHCR
+        run: |
+          CHART_FILE=packaged/${{ matrix.charts.name }}-${{ matrix.charts.version }}.tgz
+          helm push $CHART_FILE oci://ghcr.io/appthrust/charts

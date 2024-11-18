@@ -25,7 +25,7 @@ jobs:
             version=$(yq e '.version' "$path/Chart.yaml")
             echo "{\"path\": \"$path\", \"name\": \"$name\", \"version\": \"$version\"}"
           done | jq -s -c)
-          echo "charts=${CHARTS_JSON}" | tee -a "$GITHUB_OUTPUT"
+          echo "charts=${CHARTS_JSON}" >> "$GITHUB_OUTPUT"
 
   push-chart:
     needs: [plan]
@@ -48,11 +48,17 @@ jobs:
       - name: Helm login
         run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.repository_owner }} --password-stdin
 
-      - name: Package Helm Chart
+      - name: Check if Helm Chart Exists
+        id: check-existence
         run: |
-          helm package ${{ matrix.charts.path }} --destination packaged
+          if helm pull oci://ghcr.io/appthrust/charts/${{ matrix.charts.name }} --version ${{ matrix.charts.version }}; then
+            echo "chart_exists=true" >> $GITHUB_ENV
+          else
+            echo "chart_exists=false" >> $GITHUB_ENV
+          fi
 
       - name: Push Helm Chart to GHCR
+        if: env.chart_exists == 'false'
         run: |
-          CHART_FILE=packaged/${{ matrix.charts.name }}-${{ matrix.charts.version }}.tgz
-          helm push $CHART_FILE oci://ghcr.io/appthrust/charts
+          helm package ${{ matrix.charts.path }} --destination packaged
+          helm push packaged/${{ matrix.charts.name }}-${{ matrix.charts.version }}.tgz oci://ghcr.io/appthrust/charts

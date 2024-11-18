@@ -1,0 +1,60 @@
+name: Release Helm Charts
+
+on:
+  push:
+
+jobs:
+  push-charts:
+    runs-on: ubuntu-latest
+
+    env:
+      HELM_EXPERIMENTAL_OCI: 1
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Find all Helm Charts
+        id: find-charts
+        run: |
+          find charts -name 'Chart.yaml' -exec dirname {} \; | sort > chart_paths.txt
+
+      - name: Load chart paths into matrix
+        run: |
+          echo "chart_paths=$(cat chart_paths.txt | jq -R -s -c 'split("\n")[:-1]')" >> $GITHUB_ENV
+
+  push-chart:
+    needs: push-charts
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        chart: ${{ fromJson(env.chart_paths) }}
+
+    env:
+      HELM_EXPERIMENTAL_OCI: 1
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: v3.12.3
+
+      - name: Authenticate with GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u $GITHUB_ACTOR --password-stdin
+
+      - name: Package Helm Chart
+        run: |
+          helm package ${{ matrix.chart }} --destination packaged
+
+      - name: Push Helm Chart to GHCR
+        run: |
+          CHART_NAME=$(basename ${{ matrix.chart }})
+          CHART_FILE=$(ls packaged/${CHART_NAME}-*.tgz)
+          helm push $CHART_FILE oci://ghcr.io/appthrust/charts

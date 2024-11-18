@@ -13,10 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CAPTEP-0031: FluxCD integration with ClusterResourceSet
 - CAPTEP-0032: Variable resolution mechanism for ClusterResourceSet
 - CAPTEP-0033: Migration from Crossplane to Upbound Terraform Provider
+- CAPTEP-0034: Dedicated WorkspaceTemplate for kubeconfig generation
 
 ### Changed
 - Updated RBAC permissions to use tf.upbound.io API group instead of tf.crossplane.io
 - Migrated Terraform workspace management to use Upbound provider
+- Separated kubeconfig generation into a dedicated WorkspaceTemplate
+- Refactored EKS control plane template to remove kubeconfig generation
 
 ### Fixed
 - Added missing RBAC permissions for clusters/status resource

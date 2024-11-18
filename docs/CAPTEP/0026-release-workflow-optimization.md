@@ -28,28 +28,58 @@
    - テストイメージ（capt-test）: プッシュ成功
    - 本番イメージ（capt）: 403 Forbidden
    
-2. 考えられる原因
-   - パッケージ名の命名規則による制限
-   - リポジトリとパッケージの権限の不一致
-   - Organization levelでの追加設定の必要性
+2. 詳細な分析結果
+   - 同一のワークフロー権限設定:
+     ```yaml
+     permissions:
+       contents: write
+       packages: write
+     ```
+   - 同一のGITHUB_TOKENを使用
+   - テストイメージと本番イメージで異なる動作
 
-#### 解決策
-1. Workflow permissionsの適切な設定
-   ```yaml
-   permissions:
-     contents: write
-     packages: write
+3. 根本原因の特定
+   - リポジトリリンクの欠如が主な原因
+   - `org.opencontainers.image.source`ラベルが必要
+   - パッケージとリポジトリの明示的な接続が重要
+
+#### 実験と検証
+1. 実験1: イメージ名の変更（v0.1.7）
+   - アプローチ：イメージ名を`capt-stable`に変更
+   - 結果：プッシュ成功
+   - 観察：新しいパッケージ名でも動作
+
+2. 実験2: リポジトリリンクの追加（v0.1.9）
+   - アプローチ：Dockerfileにラベルを追加
+     ```dockerfile
+     LABEL org.opencontainers.image.source=https://github.com/appthrust/capt
+     LABEL org.opencontainers.image.description="Cluster API Provider for Tofu/Terraform"
+     LABEL org.opencontainers.image.licenses=MIT
+     ```
+   - イメージ名を元の`capt`に戻して検証
+   - 結果：プッシュ成功
+   ```
+   pushing manifest for ghcr.io/appthrust/capt:v0.1.9
+   pushing manifest for ghcr.io/appthrust/capt:latest
+   DONE 7.4s
    ```
 
-2. Organization設定での対応
-   - パッケージの作成権限を有効化
-   - Public/Privateパッケージの許可
-   - リポジトリからの権限継承設定
+#### 解決策
+1. Dockerfileの修正
+   ```dockerfile
+   LABEL org.opencontainers.image.source=https://github.com/appthrust/capt
+   ```
+   - このラベルにより、パッケージとリポジトリが正しく接続される
+   - GITHUB_TOKENに適切な権限が付与される
 
-3. パッケージ固有の設定
-   - 本番パッケージの明示的な権限設定
-   - 命名規則の見直し
-   - アクセス制御の再確認
+2. パッケージとリポジトリの接続
+   - リポジトリリンクラベルを使用して明示的に接続
+   - 新しいパッケージは自動的にリポジトリにリンク
+   - 既存のパッケージも正しく権限を継承
+
+3. イメージ名の戦略
+   - 元の`capt`イメージ名を使用可能
+   - リポジトリリンクラベルが適切に設定されていれば十分
 
 ### 2. リリースワークフローの最適化
 
@@ -58,14 +88,21 @@
    - タグパターン: `v*-rc*`
    - 目的: 初期検証とテスト
    - 成果物: テスト用イメージ
+   - 特徴:
+     - シンプルなDockerfile.rc使用
+     - 単一アーキテクチャ（linux/amd64）
 
 2. 本番リリース
    - タグパターン: `v*`
    - 目的: 安定版のリリース
    - 成果物:
-     - マルチアーキテクチャイメージ
+     - マルチアーキテクチャイメージ（linux/amd64,linux/arm64）
      - インストーラー（capt.yaml）
      - GitHubリリース
+   - 特徴:
+     - 本番用Dockerfile使用
+     - マルチステージビルド
+     - マルチアーキテクチャサポート
 
 ### 3. リリースプロセスの自動化
 
@@ -107,10 +144,10 @@ jobs:
 ## 推奨事項
 
 1. 権限管理
-   - 最小権限の原則に従う
+   - リポジトリリンクラベルを必ず使用
+   - パッケージとリポジトリの接続を確認
    - 明示的な権限設定を優先
-   - Organization levelの設定を活用
-   - パッケージ固有の権限を確認
+   - 定期的な権限監査を実施
 
 2. リリースプロセス
    - セマンティックバージョニングの厳守
@@ -122,17 +159,20 @@ jobs:
    - ログ出力の改善
    - 再試行メカニズムの実装
 
-## 影響
+## 次のステップ
 
-1. 開発プロセス
-   - 信頼性の高いリリース
-   - 効率的なワークフロー
-   - 明確な責任分担
+1. イメージ名の統一
+   - `capt`イメージ名に統一
+   - リポジトリリンクラベルの維持
 
-2. メンテナンス
-   - シンプルな設定による保守性向上
-   - トラブルシューティングの容易化
-   - ドキュメントの一元管理
+2. ドキュメントの更新
+   - パッケージ権限のベストプラクティスを追加
+   - リポジトリリンクの重要性を強調
+
+3. ワークフローの改善
+   - エラーメッセージの詳細化
+   - 再試行ロジックの実装
+   - ログ出力の強化
 
 ## 参考資料
 

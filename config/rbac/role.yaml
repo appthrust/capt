@@ -23,6 +23,7 @@ rules:
   - cluster.x-k8s.io
   resources:
   - clusters
+  - clusters/status
   verbs:
   - get
   - list
@@ -102,9 +103,10 @@ rules:
   - patch
   - update
 - apiGroups:
-  - tf.crossplane.io
+  - tf.upbound.io
   resources:
   - workspaces
+  - workspaces/status
   verbs:
   - create
   - delete

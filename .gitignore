@@ -31,3 +31,6 @@ references
 aws-creds-secret.yaml
 debug
 dist
+
+*.tgz
+.DS_Store

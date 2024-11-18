@@ -1,0 +1,49 @@
+{{- if not .Values.clusterName -}}
+{{- fail "The 'clusterName' value is required but not provided. Please set it in your values.yaml." -}}
+{{- end -}}
+---
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: {{ .Values.name }}
+spec:
+  amiSelectorTerms:
+    - alias: bottlerocket@latest
+  role: {{ .Values.nodeRoleName | default (printf "%s-node" .Values.clusterName) | quote }}
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: {{ .Values.clusterName | quote }}
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: {{ .Values.clusterName | quote }}
+  tags:
+    karpenter.sh/discovery: {{ .Values.clusterName | quote }}
+---
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: {{ .Values.name }}
+spec:
+  template:
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: {{ .Values.name }}
+      requirements:
+        - key: "karpenter.k8s.aws/instance-category"
+          operator: In
+          values: ["c", "m", "r"]
+        - key: "karpenter.k8s.aws/instance-hypervisor"
+          operator: In
+          values: ["nitro"]
+        - key: "karpenter.k8s.aws/instance-generation"
+          operator: Gt
+          values: ["2"]
+  limits: {{ toYaml .Values.limits | nindent 4 }}
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 1m
+    {{- with .Values.budgets }}
+    budgets: {{ toYaml . | nindent 6 }}
+    {{- end }}

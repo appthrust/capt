@@ -12,6 +12,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CAPTEP-0030: Strategy for improving Karpenter installation reliability
 - CAPTEP-0031: FluxCD integration with ClusterResourceSet
 - CAPTEP-0032: Variable resolution mechanism for ClusterResourceSet
+- CAPTEP-0033: Migration from Crossplane to Upbound Terraform Provider
+
+### Changed
+- Updated RBAC permissions to use tf.upbound.io API group instead of tf.crossplane.io
+- Migrated Terraform workspace management to use Upbound provider
+
+### Fixed
+- Added missing RBAC permissions for clusters/status resource
+- CAPTEP-0033: Documentation for RBAC permissions update
+
+## [v0.1.11] - 2024-01-24
+
+### Fixed
+- Added missing RBAC permissions for clusters/status resource
+- CAPTEP-0033: Documentation for RBAC permissions update
 
 ## [v0.1.10] - 2024-11-15
 

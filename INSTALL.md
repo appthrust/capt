@@ -24,7 +24,13 @@ Before you begin, ensure you have:
    kubectl cluster-info
    ```
 
-### Step 2: Install Cluster API
+### Step 2: Install cert-manager
+
+```
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.16.1/cert-manager.yaml
+```
+
+### Step 3: Install Cluster API
 
 1. Install clusterctl:
    ```bash

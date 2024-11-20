@@ -18,7 +18,7 @@ spec:
         name: eks-connection
         namespace: default
       providerConfigRef:
-        name: aws-provider-for-eks-test
+        name: aws-provider-config-test
       forProvider:
         source: Inline
         enableTerraformCLILogging: true

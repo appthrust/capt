@@ -14,7 +14,7 @@ spec:
         type: "service-linked-role"
     spec:
       providerConfigRef:
-        name: aws-provider-for-eks
+        name: aws-provider-config
       forProvider:
         source: Inline
         enableTerraformCLILogging: true

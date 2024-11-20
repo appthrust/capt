@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CAPTEP-0033: Migration from Crossplane to Upbound Terraform Provider
 - CAPTEP-0034: Dedicated WorkspaceTemplate for kubeconfig generation
 - CAPTEP-0035: Status condition helper functions
+- CAPTEP-0036: Kubeconfig generation improvements and design decisions
 
 ### Changed
 - Updated RBAC permissions to use tf.upbound.io API group instead of tf.crossplane.io

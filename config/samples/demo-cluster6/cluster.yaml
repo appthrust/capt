@@ -43,7 +43,7 @@ metadata:
 spec:
   version: "1.31"
   workspaceTemplateRef:
-    name: eks-controlplane-template-v2
+    name: eks-controlplane-template
     namespace: default
   controlPlaneConfig:
     region: "ap-northeast-1"

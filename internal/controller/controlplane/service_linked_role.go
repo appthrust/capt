@@ -182,13 +182,3 @@ func (r *Reconciler) reconcileSpotServiceLinkedRole(ctx context.Context, control
 
 	return nil
 }
-
-// FindStatusCondition finds the condition that matches the given type in the condition slice
-func FindStatusCondition(conditions []xpv1.Condition, conditionType xpv1.ConditionType) *xpv1.Condition {
-	for i := range conditions {
-		if conditions[i].Type == conditionType {
-			return &conditions[i]
-		}
-	}
-	return nil
-}

@@ -2,10 +2,11 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: flake-config
+  namespace: crossplane-system
 data:
   flake.nix: |
     {
-      description = "AWS CLI in a container";
+      description = "AWS CLI and jq in a container";
 
       inputs.nixpkgs.url = "nixpkgs/nixos-unstable";
 
@@ -28,7 +29,10 @@ data:
               pkgs = nixpkgsFor.${system};
             in
             {
-              default = pkgs.awscli;
+              default = pkgs.symlinkJoin {
+                name = "aws-cli-with-jq";
+                paths = [ pkgs.awscli pkgs.jq ];
+              };
             });
         };
     }

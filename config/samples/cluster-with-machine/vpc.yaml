@@ -15,7 +15,7 @@ spec:
         environment: "dev"
     spec:
       providerConfigRef:
-        name: aws-provider-for-eks
+        name: aws-provider-config
       forProvider:
         source: Inline
         vars:

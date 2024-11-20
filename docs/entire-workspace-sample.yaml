@@ -227,4 +227,4 @@ spec:
         value: ap-northeast-1
   # Reference to the ProviderConfig resource
   providerConfigRef:
-    name: aws-provider-for-eks
+    name: aws-provider-config

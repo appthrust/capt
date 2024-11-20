@@ -1,0 +1,82 @@
+---
+apiVersion: addons.cluster.x-k8s.io/v1beta1
+kind: ClusterResourceSet
+metadata:
+  name: fluxcd-installer
+  namespace: default
+spec:
+  clusterSelector:
+    matchLabels:
+      fluxcd.io/enabled: "true"
+  resources:
+    - name: fluxcd-install
+      kind: ConfigMap
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluxcd-install
+  namespace: default
+data:
+  fluxcd.yaml: |
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: flux-system
+    ---
+    apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      name: flux-installer
+      namespace: flux-system
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: flux-installer
+    rules:
+    - apiGroups: ['*']
+      resources: ['*']
+      verbs: ['*']
+    ---
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRoleBinding
+    metadata:
+      name: flux-installer
+    subjects:
+    - kind: ServiceAccount
+      name: flux-installer
+      namespace: flux-system
+    roleRef:
+      kind: ClusterRole
+      name: flux-installer
+      apiGroup: rbac.authorization.k8s.io
+    ---
+    apiVersion: batch/v1
+    kind: Job
+    metadata:
+      name: flux-installer
+      namespace: flux-system
+    spec:
+      template:
+        spec:
+          serviceAccountName: flux-installer
+          containers:
+          - name: installer
+            image: bitnami/kubectl:latest
+            command:
+            - /bin/sh
+            - -c
+            - |
+              # FluxCDのインストール
+              kubectl apply -f https://github.com/fluxcd/flux2/releases/latest/download/install.yaml
+
+              echo "Waiting for FluxCD deployments to be ready..."
+              kubectl -n flux-system wait deployment --all --for=condition=Available --timeout=300s
+
+              echo "Waiting for FluxCD controllers to be ready..."
+              for deployment in source-controller helm-controller kustomize-controller notification-controller image-reflector-controller image-automation-controller; do
+                echo "Waiting for $deployment..."
+                kubectl -n flux-system wait pod --for=condition=Ready -l app=$deployment --timeout=300s
+              done
+          restartPolicy: OnFailure

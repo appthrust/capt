@@ -2701,6 +2701,7 @@ rules:
   - cluster.x-k8s.io
   resources:
   - clusters
+  - clusters/status
   verbs:
   - get
   - list
@@ -2710,6 +2711,7 @@ rules:
 - apiGroups:
   - controlplane.cluster.x-k8s.io
   resources:
+  - captcontrolplanes
   - captcontrolplanetemplates
   verbs:
   - create
@@ -2722,12 +2724,14 @@ rules:
 - apiGroups:
   - controlplane.cluster.x-k8s.io
   resources:
+  - captcontrolplanes/finalizers
   - captcontrolplanetemplates/finalizers
   verbs:
   - update
 - apiGroups:
   - controlplane.cluster.x-k8s.io
   resources:
+  - captcontrolplanes/status
   - captcontrolplanetemplates/status
   verbs:
   - get
@@ -2777,9 +2781,10 @@ rules:
   - patch
   - update
 - apiGroups:
-  - tf.crossplane.io
+  - tf.upbound.io
   resources:
   - workspaces
+  - workspaces/status
   verbs:
   - create
   - delete
@@ -2816,6 +2821,28 @@ rules:
   - /metrics
   verbs:
   - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: capt
+  name: capt-tf-upbound-role
+rules:
+- apiGroups:
+  - tf.upbound.io
+  resources:
+  - workspaces
+  - workspaces/status
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -2858,6 +2885,22 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: capt-metrics-auth-role
+subjects:
+- kind: ServiceAccount
+  name: capt-controller-manager
+  namespace: capt-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: capt
+  name: capt-tf-upbound-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: capt-tf-upbound-role
 subjects:
 - kind: ServiceAccount
   name: capt-controller-manager
@@ -2909,7 +2952,7 @@ spec:
         - --health-probe-bind-address=:8081
         command:
         - /manager
-        image: ghcr.io/appthrust/capt:v0.1.6
+        image: ghcr.io/appthrust/capt:v0.1.0
         livenessProbe:
           httpGet:
             path: /healthz

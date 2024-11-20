@@ -6,13 +6,17 @@ import (
 
 	controlplanev1beta1 "github.com/appthrust/capt/api/controlplane/v1beta1"
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
-	"github.com/pkg/errors"
+	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -25,6 +29,141 @@ const (
 	// CAPTControlPlaneFinalizer is the finalizer added to CAPTControlPlane instances
 	CAPTControlPlaneFinalizer = "controlplane.cluster.x-k8s.io/captcontrolplane"
 )
+
+// createKubeconfigWorkspaceTemplateApply creates a WorkspaceTemplateApply for kubeconfig generation
+func (r *Reconciler) createKubeconfigWorkspaceTemplateApply(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane, cluster *clusterv1.Cluster, workspaceApply *infrastructurev1beta1.WorkspaceTemplateApply) error {
+	logger := log.FromContext(ctx)
+
+	// Check if the main WorkspaceTemplateApply is ready
+	readyCondition := FindStatusCondition(workspaceApply.Status.Conditions, xpv1.TypeReady)
+	if readyCondition == nil || readyCondition.Status != corev1.ConditionTrue {
+		logger.Info("Main WorkspaceTemplateApply not ready yet")
+		return nil
+	}
+
+	// Get workspace
+	workspace := &unstructured.Unstructured{}
+	workspace.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "tf.upbound.io",
+		Version: "v1beta1",
+		Kind:    "Workspace",
+	})
+
+	if err := r.Get(ctx, client.ObjectKey{
+		Name:      workspaceApply.Status.WorkspaceName,
+		Namespace: workspaceApply.Namespace,
+	}, workspace); err != nil {
+		return fmt.Errorf("failed to get workspace: %v", err)
+	}
+
+	// Get connection secret
+	secret := &corev1.Secret{}
+	secretRef := workspaceApply.Spec.WriteConnectionSecretToRef
+	if secretRef == nil {
+		return fmt.Errorf("workspace connection secret reference is not set")
+	}
+
+	if err := r.Get(ctx, client.ObjectKey{
+		Name:      secretRef.Name,
+		Namespace: secretRef.Namespace,
+	}, secret); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return fmt.Errorf("failed to get secret: %v", err)
+		}
+		logger.Info("Waiting for secret to be created")
+		return nil
+	}
+
+	// Get cluster endpoint and CA data from secret
+	clusterEndpoint := string(secret.Data["cluster_endpoint"])
+	if clusterEndpoint == "" {
+		logger.Info("Cluster endpoint not found in secret, waiting...")
+		return nil
+	}
+
+	clusterCA := string(secret.Data["cluster_certificate_authority_data"])
+	if clusterCA == "" {
+		logger.Info("Cluster CA data not found in secret, waiting...")
+		return nil
+	}
+
+	// Get region from ControlPlaneConfig or cluster annotations
+	var region string
+	if controlPlane.Spec.ControlPlaneConfig != nil {
+		region = controlPlane.Spec.ControlPlaneConfig.Region
+	}
+	if region == "" {
+		// Fallback to cluster annotations
+		region = cluster.Annotations["cluster.x-k8s.io/region"]
+		if region == "" {
+			logger.Info("Region not found in ControlPlaneConfig or cluster annotations")
+			return nil
+		}
+	}
+
+	// Create kubeconfig WorkspaceTemplateApply
+	kubeconfigApplyName := fmt.Sprintf("%s-kubeconfig-apply", controlPlane.Name)
+	kubeconfigApply := &infrastructurev1beta1.WorkspaceTemplateApply{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      kubeconfigApplyName,
+			Namespace: controlPlane.Namespace,
+		},
+		Spec: infrastructurev1beta1.WorkspaceTemplateApplySpec{
+			TemplateRef: infrastructurev1beta1.WorkspaceTemplateReference{
+				Name:      "eks-kubeconfig-template",
+				Namespace: "default", // WorkspaceTemplateは常にdefaultネームスペースにある
+			},
+			Variables: map[string]string{
+				"cluster_name":                       cluster.Name,
+				"region":                             region,
+				"cluster_endpoint":                   clusterEndpoint,
+				"cluster_certificate_authority_data": clusterCA,
+			},
+			WriteConnectionSecretToRef: &xpv1.SecretReference{
+				Name:      fmt.Sprintf("%s-outputs-kubeconfig", cluster.Name),
+				Namespace: "default", // outputs-kubeconfigはdefaultネームスペースに作成
+			},
+			WaitForWorkspaces: []infrastructurev1beta1.WorkspaceReference{
+				{
+					Name: workspaceApply.Status.WorkspaceName,
+				},
+			},
+		},
+	}
+
+	// Set owner reference
+	if err := controllerutil.SetControllerReference(controlPlane, kubeconfigApply, r.Scheme); err != nil {
+		return fmt.Errorf("failed to set owner reference: %v", err)
+	}
+
+	// Create or update the WorkspaceTemplateApply
+	existingApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
+	err := r.Get(ctx, types.NamespacedName{
+		Name:      kubeconfigApplyName,
+		Namespace: controlPlane.Namespace,
+	}, existingApply)
+
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			// Create new WorkspaceTemplateApply
+			if err := r.Create(ctx, kubeconfigApply); err != nil {
+				return fmt.Errorf("failed to create kubeconfig WorkspaceTemplateApply: %v", err)
+			}
+			logger.Info("Created kubeconfig WorkspaceTemplateApply")
+		} else {
+			return fmt.Errorf("failed to get kubeconfig WorkspaceTemplateApply: %v", err)
+		}
+	} else {
+		// Update existing WorkspaceTemplateApply
+		existingApply.Spec = kubeconfigApply.Spec
+		if err := r.Update(ctx, existingApply); err != nil {
+			return fmt.Errorf("failed to update kubeconfig WorkspaceTemplateApply: %v", err)
+		}
+		logger.Info("Updated kubeconfig WorkspaceTemplateApply")
+	}
+
+	return nil
+}
 
 // cleanupResources cleans up all resources associated with the CAPTControlPlane
 func (r *Reconciler) cleanupResources(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane) error {
@@ -73,6 +212,24 @@ func (r *Reconciler) cleanupResources(ctx context.Context, controlPlane *control
 		logger.Info("Successfully deleted WorkspaceTemplateApply")
 	} else if !apierrors.IsNotFound(err) {
 		return fmt.Errorf("failed to get WorkspaceTemplateApply: %v", err)
+	}
+
+	// Delete kubeconfig WorkspaceTemplateApply if it exists
+	kubeconfigApplyName := fmt.Sprintf("%s-kubeconfig-apply", controlPlane.Name)
+	kubeconfigApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
+	err = r.Get(ctx, types.NamespacedName{
+		Name:      kubeconfigApplyName,
+		Namespace: controlPlane.Namespace,
+	}, kubeconfigApply)
+
+	if err == nil {
+		if err := r.Delete(ctx, kubeconfigApply); err != nil {
+			logger.Error(err, "Failed to delete kubeconfig WorkspaceTemplateApply")
+			return fmt.Errorf("failed to delete kubeconfig WorkspaceTemplateApply: %v", err)
+		}
+		logger.Info("Successfully deleted kubeconfig WorkspaceTemplateApply")
+	} else if !apierrors.IsNotFound(err) {
+		return fmt.Errorf("failed to get kubeconfig WorkspaceTemplateApply: %v", err)
 	}
 
 	return nil
@@ -226,8 +383,16 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return result, err
 	}
 
-	// Reconcile secrets after status update
-	logger.Info("Reconciling secrets")
+	// Create kubeconfig WorkspaceTemplateApply if the main WorkspaceTemplateApply is ready
+	if err := r.createKubeconfigWorkspaceTemplateApply(ctx, controlPlane, cluster, workspaceApply); err != nil {
+		logger.Error(err, "Failed to create kubeconfig WorkspaceTemplateApply")
+		if _, setErr := r.setFailedStatus(ctx, controlPlane, cluster, "KubeconfigGenerationFailed", fmt.Sprintf("Failed to create kubeconfig WorkspaceTemplateApply: %v", err)); setErr != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set status: %v (original error: %v)", setErr, err)
+		}
+		return ctrl.Result{RequeueAfter: errorRequeueInterval}, err
+	}
+
+	// Reconcile secrets after kubeconfig generation
 	if err := r.reconcileSecrets(ctx, controlPlane, cluster, workspaceApply); err != nil {
 		logger.Error(err, "Failed to reconcile secrets")
 		if _, setErr := r.setFailedStatus(ctx, controlPlane, cluster, "SecretReconciliationFailed", fmt.Sprintf("Failed to reconcile secrets: %v", err)); setErr != nil {
@@ -260,7 +425,7 @@ func (r *Reconciler) setOwnerReference(ctx context.Context, controlPlane *contro
 
 	// Set owner reference
 	if err := controllerutil.SetControllerReference(cluster, controlPlane, r.Scheme); err != nil {
-		return errors.Wrap(err, "failed to set owner reference")
+		return fmt.Errorf("failed to set owner reference: %v", err)
 	}
 
 	return r.Update(ctx, controlPlane)

@@ -11,8 +11,10 @@ import (
 const (
 	// defaultRequeueInterval is the default interval to requeue reconciliation
 	defaultRequeueInterval = 30 * time.Second
+
 	// errorRequeueInterval is the interval to requeue reconciliation when in error state
 	errorRequeueInterval = 10 * time.Second
+
 	// initializationRequeueInterval is the interval to requeue reconciliation during initialization
 	initializationRequeueInterval = 5 * time.Second
 )

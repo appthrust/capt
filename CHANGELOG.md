@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added missing RBAC permissions for clusters/status resource
 - CAPTEP-0033: Documentation for RBAC permissions update
 - Implemented automatic updates for kubeconfig secrets to ensure latest configuration
+- CAPTEP-0038: Added missing RBAC permissions for kubeconfig secret creation and updates
 
 ## [v0.1.11] - 2024-01-24
 

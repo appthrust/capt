@@ -3,6 +3,6 @@ kind: Provider
 metadata:
   name: provider-terraform
 spec:
-  package: xpkg.upbound.io/upbound/provider-terraform:v0.18.0
+  package: xpkg.upbound.io/upbound/provider-terraform:v0.19.0
   runtimeConfigRef:
     name: aws-cli-config

@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CAPTEP-0034: Dedicated WorkspaceTemplate for kubeconfig generation
 - CAPTEP-0035: Status condition helper functions
 - CAPTEP-0036: Kubeconfig generation improvements and design decisions
+- CAPTEP-0037: Kubeconfig secret update mechanism improvements
 
 ### Changed
 - Updated RBAC permissions to use tf.upbound.io API group instead of tf.crossplane.io
@@ -21,10 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Separated kubeconfig generation into a dedicated WorkspaceTemplate
 - Refactored EKS control plane template to remove kubeconfig generation
 - Refactored status condition handling to use common helper functions
+- Enhanced kubeconfig secret management to support automatic updates
 
 ### Fixed
 - Added missing RBAC permissions for clusters/status resource
 - CAPTEP-0033: Documentation for RBAC permissions update
+- Implemented automatic updates for kubeconfig secrets to ensure latest configuration
 
 ## [v0.1.11] - 2024-01-24
 

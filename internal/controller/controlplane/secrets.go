@@ -210,47 +210,55 @@ func (r *Reconciler) reconcileKubeconfigSecret(ctx context.Context, controlPlane
 		return nil
 	}
 
-	// Check if kubeconfig secret already exists
+	// Prepare kubeconfig secret
 	kubeconfigSecretName := fmt.Sprintf("%s-kubeconfig", cluster.Name)
+	kubeconfigSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      kubeconfigSecretName,
+			Namespace: controlPlane.Namespace,
+			Labels: map[string]string{
+				"cluster.x-k8s.io/cluster-name": cluster.Name,
+			},
+		},
+		Type: "cluster.x-k8s.io/secret",
+		Data: map[string][]byte{
+			"value": outputsSecret.Data["kubeconfig"],
+		},
+	}
+
+	// Set controller reference
+	if err := controllerutil.SetControllerReference(controlPlane, kubeconfigSecret, r.Scheme); err != nil {
+		logger.Error(err, "Failed to set controller reference for kubeconfig secret")
+		return err
+	}
+
+	// Create or update kubeconfig secret
 	existingKubeconfigSecret := &corev1.Secret{}
-	kubeconfigSecretExists := true
-	if err := r.Get(ctx, client.ObjectKey{
+	err := r.Get(ctx, client.ObjectKey{
 		Name:      kubeconfigSecretName,
 		Namespace: controlPlane.Namespace,
-	}, existingKubeconfigSecret); err != nil {
+	}, existingKubeconfigSecret)
+
+	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			logger.Error(err, "Failed to get existing kubeconfig secret")
 			return err
 		}
-		kubeconfigSecretExists = false
-	}
-
-	// Create kubeconfig secret if it doesn't exist
-	if !kubeconfigSecretExists {
-		kubeconfigSecret := &corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      kubeconfigSecretName,
-				Namespace: controlPlane.Namespace,
-				Labels: map[string]string{
-					"cluster.x-k8s.io/cluster-name": cluster.Name,
-				},
-			},
-			Type: "cluster.x-k8s.io/secret",
-			Data: map[string][]byte{
-				"value": outputsSecret.Data["kubeconfig"],
-			},
-		}
-
-		if err := controllerutil.SetControllerReference(controlPlane, kubeconfigSecret, r.Scheme); err != nil {
-			logger.Error(err, "Failed to set controller reference for kubeconfig secret")
-			return err
-		}
-
+		// Create new secret
 		if err := r.Create(ctx, kubeconfigSecret); err != nil {
 			logger.Error(err, "Failed to create kubeconfig secret")
 			return err
 		}
 		logger.Info("Created kubeconfig secret")
+	} else {
+		// Update existing secret
+		existingKubeconfigSecret.Data = kubeconfigSecret.Data
+		existingKubeconfigSecret.Labels = kubeconfigSecret.Labels
+		if err := r.Update(ctx, existingKubeconfigSecret); err != nil {
+			logger.Error(err, "Failed to update kubeconfig secret")
+			return err
+		}
+		logger.Info("Updated kubeconfig secret")
 	}
 
 	return nil

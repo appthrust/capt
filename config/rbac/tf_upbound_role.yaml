@@ -1,0 +1,37 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: tf-upbound-role
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: capt
+rules:
+- apiGroups:
+  - tf.upbound.io
+  resources:
+  - workspaces
+  - workspaces/status
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: tf-upbound-rolebinding
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: capt
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: tf-upbound-role
+subjects:
+- kind: ServiceAccount
+  name: capt-controller-manager
+  namespace: capt-system

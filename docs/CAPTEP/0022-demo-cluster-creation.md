@@ -30,7 +30,7 @@ demo-cluster4を参考に、demo-cluster5を作成するプロセスと、その
 
 2. テンプレート参照
    - VPCテンプレート: vpc-template
-   - コントロールプレーンテンプレート: eks-controlplane-template-v2
+   - コントロールプレーンテンプレート: eks-controlplane-template
 
 ## 実装手順
 

@@ -30,4 +30,5 @@ resources:
 - captmachinetemplate_viewer_role.yaml
 - captcluster_editor_role.yaml
 - captcluster_viewer_role.yaml
-
+# Additional roles for Terraform Provider
+- tf_upbound_role.yaml

@@ -1,0 +1,38 @@
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: test-cluster
+  namespace: default
+  labels:
+    fluxcd.io/enabled: "true"
+    karpenter.sh/enabled: "true"
+spec:
+  clusterNetwork:
+    pods:
+      cidrBlocks: ["192.168.0.0/16"]
+    services:
+      cidrBlocks: ["10.96.0.0/12"]
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: CAPTCluster
+    name: test-cluster
+  controlPlaneRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: CAPTControlPlane
+    name: test-cluster-control-plane
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: CAPTCluster
+metadata:
+  name: test-cluster
+  namespace: default
+spec:
+  region: ap-northeast-1
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: CAPTControlPlane
+metadata:
+  name: test-cluster-control-plane
+  namespace: default
+spec:
+  version: "1.27"

@@ -17,7 +17,7 @@ spec:
         name: "${WORKSPACE_NAME}-eks-node-connection"
         namespace: default
       providerConfigRef:
-        name: aws-provider-for-eks
+        name: aws-provider-config
       forProvider:
         source: Inline
         enableTerraformCLILogging: true

@@ -108,7 +108,7 @@ func TestReconcileSecrets(t *testing.T) {
 				// Verify kubeconfig secret was created
 				kubeconfigSecret := &corev1.Secret{}
 				err := c.Get(context.Background(), types.NamespacedName{
-					Name:      controlPlane.Name + "-control-plane-kubeconfig",
+					Name:      controlPlane.Name + "-kubeconfig",
 					Namespace: controlPlane.Namespace,
 				}, kubeconfigSecret)
 				assert.NoError(t, err)
@@ -211,7 +211,7 @@ func TestReconcileSecrets(t *testing.T) {
 				// Add expected secrets
 				kubeconfigSecret := &corev1.Secret{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      tt.controlPlane.Name + "-control-plane-kubeconfig",
+						Name:      tt.controlPlane.Name + "-kubeconfig",
 						Namespace: tt.controlPlane.Namespace,
 					},
 					Data: map[string][]byte{

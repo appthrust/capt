@@ -18,6 +18,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+//+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch
+
 const (
 	// Reason constants for status conditions
 	ReasonSecretError       = "SecretError"

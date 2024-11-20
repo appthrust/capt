@@ -4,7 +4,7 @@
 WorkspaceTemplateのHelm Releaseリソースの削除時に発生するエラーを適切に処理する方法について提案します。
 
 ## Motivation
-現在、workspacetemplates/eks-controlplane-template-v2.yamlで定義されているhelm_releaseリソースを削除する際に、以下のエラーが発生することがあります：
+現在、workspacetemplates/eks-controlplane-template.yamlで定義されているhelm_releaseリソースを削除する際に、以下のエラーが発生することがあります：
 
 ```
 Error: uninstallation completed with 1 error(s): uninstall: Failed to purge the release: release: not found
@@ -24,7 +24,7 @@ Error: uninstallation completed with 1 error(s): uninstall: Failed to purge the 
 Terraformのlifecycleブロックを使用して、リソースの削除時のエラーを適切に処理します。
 
 ### Implementation Details
-eks-controlplane-template-v2.yamlのhelm_releaseリソースにlifecycleブロックを追加します：
+eks-controlplane-template.yamlのhelm_releaseリソースにlifecycleブロックを追加します：
 
 ```hcl
 resource "helm_release" "karpenter" {
@@ -51,7 +51,7 @@ resource "helm_release" "karpenter" {
 ## Design Details
 
 ### 修正内容
-1. eks-controlplane-template-v2.yamlの修正
+1. eks-controlplane-template.yamlの修正
    - helm_releaseリソースにlifecycleブロックを追加
    - 既存の設定（cleanup_on_fail, atomic等）は維持
 

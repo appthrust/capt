@@ -4,7 +4,7 @@
 現在のTerraform Helm Providerを使用したKarpenterのインストール方法を改善し、より信頼性の高いアプローチを提案します。
 
 ## Motivation
-現在、eks-controlplane-template-v2.yamlではTerraformのhelm_releaseリソースを使用してKarpenterをインストールしていますが、以下の問題が報告されています：
+現在、eks-controlplane-template.yamlではTerraformのhelm_releaseリソースを使用してKarpenterをインストールしていますが、以下の問題が報告されています：
 
 1. Terraform Helm Providerの不安定性
    - クラスター作成時のHelmインストールが信頼性に欠ける
@@ -58,7 +58,7 @@
 ## Implementation Plan
 
 1. Phase 1: 基本構造の確立
-   - eks-controlplane-template-v2.yamlからhelm_releaseブロックの削除
+   - eks-controlplane-template.yamlからhelm_releaseブロックの削除
    - 必要なOutputsの追加
    - 基本的なClusterResourceSetの作成
 

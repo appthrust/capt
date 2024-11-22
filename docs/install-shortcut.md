@@ -3,7 +3,7 @@ kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/
 ```
 
 ```
-clusterctl init
+clusterctl init --addon helm
 ```
 
 ```bash

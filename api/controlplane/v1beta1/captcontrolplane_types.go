@@ -2,6 +2,7 @@ package v1beta1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 
@@ -157,47 +158,6 @@ type Addon struct {
 	ConfigurationValues string `json:"configurationValues,omitempty"`
 }
 
-// CAPTControlPlaneStatus defines the observed state of CAPTControlPlane
-type CAPTControlPlaneStatus struct {
-	// Ready denotes that the control plane is ready
-	// +optional
-	Ready bool `json:"ready"`
-
-	// Initialized denotes if the control plane has been initialized
-	// +optional
-	Initialized bool `json:"initialized"`
-
-	// SecretsReady denotes that all required secrets have been created and are ready
-	// +optional
-	// +kubebuilder:default=false
-	SecretsReady bool `json:"secretsReady"`
-
-	// WorkspaceTemplateStatus contains the status of the WorkspaceTemplate
-	// +optional
-	WorkspaceTemplateStatus *WorkspaceTemplateStatus `json:"workspaceTemplateStatus,omitempty"`
-
-	// FailureReason indicates that there is a terminal problem reconciling the
-	// state, and will be set to a token value suitable for programmatic
-	// interpretation.
-	// +optional
-	FailureReason *string `json:"failureReason,omitempty"`
-
-	// FailureMessage indicates that there is a terminal problem reconciling the
-	// state, and will be set to a descriptive error message.
-	// +optional
-	FailureMessage *string `json:"failureMessage,omitempty"`
-
-	// Phase represents the current phase of the control plane
-	// Valid values are: "Creating", "Ready", "Failed"
-	// +optional
-	// +kubebuilder:validation:Enum=Creating;Ready;Failed
-	Phase string `json:"phase,omitempty"`
-
-	// Conditions defines current service state of the CAPTControlPlane.
-	// +optional
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
-}
-
 // WorkspaceTemplateStatus contains the status of the WorkspaceTemplate
 type WorkspaceTemplateStatus struct {
 	// Ready indicates if the WorkspaceTemplate is ready
@@ -225,24 +185,64 @@ type WorkspaceTemplateStatus struct {
 	LastFailureMessage string `json:"lastFailureMessage,omitempty"`
 }
 
-// GetControlPlaneTimeout returns the control plane timeout in minutes
-func (c *CAPTControlPlane) GetControlPlaneTimeout() int {
-	if c.Spec.ControlPlaneConfig != nil &&
-		c.Spec.ControlPlaneConfig.Timeouts != nil &&
-		c.Spec.ControlPlaneConfig.Timeouts.ControlPlaneTimeout != nil {
-		return *c.Spec.ControlPlaneConfig.Timeouts.ControlPlaneTimeout
-	}
-	return DefaultControlPlaneTimeout
+// WorkspaceStatus contains the status of the associated Workspace
+type WorkspaceStatus struct {
+	// Ready indicates if the Workspace is ready
+	// +optional
+	Ready bool `json:"ready"`
+
+	// State represents the current state of the Workspace
+	// +optional
+	State string `json:"state,omitempty"`
+
+	// AtProvider contains the observed state of the provider
+	// +optional
+	AtProvider *runtime.RawExtension `json:"atProvider,omitempty"`
 }
 
-// GetVPCReadyTimeout returns the VPC ready timeout in minutes
-func (c *CAPTControlPlane) GetVPCReadyTimeout() int {
-	if c.Spec.ControlPlaneConfig != nil &&
-		c.Spec.ControlPlaneConfig.Timeouts != nil &&
-		c.Spec.ControlPlaneConfig.Timeouts.VPCReadyTimeout != nil {
-		return *c.Spec.ControlPlaneConfig.Timeouts.VPCReadyTimeout
-	}
-	return DefaultVPCReadyTimeout
+// CAPTControlPlaneStatus defines the observed state of CAPTControlPlane
+type CAPTControlPlaneStatus struct {
+	// Ready denotes that the control plane is ready
+	// +optional
+	Ready bool `json:"ready"`
+
+	// Initialized denotes if the control plane has been initialized
+	// +optional
+	Initialized bool `json:"initialized"`
+
+	// SecretsReady denotes that all required secrets have been created and are ready
+	// +optional
+	// +kubebuilder:default=false
+	SecretsReady bool `json:"secretsReady"`
+
+	// WorkspaceTemplateStatus contains the status of the WorkspaceTemplate
+	// +optional
+	WorkspaceTemplateStatus *WorkspaceTemplateStatus `json:"workspaceTemplateStatus,omitempty"`
+
+	// WorkspaceStatus contains the status of the associated Workspace
+	// +optional
+	WorkspaceStatus *WorkspaceStatus `json:"workspaceStatus,omitempty"`
+
+	// FailureReason indicates that there is a terminal problem reconciling the
+	// state, and will be set to a token value suitable for programmatic
+	// interpretation.
+	// +optional
+	FailureReason *string `json:"failureReason,omitempty"`
+
+	// FailureMessage indicates that there is a terminal problem reconciling the
+	// state, and will be set to a descriptive error message.
+	// +optional
+	FailureMessage *string `json:"failureMessage,omitempty"`
+
+	// Phase represents the current phase of the control plane
+	// Valid values are: "Creating", "Ready", "Failed"
+	// +optional
+	// +kubebuilder:validation:Enum=Creating;Ready;Failed
+	Phase string `json:"phase,omitempty"`
+
+	// Conditions defines current service state of the CAPTControlPlane.
+	// +optional
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 //+kubebuilder:object:root=true

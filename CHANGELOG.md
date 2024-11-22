@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CAPTEP-0035: Status condition helper functions
 - CAPTEP-0036: Kubeconfig generation improvements and design decisions
 - CAPTEP-0037: Kubeconfig secret update mechanism improvements
+- CAPTEP-0040: Added WorkspaceStatus to track Workspace state and atProvider details
 
 ### Changed
 - Updated RBAC permissions to use tf.upbound.io API group instead of tf.crossplane.io

@@ -13,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/errors"
+	"sigs.k8s.io/cluster-api/util/conditions"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -165,6 +166,12 @@ func (r *Reconciler) updateStatus(
 	if cluster != nil {
 		patchBase := cluster.DeepCopy()
 		cluster.Status.ControlPlaneReady = true
+
+		// Set ControlPlaneInitialized condition when all required conditions are met
+		if controlPlane.Status.Ready && controlPlane.Status.Initialized && controlPlane.Status.SecretsReady {
+			conditions.MarkTrue(cluster, clusterv1.ControlPlaneInitializedCondition)
+		}
+
 		if err := r.Status().Patch(ctx, cluster, client.MergeFrom(patchBase)); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -224,6 +231,12 @@ func (r *Reconciler) handleNotReadyStatus(
 	if cluster != nil {
 		patchBase := cluster.DeepCopy()
 		cluster.Status.ControlPlaneReady = false
+
+		// Set ControlPlaneInitialized condition to false when control plane is not ready
+		conditions.MarkFalse(cluster, clusterv1.ControlPlaneInitializedCondition,
+			"ControlPlaneNotReady", clusterv1.ConditionSeverityInfo,
+			"Control plane is not ready")
+
 		if err := r.Status().Patch(ctx, cluster, client.MergeFrom(patchBase)); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -278,6 +291,12 @@ func (r *Reconciler) setFailedStatus(
 		cluster.Status.FailureMessage = &message
 		clusterStatusError := errors.ClusterStatusError(reason)
 		cluster.Status.FailureReason = &clusterStatusError
+
+		// Set ControlPlaneInitialized condition to false when control plane fails
+		conditions.MarkFalse(cluster, clusterv1.ControlPlaneInitializedCondition,
+			reason, clusterv1.ConditionSeverityError,
+			message)
+
 		if err := r.Status().Patch(ctx, cluster, client.MergeFrom(patchBase)); err != nil {
 			return ctrl.Result{}, err
 		}

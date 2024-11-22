@@ -1,0 +1,225 @@
+# EKS Control Plane WorkspaceTemplate
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplate
+metadata:
+  name: eks-controlplane-template-without-karpenter
+  namespace: default
+spec:
+  template:
+    metadata:
+      description: "Template for creating EKS Control Plane without Karpenter Helm installation"
+      version: "1.0.0"
+      tags:
+        provider: "aws"
+        resource: "eks"
+        environment: "dev"
+    spec:
+      writeConnectionSecretToRef:
+        name: "${WORKSPACE_NAME}-eks-connection"
+        namespace: default
+      providerConfigRef:
+        name: aws-provider-config
+      forProvider:
+        source: Inline
+        enableTerraformCLILogging: true
+        env:
+          - name: HELM_REPOSITORY_CACHE
+            value: /tmp/.helmcache
+        vars:
+          - key: cluster_name
+            value: "${cluster_name}"
+          - key: kubernetes_version
+            value: "${kubernetes_version}"
+          - key: region
+            value: "${region}"
+        varFiles:
+          - source: SecretKey
+            format: HCL
+            secretKeyRef:
+              namespace: default
+              name: "${cluster_name}-vpc-vpc-connection"
+              key: vpc_config
+        module: |
+          variable "region" {
+            type        = string
+            description = "Name of AWS Region"
+          }
+          variable "cluster_name" {
+            type        = string
+            description = "Name of the EKS cluster"
+          }
+          variable "kubernetes_version" {
+            type        = string
+            description = "Kubernetes version for the EKS cluster"
+          }
+          variable "vpc_id" {
+            type        = string
+            description = "ID of the VPC where EKS cluster will be created"
+          }
+          variable "private_subnets" {
+            type        = list(string)
+            description = "List of private subnet IDs for EKS cluster"
+          }
+
+          locals {
+            tags = {
+              Terraform = "true"
+            }
+          }
+          
+          module "kms" {
+            source  = "terraform-aws-modules/kms/aws"
+            version = "~> 2.1"
+            description           = "${var.cluster_name} cluster encryption key"
+            enable_default_policy = true
+            key_owners            = [data.aws_caller_identity.current.arn]
+            tags = local.tags
+          }
+
+          module "eks" {
+            source  = "terraform-aws-modules/eks/aws"
+            version = "~> 20.29"
+            cluster_name    = var.cluster_name
+            cluster_version = var.kubernetes_version
+            # Give the Terraform identity admin access to the cluster
+            # which will allow it to deploy resources into the cluster
+            enable_cluster_creator_admin_permissions = true
+            cluster_endpoint_public_access           = true
+            create_kms_key = false
+            cluster_encryption_config = {
+              resources        = ["secrets"]
+              provider_key_arn = module.kms.key_arn
+            }
+            cluster_addons = {
+              coredns = {
+                configuration_values = jsonencode({
+                  computeType = "Fargate"
+                  resources = {
+                    limits = {
+                      cpu    = "0.25"
+                      memory = "256M"
+                    }
+                    requests = {
+                      cpu    = "0.25"
+                      memory = "256M"
+                    }
+                  }
+                })
+              }
+              eks-pod-identity-agent = {
+                configuration_values = jsonencode({
+                  resources = {
+                    requests = {
+                      cpu    = "0.1"
+                      memory = "32M"
+                    }
+                  }
+                })
+              }
+              kube-proxy = {
+                configuration_values = jsonencode({
+                  resources = {
+                    requests = {
+                      cpu    = "0.1"
+                      memory = "64M"
+                    }
+                  }
+                })
+              }
+              vpc-cni = {
+                configuration_values = jsonencode({
+                  resources = {
+                    requests = {
+                      cpu    = "0.1"
+                      memory = "128M"
+                    }
+                  }
+                })
+              }
+            }
+            vpc_id     = var.vpc_id
+            subnet_ids = var.private_subnets
+            # Fargate profiles use the cluster primary security group
+            # Therefore these are not used and can be skipped
+            create_cluster_security_group = false
+            create_node_security_group    = false
+            fargate_profiles = {
+              karpenter = {
+                selectors = [
+                  { namespace = "karpenter" }
+                ]
+              }
+              coredns = {
+                name = "coredns"
+                selectors = [
+                  {
+                    k8s-app   = "kube-dns"
+                    namespace = "kube-system"
+                  }
+                ]
+              }
+            }
+            tags = merge(local.tags, {
+              "karpenter.sh/discovery" = var.cluster_name
+            })
+          }
+
+          module "karpenter" {
+            source  = "terraform-aws-modules/eks/aws//modules/karpenter"
+            version = "~> 20.29"
+
+            cluster_name          = module.eks.cluster_name
+            enable_v1_permissions = true
+            namespace             = "karpenter"
+
+            # Name needs to match role name passed to the EC2NodeClass
+            node_iam_role_use_name_prefix = false
+            node_iam_role_name            = "${module.eks.cluster_name}-node"
+
+            # EKS Fargate does not support pod identity
+            create_pod_identity_association = false
+            enable_irsa                     = true
+            irsa_oidc_provider_arn          = module.eks.oidc_provider_arn
+
+            tags = local.tags
+          }
+
+          output "cluster_endpoint" {
+            description = "Endpoint for EKS control plane"
+            value       = module.eks.cluster_endpoint
+          }
+          output "cluster_name" {
+            description = "The name of the EKS cluster"
+            value       = module.eks.cluster_name
+          }
+          output "cluster_certificate_authority_data" {
+            description = "Base64 encoded certificate data required to communicate with the cluster"
+            value       = module.eks.cluster_certificate_authority_data
+            sensitive   = true
+          }
+          output "oidc_provider" {
+            description = "The OpenID Connect identity provider (issuer URL without leading https://)"
+            value       = module.eks.oidc_provider
+          }
+          output "oidc_provider_arn" {
+            description = "The ARN of the OIDC Provider"
+            value       = module.eks.oidc_provider_arn
+          }
+          output "karpenter" {
+            value = {
+              service_account = {
+                annotations = {
+                  "eks.amazonaws.com/role-arn" = module.karpenter.iam_role_arn
+                }
+              }
+              ec2_node_class = {
+                role = "${module.eks.cluster_name}-node"
+              }
+              discovery_tag = {
+                key = "karpenter.sh/discovery"
+                value = module.eks.cluster_name
+              }
+              queue_name = module.karpenter.queue_name
+            }
+          }
+          data "aws_caller_identity" "current" {}

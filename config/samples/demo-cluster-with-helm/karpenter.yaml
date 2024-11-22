@@ -1,0 +1,37 @@
+# Karpenter HelmChartProxy
+apiVersion: addons.cluster.x-k8s.io/v1alpha1
+kind: HelmChartProxy
+metadata:
+  name: karpenter
+  namespace: default
+spec:
+  clusterSelector:
+    matchLabels:
+      cluster.x-k8s.io/cluster-name: demo-cluster-with-helm
+  repoURL: oci://public.ecr.aws/karpenter
+  chartName: karpenter
+  version: 1.0.8
+  releaseName: karpenter
+  namespace: karpenter
+  options:
+    waitForJobs: true
+    atomic: true
+    wait: true
+    timeout: 5m
+    install:
+      createNamespace: true
+  valuesTemplate: |
+    {{- $outputs := .ControlPlane.status.workspaceStatus.atProvider.outputs -}}
+    dnsPolicy: Default
+    priorityClassName: system-cluster-critical
+    settings:
+      clusterName: {{ $outputs.cluster_name }}
+      clusterEndpoint: {{ $outputs.cluster_endpoint }}
+      interruptionQueue: {{ $outputs.karpenter.queue_name }}
+      featureGates:
+        spotToSpotConsolidation: true
+    serviceAccount:
+      annotations:
+        "eks.amazonaws.com/role-arn": {{ index $outputs.karpenter.service_account.annotations "eks.amazonaws.com/role-arn" }}
+    webhook:
+      enabled: false

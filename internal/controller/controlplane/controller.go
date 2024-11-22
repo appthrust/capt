@@ -189,7 +189,7 @@ func (r *Reconciler) cleanupResources(ctx context.Context, controlPlane *control
 		logger.Info("Successfully cleared control plane endpoint")
 	}
 
-	// Find and delete associated WorkspaceTemplateApply
+	// Find and check associated WorkspaceTemplateApply
 	var applyName string
 	if controlPlane.Spec.WorkspaceTemplateApplyName != "" {
 		applyName = controlPlane.Spec.WorkspaceTemplateApplyName
@@ -204,12 +204,45 @@ func (r *Reconciler) cleanupResources(ctx context.Context, controlPlane *control
 	}, workspaceApply)
 
 	if err == nil {
-		// WorkspaceTemplateApply exists, delete it
+		// Get workspace name before deleting WorkspaceTemplateApply
+		workspaceName := workspaceApply.Status.WorkspaceName
+
+		// Delete WorkspaceTemplateApply
 		if err := r.Delete(ctx, workspaceApply); err != nil {
 			logger.Error(err, "Failed to delete WorkspaceTemplateApply")
 			return fmt.Errorf("failed to delete WorkspaceTemplateApply: %v", err)
 		}
 		logger.Info("Successfully deleted WorkspaceTemplateApply")
+
+		// If we have a workspace name, check if it's fully deleted
+		if workspaceName != "" {
+			workspace := &unstructured.Unstructured{}
+			workspace.SetGroupVersionKind(schema.GroupVersionKind{
+				Group:   "tf.upbound.io",
+				Version: "v1beta1",
+				Kind:    "Workspace",
+			})
+
+			err := r.Get(ctx, types.NamespacedName{
+				Name:      workspaceName,
+				Namespace: controlPlane.Namespace,
+			}, workspace)
+
+			if err == nil {
+				// Workspace still exists, requeue
+				logger.Info("Waiting for workspace to be deleted",
+					"name", workspaceName,
+					"namespace", controlPlane.Namespace)
+				return fmt.Errorf("waiting for workspace deletion")
+			} else if !apierrors.IsNotFound(err) {
+				// Unexpected error
+				return fmt.Errorf("failed to check workspace status: %v", err)
+			}
+			// Workspace not found means it's deleted
+			logger.Info("Workspace successfully deleted",
+				"name", workspaceName,
+				"namespace", controlPlane.Namespace)
+		}
 	} else if !apierrors.IsNotFound(err) {
 		return fmt.Errorf("failed to get WorkspaceTemplateApply: %v", err)
 	}
@@ -267,7 +300,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			// Clean up associated resources
 			if err := r.cleanupResources(ctx, controlPlane); err != nil {
 				logger.Error(err, "Failed to cleanup resources")
-				return ctrl.Result{}, err
+				return ctrl.Result{RequeueAfter: defaultRequeueInterval}, err
 			}
 
 			// Remove finalizer

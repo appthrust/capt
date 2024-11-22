@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CAPTEP-0036: Kubeconfig generation improvements and design decisions
 - CAPTEP-0037: Kubeconfig secret update mechanism improvements
 - CAPTEP-0040: Added WorkspaceStatus to track Workspace state and atProvider details
+- CAPTEP-0041: Documentation for cluster endpoint cleanup during deletion
 
 ### Changed
 - Updated RBAC permissions to use tf.upbound.io API group instead of tf.crossplane.io
@@ -30,6 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CAPTEP-0033: Documentation for RBAC permissions update
 - Implemented automatic updates for kubeconfig secrets to ensure latest configuration
 - CAPTEP-0038: Added missing RBAC permissions for kubeconfig secret creation and updates
+- Fixed cluster endpoint not being cleared during CAPTControlPlane deletion
+- Improved endpoint update handling using patch-based updates to prevent race conditions
+- Fixed Workspace deletion order in CAPTControlPlane cleanup to ensure proper resource cleanup
+- Enhanced error handling and retry mechanism for Workspace deletion confirmation
 
 ## [v0.1.11] - 2024-01-24
 

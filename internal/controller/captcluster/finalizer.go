@@ -3,6 +3,7 @@ package captcluster
 import (
 	"context"
 
+	controlplanev1beta1 "github.com/appthrust/capt/api/controlplane/v1beta1"
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
@@ -20,8 +21,45 @@ func (r *Reconciler) reconcileDelete(ctx context.Context, captCluster *infrastru
 		return Result{}, nil
 	}
 
-	// Find and delete associated WorkspaceTemplateApply if it exists
+	// First, check if WorkspaceTemplateApply exists but don't delete it yet
+	var workspaceExists bool
 	if captCluster.Spec.WorkspaceTemplateApplyName != "" {
+		workspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
+		err := r.Get(ctx, types.NamespacedName{
+			Name:      captCluster.Spec.WorkspaceTemplateApplyName,
+			Namespace: captCluster.Namespace,
+		}, workspaceApply)
+
+		if err == nil {
+			workspaceExists = true
+		} else if !apierrors.IsNotFound(err) {
+			// Error other than NotFound occurred
+			logger.Error(err, "Failed to get WorkspaceTemplateApply")
+			return Result{}, err
+		}
+	}
+
+	// Check if CAPTControlPlane still exists
+	controlPlane := &controlplanev1beta1.CAPTControlPlane{}
+	err := r.Get(ctx, types.NamespacedName{
+		Name:      captCluster.Name,
+		Namespace: captCluster.Namespace,
+	}, controlPlane)
+
+	if err == nil {
+		// CAPTControlPlane still exists, wait for it to be deleted
+		logger.Info("Waiting for CAPTControlPlane to be deleted",
+			"name", controlPlane.Name,
+			"namespace", controlPlane.Namespace)
+		return Result{RequeueAfter: requeueInterval}, nil
+	} else if !apierrors.IsNotFound(err) {
+		// Error other than NotFound occurred
+		logger.Error(err, "Failed to check CAPTControlPlane existence")
+		return Result{}, err
+	}
+
+	// Now that CAPTControlPlane is deleted, handle WorkspaceTemplateApply deletion
+	if workspaceExists && captCluster.Spec.WorkspaceTemplateApplyName != "" {
 		workspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
 		err := r.Get(ctx, types.NamespacedName{
 			Name:      captCluster.Spec.WorkspaceTemplateApplyName,

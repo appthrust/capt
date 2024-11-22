@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CAPTEP-0037: Kubeconfig secret update mechanism improvements
 - CAPTEP-0040: Added WorkspaceStatus to track Workspace state and atProvider details
 - CAPTEP-0041: Documentation for cluster endpoint cleanup during deletion
+- CAPTEP-0042: Migration of Karpenter installation to HelmChartProxy
+- CAPTEP-0043: Detailed design and implementation of Karpenter HelmChartProxy migration
+- Added new eks-controlplane-template-without-karpenter for Terraform-only infrastructure
+- Added HelmChartProxy manifests for Karpenter and default NodePool installation
+- Added demo-cluster-with-helm sample for HelmChartProxy-based Karpenter installation
 
 ### Changed
 - Updated RBAC permissions to use tf.upbound.io API group instead of tf.crossplane.io
@@ -25,6 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Refactored EKS control plane template to remove kubeconfig generation
 - Refactored status condition handling to use common helper functions
 - Enhanced kubeconfig secret management to support automatic updates
+- Migrated Karpenter installation from Terraform to HelmChartProxy
+- Separated Karpenter core installation and NodePool configuration
+- Improved Karpenter installation reliability with fixed release names and namespace isolation
 
 ### Fixed
 - Added missing RBAC permissions for clusters/status resource
@@ -35,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved endpoint update handling using patch-based updates to prevent race conditions
 - Fixed Workspace deletion order in CAPTControlPlane cleanup to ensure proper resource cleanup
 - Enhanced error handling and retry mechanism for Workspace deletion confirmation
+- Fixed Karpenter installation issues with proper dependency management and namespace configuration
 
 ## [v0.1.11] - 2024-01-24
 

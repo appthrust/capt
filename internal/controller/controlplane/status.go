@@ -53,6 +53,19 @@ func getWorkspaceError(workspaceApply *infrastructurev1beta1.WorkspaceTemplateAp
 	return ""
 }
 
+// initializeStatus initializes the status fields if they are nil
+func initializeStatus(controlPlane *controlplanev1beta1.CAPTControlPlane) {
+	if controlPlane.Status.WorkspaceTemplateStatus == nil {
+		controlPlane.Status.WorkspaceTemplateStatus = &controlplanev1beta1.WorkspaceTemplateStatus{}
+	}
+	if controlPlane.Status.WorkspaceStatus == nil {
+		controlPlane.Status.WorkspaceStatus = &controlplanev1beta1.WorkspaceStatus{}
+	}
+	if controlPlane.Status.Conditions == nil {
+		controlPlane.Status.Conditions = []metav1.Condition{}
+	}
+}
+
 // updateStatus updates the status of the CAPTControlPlane and its owner Cluster
 func (r *Reconciler) updateStatus(
 	ctx context.Context,
@@ -60,10 +73,23 @@ func (r *Reconciler) updateStatus(
 	workspaceApply *infrastructurev1beta1.WorkspaceTemplateApply,
 	cluster *clusterv1.Cluster,
 ) (ctrl.Result, error) {
-	// Initialize WorkspaceTemplateStatus if not exists
-	if controlPlane.Status.WorkspaceTemplateStatus == nil {
-		controlPlane.Status.WorkspaceTemplateStatus = &controlplanev1beta1.WorkspaceTemplateStatus{}
+	logger := log.FromContext(ctx)
+
+	// Initialize status fields
+	initializeStatus(controlPlane)
+
+	// Create a patch base before any updates
+	patchBase := controlPlane.DeepCopy()
+
+	// Update Workspace status
+	if err := r.updateWorkspaceStatus(ctx, controlPlane, workspaceApply); err != nil {
+		return r.setFailedStatus(ctx, controlPlane, cluster, "WorkspaceStatusUpdateFailed", fmt.Sprintf("Failed to update workspace status: %v", err))
 	}
+
+	// Log the current status
+	logger.Info("Status after workspace update",
+		"workspaceStatus", controlPlane.Status.WorkspaceStatus,
+		"workspaceTemplateStatus", controlPlane.Status.WorkspaceTemplateStatus)
 
 	// Update status based on workspace conditions
 	ready := isWorkspaceReady(workspaceApply)
@@ -73,7 +99,79 @@ func (r *Reconciler) updateStatus(
 		return r.handleNotReadyStatus(ctx, controlPlane, cluster, errorMessage)
 	}
 
-	return r.handleReadyStatus(ctx, controlPlane, cluster, workspaceApply)
+	// Update endpoint from workspace first
+	if workspaceApply.Status.WorkspaceName != "" {
+		if apiEndpoint, err := endpoint.GetEndpointFromWorkspace(ctx, r.Client, workspaceApply.Status.WorkspaceName); err != nil {
+			errMsg := fmt.Sprintf("Failed to get endpoint from workspace: %v", err)
+			return r.setFailedStatus(ctx, controlPlane, cluster, ReasonEndpointUpdateFailed, errMsg)
+		} else if apiEndpoint != nil {
+			logger.Info("Updating control plane endpoint", "endpoint", apiEndpoint)
+
+			// Update CAPTControlPlane endpoint
+			controlPlane.Spec.ControlPlaneEndpoint = *apiEndpoint
+			if err := r.Update(ctx, controlPlane); err != nil {
+				errMsg := fmt.Sprintf("Failed to update control plane endpoint: %v", err)
+				return r.setFailedStatus(ctx, controlPlane, cluster, ReasonEndpointUpdateFailed, errMsg)
+			}
+
+			// Update parent Cluster endpoint
+			if cluster != nil {
+				patchBase := cluster.DeepCopy()
+				cluster.Spec.ControlPlaneEndpoint = *apiEndpoint
+				if err := r.Patch(ctx, cluster, client.MergeFrom(patchBase)); err != nil {
+					errMsg := fmt.Sprintf("Failed to update cluster endpoint: %v", err)
+					return r.setFailedStatus(ctx, controlPlane, cluster, ReasonEndpointUpdateFailed, errMsg)
+				}
+				logger.Info("Updated parent cluster endpoint", "endpoint", apiEndpoint)
+			}
+
+			// Re-initialize status fields after endpoint update
+			initializeStatus(controlPlane)
+		}
+	}
+
+	// Only proceed with ready status if endpoint update was successful
+	meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
+		Type:               controlplanev1beta1.ControlPlaneReadyCondition,
+		Status:             metav1.ConditionTrue,
+		LastTransitionTime: metav1.Now(),
+		Reason:             controlplanev1beta1.ReasonReady,
+		Message:            "Control plane is ready",
+	})
+
+	controlPlane.Status.Phase = controlplanev1beta1.ControlPlaneReadyCondition
+	controlPlane.Status.Ready = true
+	controlPlane.Status.Initialized = true
+	controlPlane.Status.WorkspaceTemplateStatus.Ready = true
+	controlPlane.Status.FailureReason = nil
+	controlPlane.Status.FailureMessage = nil
+	controlPlane.Status.WorkspaceTemplateStatus.LastFailureMessage = ""
+
+	if workspaceApply.Status.LastAppliedTime != nil {
+		controlPlane.Status.WorkspaceTemplateStatus.LastAppliedRevision = workspaceApply.Status.LastAppliedTime.String()
+	}
+
+	// Log the status before update
+	logger.Info("Status before final update",
+		"workspaceStatus", controlPlane.Status.WorkspaceStatus,
+		"workspaceTemplateStatus", controlPlane.Status.WorkspaceTemplateStatus)
+
+	// Update status
+	if err := r.Status().Patch(ctx, controlPlane, client.MergeFrom(patchBase)); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	// Update Cluster status if it exists
+	if cluster != nil {
+		patchBase := cluster.DeepCopy()
+		cluster.Status.ControlPlaneReady = true
+		if err := r.Status().Patch(ctx, cluster, client.MergeFrom(patchBase)); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
+	// Use default interval for ready state
+	return ctrl.Result{RequeueAfter: defaultRequeueInterval}, nil
 }
 
 // handleNotReadyStatus updates the status for a not-ready control plane
@@ -83,6 +181,12 @@ func (r *Reconciler) handleNotReadyStatus(
 	cluster *clusterv1.Cluster,
 	errorMessage string,
 ) (ctrl.Result, error) {
+	// Initialize status fields
+	initializeStatus(controlPlane)
+
+	// Create a patch base before any updates
+	patchBase := controlPlane.DeepCopy()
+
 	if errorMessage != "" {
 		meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
 			Type:               controlplanev1beta1.ControlPlaneReadyCondition,
@@ -111,7 +215,8 @@ func (r *Reconciler) handleNotReadyStatus(
 		controlPlane.Status.WorkspaceTemplateStatus.LastFailureMessage = errorMessage
 	}
 
-	if err := r.Status().Update(ctx, controlPlane); err != nil {
+	// Update status
+	if err := r.Status().Patch(ctx, controlPlane, client.MergeFrom(patchBase)); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -128,81 +233,6 @@ func (r *Reconciler) handleNotReadyStatus(
 	return ctrl.Result{RequeueAfter: initializationRequeueInterval}, nil
 }
 
-// handleReadyStatus updates the status for a ready control plane
-func (r *Reconciler) handleReadyStatus(
-	ctx context.Context,
-	controlPlane *controlplanev1beta1.CAPTControlPlane,
-	cluster *clusterv1.Cluster,
-	workspaceApply *infrastructurev1beta1.WorkspaceTemplateApply,
-) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-
-	// Update endpoint from workspace first
-	if workspaceApply.Status.WorkspaceName != "" {
-		if apiEndpoint, err := endpoint.GetEndpointFromWorkspace(ctx, r.Client, workspaceApply.Status.WorkspaceName); err != nil {
-			errMsg := fmt.Sprintf("Failed to get endpoint from workspace: %v", err)
-			return r.setFailedStatus(ctx, controlPlane, cluster, ReasonEndpointUpdateFailed, errMsg)
-		} else if apiEndpoint != nil {
-			logger.Info("Updating control plane endpoint", "endpoint", apiEndpoint)
-
-			// Update CAPTControlPlane endpoint
-			controlPlane.Spec.ControlPlaneEndpoint = *apiEndpoint
-			if err := r.Update(ctx, controlPlane); err != nil {
-				errMsg := fmt.Sprintf("Failed to update control plane endpoint: %v", err)
-				return r.setFailedStatus(ctx, controlPlane, cluster, ReasonEndpointUpdateFailed, errMsg)
-			}
-
-			// Update parent Cluster endpoint
-			if cluster != nil {
-				patchBase := cluster.DeepCopy()
-				cluster.Spec.ControlPlaneEndpoint = *apiEndpoint
-				if err := r.Patch(ctx, cluster, client.MergeFrom(patchBase)); err != nil {
-					errMsg := fmt.Sprintf("Failed to update cluster endpoint: %v", err)
-					return r.setFailedStatus(ctx, controlPlane, cluster, ReasonEndpointUpdateFailed, errMsg)
-				}
-				logger.Info("Updated parent cluster endpoint", "endpoint", apiEndpoint)
-			}
-		}
-	}
-
-	// Only proceed with ready status if endpoint update was successful
-	meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
-		Type:               controlplanev1beta1.ControlPlaneReadyCondition,
-		Status:             metav1.ConditionTrue,
-		LastTransitionTime: metav1.Now(),
-		Reason:             controlplanev1beta1.ReasonReady,
-		Message:            "Control plane is ready",
-	})
-
-	controlPlane.Status.Phase = controlplanev1beta1.ControlPlaneReadyCondition
-	controlPlane.Status.Ready = true
-	controlPlane.Status.Initialized = true
-	controlPlane.Status.WorkspaceTemplateStatus.Ready = true
-	controlPlane.Status.FailureReason = nil
-	controlPlane.Status.FailureMessage = nil
-	controlPlane.Status.WorkspaceTemplateStatus.LastFailureMessage = ""
-
-	if workspaceApply.Status.LastAppliedTime != nil {
-		controlPlane.Status.WorkspaceTemplateStatus.LastAppliedRevision = workspaceApply.Status.LastAppliedTime.String()
-	}
-
-	if err := r.Status().Update(ctx, controlPlane); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	// Update Cluster status if it exists
-	if cluster != nil {
-		patchBase := cluster.DeepCopy()
-		cluster.Status.ControlPlaneReady = true
-		if err := r.Status().Patch(ctx, cluster, client.MergeFrom(patchBase)); err != nil {
-			return ctrl.Result{}, err
-		}
-	}
-
-	// Use default interval for ready state
-	return ctrl.Result{RequeueAfter: defaultRequeueInterval}, nil
-}
-
 // setFailedStatus sets the status to failed with the given reason and message
 func (r *Reconciler) setFailedStatus(
 	ctx context.Context,
@@ -211,6 +241,12 @@ func (r *Reconciler) setFailedStatus(
 	reason string,
 	message string,
 ) (ctrl.Result, error) {
+	// Initialize status fields
+	initializeStatus(controlPlane)
+
+	// Create a patch base before any updates
+	patchBase := controlPlane.DeepCopy()
+
 	meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
 		Type:               controlplanev1beta1.ControlPlaneReadyCondition,
 		Status:             metav1.ConditionFalse,
@@ -222,17 +258,16 @@ func (r *Reconciler) setFailedStatus(
 	controlPlane.Status.Phase = controlplanev1beta1.ControlPlaneFailedCondition
 	controlPlane.Status.Ready = false
 	controlPlane.Status.Initialized = false
-	if controlPlane.Status.WorkspaceTemplateStatus != nil {
-		controlPlane.Status.WorkspaceTemplateStatus.Ready = false
-		controlPlane.Status.WorkspaceTemplateStatus.LastFailureMessage = message
-	}
+	controlPlane.Status.WorkspaceTemplateStatus.Ready = false
+	controlPlane.Status.WorkspaceTemplateStatus.LastFailureMessage = message
 
 	// Set failure reason and message
 	failureReason := reason
 	controlPlane.Status.FailureReason = &failureReason
 	controlPlane.Status.FailureMessage = &message
 
-	if err := r.Status().Update(ctx, controlPlane); err != nil {
+	// Update status
+	if err := r.Status().Patch(ctx, controlPlane, client.MergeFrom(patchBase)); err != nil {
 		return ctrl.Result{}, err
 	}
 

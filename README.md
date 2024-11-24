@@ -22,30 +22,79 @@ The cluster creation is divided into four main components:
 3. Compute Resources (Machine)
 4. Cluster Configuration
 
-Each component is managed independently through WorkspaceTemplates and can be templated using ClusterClass. The controllers automatically manage WorkspaceTemplateApply resources for infrastructure provisioning:
+### Core Resource Relationships
 
 ```mermaid
 graph TD
-    A[Cluster] --> B[CAPTCluster]
-    A --> C[CAPTControlPlane]
-    A --> D[CAPTMachineDeployment]
-    B --> E[VPC WorkspaceTemplate]
-    C --> F[EKS WorkspaceTemplate]
-    D --> G[NodeGroup WorkspaceTemplate]
-    B --> |Controller| H[VPC WorkspaceTemplateApply]
-    C --> |Controller| I[EKS WorkspaceTemplateApply]
-    D --> |Controller| J[NodeGroup WorkspaceTemplateApply]
-    H --> E
-    I --> F
-    J --> G
-    H --> K[VPC Infrastructure]
-    I --> L[EKS Control Plane]
-    I --> M[EKS Blueprints Addons]
-    J --> N[Compute Resources]
-    O[ClusterClass] --> A
-    O --> P[CaptControlPlaneTemplate]
-    P --> F
+    subgraph "Cluster API Core"
+        Cluster
+    end
+
+    subgraph "CAPT Resources"
+        CAPTCluster
+        CAPTControlPlane
+    end
+
+    subgraph "Infrastructure Templates"
+        VPCTemplate[WorkspaceTemplate<br/>VPC]
+        CPTemplate[WorkspaceTemplate<br/>ControlPlane]
+    end
+
+    subgraph "Infrastructure Deployment"
+        VPCApply[WorkspaceTemplateApply<br/>VPC]
+        CPApply[WorkspaceTemplateApply<br/>ControlPlane]
+    end
+
+    subgraph "Terraform Resources"
+        VPCWorkspace[Workspace<br/>VPC]
+        CPWorkspace[Workspace<br/>ControlPlane]
+    end
+
+    Cluster --> CAPTCluster
+    Cluster --> CAPTControlPlane
+
+    CAPTCluster --> |references| VPCTemplate
+    CAPTControlPlane --> |references| CPTemplate
+
+    CAPTCluster --> |creates| VPCApply
+    CAPTControlPlane --> |creates| CPApply
+
+    VPCApply --> |references| VPCTemplate
+    CPApply --> |references| CPTemplate
+
+    VPCApply --> |creates| VPCWorkspace
+    CPApply --> |creates| CPWorkspace
+
+    CPApply -.-> |depends on| VPCApply
 ```
+
+### Component Lifecycle Flow
+
+```mermaid
+sequenceDiagram
+    participant C as Cluster
+    participant CC as CAPTCluster
+    participant CP as CAPTControlPlane
+    participant VT as VPC Template
+    participant VA as VPC Apply
+    participant CT as ControlPlane Template
+    participant CA as ControlPlane Apply
+    
+    C->>CC: Create
+    CC->>VT: Reference
+    CC->>VA: Create
+    VA->>VT: Use Template
+    VA->>VA: Apply Infrastructure
+    
+    C->>CP: Create
+    CP->>CT: Reference
+    CP->>CA: Create
+    CA->>CT: Use Template
+    CA-->>VA: Wait for VPC
+    CA->>CA: Apply Infrastructure
+```
+
+Each component is managed independently through WorkspaceTemplates and can be templated using ClusterClass. The controllers automatically manage WorkspaceTemplateApply resources for infrastructure provisioning.
 
 ## Key Benefits
 

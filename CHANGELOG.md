@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.2.0] - 2024-01-25
+
 ### Added
 - CAPTEP-0031: FluxCD integration with ClusterResourceSet
 - CAPTEP-0032: Variable resolution mechanism for ClusterResourceSet
@@ -19,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CAPTEP-0041: Documentation for cluster endpoint cleanup during deletion
 - CAPTEP-0042: Migration of Karpenter installation to HelmChartProxy
 - CAPTEP-0043: Detailed design and implementation of Karpenter HelmChartProxy migration
+- CAPTEP-0044: Analysis and discussion of Go template support in WorkspaceTemplate
+- CAPTEP-0045: Release planning and documentation for v0.2.0
 - Added new eks-controlplane-template-without-karpenter for Terraform-only infrastructure
 - Added HelmChartProxy manifests for Karpenter and default NodePool installation
 - Added demo-cluster-with-helm sample for HelmChartProxy-based Karpenter installation

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.2.1] - 2024-01-25
+
+### Added
+- CAPTEP-0046: Release planning and documentation for v0.2.1
+- Added detailed release process documentation
+- Added troubleshooting guide for GitHub Actions releases
+
+### Changed
+- Improved release process with clear documentation
+- Enhanced GitHub Actions workflow documentation
+
 ## [v0.2.0] - 2024-01-25
 
 ### Added

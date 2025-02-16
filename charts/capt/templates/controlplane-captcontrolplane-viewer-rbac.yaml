@@ -1,0 +1,21 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "capt.fullname" . }}-controlplane-captcontrolplane-viewer-role
+  labels:
+  {{- include "capt.labels" . | nindent 4 }}
+rules:
+- apiGroups:
+  - controlplane.cluster.x-k8s.io
+  resources:
+  - captcontrolplanes
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - controlplane.cluster.x-k8s.io
+  resources:
+  - captcontrolplanes/status
+  verbs:
+  - get

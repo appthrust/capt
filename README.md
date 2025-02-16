@@ -132,9 +132,24 @@ Each component is managed independently through WorkspaceTemplates and can be te
 - Extensibility through Custom Resource Definitions (CRDs)
 - ClusterTopology support for advanced cluster management
 
-## Quick Start Guide
+## Installation
 
-For detailed installation instructions, please refer to [INSTALL.md](INSTALL.md).
+### Using Helm Chart
+
+CAPT controller can be installed using Helm Chart:
+
+```bash
+helm install capt oci://ghcr.io/appthrust/charts/capt --version 0.2.1
+```
+
+The installation will deploy the following components:
+- CAPT controller
+- Custom Resource Definitions (CRDs)
+- RBAC configurations
+
+Note: Cluster API must be installed in your cluster before installing CAPT. For detailed installation instructions, please refer to [INSTALL.md](INSTALL.md).
+
+## Quick Start Guide
 
 This guide will help you get started with using CAPT to manage your EKS clusters.
 

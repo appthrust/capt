@@ -154,6 +154,8 @@ release: update-version update-changelog docker-buildx build-installer create-gi
 update-version: ## Update version number
 	@echo "Updating version number to $(VERSION)"
 	@sed -i 's/^VERSION = .*/VERSION = $(VERSION)/' VERSION
+	@yq e -i '.version = "$(VERSION)"' charts/capt/Chart.yaml
+	@yq e -i '.appVersion = "v$(VERSION)"' charts/capt/Chart.yaml
 
 .PHONY: update-changelog
 update-changelog: ## Update CHANGELOG.md
@@ -181,6 +183,7 @@ KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
+HELMIFY ?= $(LOCALBIN)/helmify
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.4.3
@@ -207,6 +210,17 @@ $(ENVTEST): $(LOCALBIN)
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
 	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
+
+.PHONY: helmify
+helmify: $(HELMIFY) ## Download helmify locally if necessary. Used by 'helm' target to generate charts/capt.
+$(HELMIFY): $(LOCALBIN)
+	test -s $(LOCALBIN)/helmify || GOBIN=$(LOCALBIN) go install github.com/arttor/helmify/cmd/helmify@latest
+
+.PHONY: helm
+helm: manifests kustomize helmify ## Generate helm charts
+	@echo "Generating Helm chart in charts/capt"
+	@mkdir -p charts/capt
+	$(KUSTOMIZE) build config/default | $(HELMIFY) charts/capt
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary

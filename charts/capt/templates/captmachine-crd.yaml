@@ -1,0 +1,198 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: captmachines.infrastructure.cluster.x-k8s.io
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.1
+  labels:
+  {{- include "capt.labels" . | nindent 4 }}
+spec:
+  group: infrastructure.cluster.x-k8s.io
+  names:
+    kind: CaptMachine
+    listKind: CaptMachineList
+    plural: captmachines
+    singular: captmachine
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - description: Machine Ready status
+      jsonPath: .status.ready
+      name: Ready
+      type: boolean
+    - description: EC2 Instance ID
+      jsonPath: .status.instanceId
+      name: Instance ID
+      type: string
+    - description: Node Group name
+      jsonPath: .spec.nodeGroupRef.name
+      name: Node Group
+      type: string
+    name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: CaptMachine is the Schema for the captmachines API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: CaptMachineSpec defines the desired state of CaptMachine
+            properties:
+              instanceType:
+                description: InstanceType is the EC2 instance type to use for the node
+                type: string
+              labels:
+                additionalProperties:
+                  type: string
+                description: Labels is a map of kubernetes labels to apply to the node
+                type: object
+              nodeGroupRef:
+                description: NodeGroupRef is a reference to the NodeGroup this machine
+                  belongs to
+                properties:
+                  name:
+                    description: Name is the name of the NodeGroup
+                    type: string
+                  namespace:
+                    description: Namespace is the namespace of the NodeGroup
+                    type: string
+                required:
+                - name
+                - namespace
+                type: object
+              tags:
+                additionalProperties:
+                  type: string
+                description: Tags is a map of tags to apply to the node
+                type: object
+              workspaceTemplateRef:
+                description: WorkspaceTemplateRef is a reference to the WorkspaceTemplate
+                  used for creating the machine
+                properties:
+                  name:
+                    description: Name of the referenced WorkspaceTemplate
+                    type: string
+                  namespace:
+                    description: Namespace of the referenced WorkspaceTemplate
+                    type: string
+                required:
+                - name
+                type: object
+            required:
+            - instanceType
+            - nodeGroupRef
+            - workspaceTemplateRef
+            type: object
+          status:
+            description: CaptMachineStatus defines the observed state of CaptMachine
+            properties:
+              conditions:
+                description: Conditions defines current service state of the CaptMachine
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              failureMessage:
+                description: |-
+                  FailureMessage indicates that there is a terminal problem reconciling the
+                  state, and will be set to a descriptive error message.
+                type: string
+              failureReason:
+                description: |-
+                  FailureReason indicates that there is a terminal problem reconciling the
+                  state, and will be set to a token value suitable for programmatic
+                  interpretation.
+                type: string
+              instanceId:
+                description: InstanceID is the ID of the EC2 instance
+                type: string
+              lastTransitionTime:
+                description: LastTransitionTime is the last time the Ready condition
+                  changed
+                format: date-time
+                type: string
+              privateIp:
+                description: PrivateIP is the private IP address of the machine
+                type: string
+              ready:
+                description: Ready denotes that the machine is ready and joined to the
+                  node group
+                type: boolean
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []

@@ -1,0 +1,21 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "capt.fullname" . }}-captvpctemplate-viewer-role
+  labels:
+  {{- include "capt.labels" . | nindent 4 }}
+rules:
+- apiGroups:
+  - infrastructure.cluster.x-k8s.io
+  resources:
+  - captvpctemplates
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - infrastructure.cluster.x-k8s.io
+  resources:
+  - captvpctemplates/status
+  verbs:
+  - get

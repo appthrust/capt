@@ -175,36 +175,6 @@ kind-capt: clusterapi-manifests clusterctl-setup docker-build ## Setup complete 
 	@echo "✓ CAPT deployed"
 	@echo "Setup complete!"
 
-##@ Release
-
-.PHONY: release
-release: update-version update-changelog docker-buildx create-github-release ## Perform a release
-
-.PHONY: update-version
-update-version: ## Update version number
-	@echo "Updating version number to $(VERSION)"
-	@sed -i 's/^VERSION = .*/VERSION = $(VERSION)/' VERSION
-	@yq e -i '.version = "$(VERSION)"' charts/capt/Chart.yaml
-	@yq e -i '.appVersion = "v$(VERSION)"' charts/capt/Chart.yaml
-
-.PHONY: update-changelog
-update-changelog: ## Update CHANGELOG.md
-	@echo "Updating CHANGELOG.md"
-	@sed -i '/^## \[Unreleased\]/a \n## [$(VERSION)] - $(shell date +%Y-%m-%d)\n' CHANGELOG.md
-
-.PHONY: create-github-release
-create-github-release: ## Create a GitHub release
-	@echo "Creating GitHub release v$(VERSION)"
-	@gh release create v$(VERSION) \
-		dist/infrastructure-components.yaml \
-		dist/control-plane-components.yaml \
-		dist/metadata.yaml \
-		dist/cluster-template.yaml \
-		dist/capt.yaml \
-		--title "Release v$(VERSION)" \
-		--notes-file CHANGELOG.md \
-		--draft
-
 ##@ Dependencies
 
 ## Location to install dependencies to

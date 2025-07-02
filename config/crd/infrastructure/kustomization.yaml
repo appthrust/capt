@@ -1,8 +1,0 @@
-resources:
-- infrastructure.cluster.x-k8s.io_captclusters.yaml
-- infrastructure.cluster.x-k8s.io_captmachinedeployments.yaml
-- infrastructure.cluster.x-k8s.io_captmachines.yaml
-- infrastructure.cluster.x-k8s.io_captmachinesets.yaml
-- infrastructure.cluster.x-k8s.io_captmachinetemplates.yaml
-- infrastructure.cluster.x-k8s.io_workspacetemplateapplies.yaml
-- infrastructure.cluster.x-k8s.io_workspacetemplates.yaml 

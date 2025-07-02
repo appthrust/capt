@@ -66,26 +66,26 @@ spec:
               Terraform = "true"
             }
           }
-          
+
           module "kms" {
-            source  = "terraform-aws-modules/kms/aws"
-            version = "~> 2.1"
+            source                = "terraform-aws-modules/kms/aws"
+            version               = "~> 2.1"
             description           = "${var.cluster_name} cluster encryption key"
             enable_default_policy = true
             key_owners            = [data.aws_caller_identity.current.arn]
-            tags = local.tags
+            tags                  = local.tags
           }
 
           module "eks" {
-            source  = "terraform-aws-modules/eks/aws"
-            version = "~> 20.29"
+            source          = "terraform-aws-modules/eks/aws"
+            version         = "~> 20.29"
             cluster_name    = var.cluster_name
             cluster_version = var.kubernetes_version
             # Give the Terraform identity admin access to the cluster
             # which will allow it to deploy resources into the cluster
             enable_cluster_creator_admin_permissions = true
             cluster_endpoint_public_access           = true
-            create_kms_key = false
+            create_kms_key                           = false
             cluster_encryption_config = {
               resources        = ["secrets"]
               provider_key_arn = module.kms.key_arn
@@ -184,6 +184,76 @@ spec:
             tags = local.tags
           }
 
+          # aws load balancer controller
+
+          locals {
+            aws_load_balancer_controller_version = "v2.10.1"
+          }
+          data "http" "aws_load_balancer_controller_iam_policy" {
+            url = "https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/${local.aws_load_balancer_controller_version}/docs/install/iam_policy.json"
+          }
+
+          resource "aws_iam_policy" "aws_load_balancer_controller" {
+            name        = "AWSLoadBalancerControllerPolicy"
+            description = "IAM policy for AWS Load Balancer Controller"
+            policy      = jsonencode(data.http.aws_load_balancer_controller_iam_policy)
+          }
+
+          resource "aws_iam_role" "aws_load_balancer_controller" {
+            name = "aws-load-balancer-controller-role"
+            assume_role_policy = jsonencode({
+              Version = "2012-10-17"
+              Statement = [
+                {
+                  Effect = "Allow"
+                  Principal = {
+                    Service = "eks.amazonaws.com"
+                  }
+                  Action = "sts:AssumeRoleWithWebIdentity"
+                  Condition = {
+                    StringEquals = {
+                      "oidc.eks.amazonaws.com/id/<OIDC_PROVIDER>:sub" = "system:serviceaccount:kube-system:aws-load-balancer-controller"
+                    }
+                  }
+                }
+              ]
+            })
+          }
+
+          resource "aws_iam_role_policy_attachment" "aws_load_balancer_controller" {
+            role       = aws_iam_role.aws_load_balancer_controller.name
+            policy_arn = aws_iam_policy.aws_load_balancer_controller.arn
+          }
+
+          resource "aws_eks_pod_identity_association" "aws_load_balancer_controller" {
+            cluster_name    = module.eks.cluster_name
+            namespace       = "kube-system"
+            service_account = "aws-load-balancer-controller"
+            role_arn        = aws_iam_role.aws_load_balancer_controller.arn
+          }
+
+          resource "helm_release" "aws_load_balancer_controller" {
+            name       = "aws-load-balancer-controller"
+            chart      = "aws-load-balancer-controller"
+            repository = "https://aws.github.io/eks-charts"
+            version    = local.aws_load_balancer_controller_version
+            namespace  = "aws-load-balancer-controller"
+
+            set {
+              name  = "clusterName"
+              value = var.cluster_name
+            }
+
+            set {
+              name  = "serviceAccount.name"
+              value = "aws-load-balancer-controller"
+            }
+
+            depends_on = [
+              aws_eks_pod_identity_association.aws_load_balancer_controller
+            ]
+          }
+
           output "cluster_endpoint" {
             description = "Endpoint for EKS control plane"
             value       = module.eks.cluster_endpoint
@@ -216,7 +286,7 @@ spec:
                 role = "${module.eks.cluster_name}-node"
               }
               discovery_tag = {
-                key = "karpenter.sh/discovery"
+                key   = "karpenter.sh/discovery"
                 value = module.eks.cluster_name
               }
               queue_name = module.karpenter.queue_name

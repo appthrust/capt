@@ -17,8 +17,12 @@ limitations under the License.
 package main
 
 import (
+	"crypto/md5"
 	"flag"
+	"fmt"
 	"os"
+	"sort"
+	"strings"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -48,6 +52,28 @@ var (
 	setupLog = ctrl.Log.WithName("setup")
 )
 
+const (
+	controlPlaneController   = "control-plane"
+	infrastructureController = "infrastructure"
+)
+
+var allControllers = []string{
+	controlPlaneController,
+	infrastructureController,
+}
+
+// controllerFlag is a custom flag type to handle multiple controller names.
+type controllerFlag []string
+
+func (f *controllerFlag) String() string {
+	return strings.Join(*f, ",")
+}
+
+func (f *controllerFlag) Set(value string) error {
+	*f = append(*f, value)
+	return nil
+}
+
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(infrastructurev1beta1.AddToScheme(scheme))
@@ -61,11 +87,13 @@ func main() {
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
+	var enabledControllers controllerFlag
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+	flag.Var(&enabledControllers, "enable-controller", "The controller to enable. Can be specified multiple times. Valid options: "+strings.Join(allControllers, ", "))
 	opts := zap.Options{
 		Development: true,
 	}
@@ -74,6 +102,35 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
+	leaderElectionSource := enabledControllers
+	if len(leaderElectionSource) == 0 {
+		leaderElectionSource = allControllers
+	}
+	sort.Strings(leaderElectionSource)
+	leaderElectionID := fmt.Sprintf("%x.capt.ai", md5.Sum([]byte(strings.Join(leaderElectionSource, ""))))
+
+	enabledControllerMap := make(map[string]bool)
+	if len(enabledControllers) == 0 {
+		for _, c := range allControllers {
+			enabledControllerMap[c] = true
+		}
+	} else {
+		for _, c := range enabledControllers {
+			valid := false
+			for _, validController := range allControllers {
+				if c == validController {
+					valid = true
+					break
+				}
+			}
+			if !valid {
+				setupLog.Error(nil, "invalid controller specified", "controller", c)
+				os.Exit(1)
+			}
+			enabledControllerMap[c] = true
+		}
+	}
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: scheme,
 		Metrics: server.Options{
@@ -81,81 +138,87 @@ func main() {
 		},
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "capt-controller-lock",
+		LeaderElectionID:       leaderElectionID,
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
 		os.Exit(1)
 	}
 
-	if err = controller.SetupCAPTClusterController(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "CAPTCluster")
-		os.Exit(1)
+	if enabledControllerMap[infrastructureController] {
+		setupLog.Info("setting up infrastructure controllers")
+		if err = controller.SetupCAPTClusterController(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "CAPTCluster")
+			os.Exit(1)
+		}
+
+		if err = (&controller.WorkspaceTemplateReconciler{
+			Client: mgr.GetClient(),
+			Scheme: mgr.GetScheme(),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "WorkspaceTemplate")
+			os.Exit(1)
+		}
+
+		if err = controller.SetupWorkspaceTemplateApply(mgr, logging.NewLogrLogger(ctrl.Log.WithName("controllers").WithName("WorkspaceTemplateApply"))); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "WorkspaceTemplateApply")
+			os.Exit(1)
+		}
+
+		if err = (&controller.CaptMachineReconciler{
+			Client: mgr.GetClient(),
+			Scheme: mgr.GetScheme(),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "CaptMachine")
+			os.Exit(1)
+		}
+
+		if err = (&controller.CaptMachineSetReconciler{
+			Client:   mgr.GetClient(),
+			Scheme:   mgr.GetScheme(),
+			Recorder: mgr.GetEventRecorderFor("captmachineset-controller"),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "CaptMachineSet")
+			os.Exit(1)
+		}
+
+		if err = (&controller.CaptMachineDeploymentReconciler{
+			Client:   mgr.GetClient(),
+			Scheme:   mgr.GetScheme(),
+			Recorder: mgr.GetEventRecorderFor("captmachinedeployment-controller"),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "CaptMachineDeployment")
+			os.Exit(1)
+		}
+
+		if err = (&controller.CaptMachineTemplateReconciler{
+			Client: mgr.GetClient(),
+			Scheme: mgr.GetScheme(),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "CaptMachineTemplate")
+			os.Exit(1)
+		}
 	}
 
-	if err = (&controlplanecontroller.Reconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("captcontrolplane-controller"),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "CAPTControlPlane")
-		os.Exit(1)
-	}
+	if enabledControllerMap[controlPlaneController] {
+		setupLog.Info("setting up control-plane controllers")
+		if err = (&controlplanecontroller.Reconciler{
+			Client:   mgr.GetClient(),
+			Scheme:   mgr.GetScheme(),
+			Recorder: mgr.GetEventRecorderFor("captcontrolplane-controller"),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "CAPTControlPlane")
+			os.Exit(1)
+		}
 
-	if err = (&controlplanecontroller.CaptControlPlaneTemplateReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("captcontrolplanetemplate-controller"),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "CaptControlPlaneTemplate")
-		os.Exit(1)
-	}
-
-	if err = (&controller.WorkspaceTemplateReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "WorkspaceTemplate")
-		os.Exit(1)
-	}
-
-	if err = controller.SetupWorkspaceTemplateApply(mgr, logging.NewLogrLogger(ctrl.Log.WithName("controllers").WithName("WorkspaceTemplateApply"))); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "WorkspaceTemplateApply")
-		os.Exit(1)
-	}
-
-	if err = (&controller.CaptMachineReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "CaptMachine")
-		os.Exit(1)
-	}
-
-	if err = (&controller.CaptMachineSetReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("captmachineset-controller"),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "CaptMachineSet")
-		os.Exit(1)
-	}
-
-	if err = (&controller.CaptMachineDeploymentReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("captmachinedeployment-controller"),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "CaptMachineDeployment")
-		os.Exit(1)
-	}
-
-	if err = (&controller.CaptMachineTemplateReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "CaptMachineTemplate")
-		os.Exit(1)
+		if err = (&controlplanecontroller.CaptControlPlaneTemplateReconciler{
+			Client:   mgr.GetClient(),
+			Scheme:   mgr.GetScheme(),
+			Recorder: mgr.GetEventRecorderFor("captcontrolplanetemplate-controller"),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create controller", "controller", "CaptControlPlaneTemplate")
+			os.Exit(1)
+		}
 	}
 
 	//+kubebuilder:scaffold:builder

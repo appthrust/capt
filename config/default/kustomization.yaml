@@ -149,3 +149,8 @@ patches:
 #          delimiter: '.'
 #          index: 1
 #          create: true
+
+# If you want to customize your kustomize build even further, you can do so via bases and patches here.
+bases:
+- ../clusterapi
+- ../manager

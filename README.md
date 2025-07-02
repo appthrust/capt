@@ -180,7 +180,7 @@ clusterctl init --core cluster-api --infrastructure capt --control-plane capt
 # Set environment variables
 export AWS_REGION=ap-northeast-1
 export CLUSTER_NAME=my-cluster
-export KUBERNETES_VERSION=1.31.0
+export KUBERNETES_VERSION=1.33.2
 
 # Generate cluster manifest
 clusterctl generate cluster $CLUSTER_NAME \
@@ -321,7 +321,7 @@ spec:
       schema:
         openAPIV3Schema:
           type: string
-          enum: ["1.27", "1.28", "1.29", "1.30", "1.31"]
+          enum: ["1.27", "1.28", "1.29", "1.30", "1.31", "1.32", "1.33"]
 ```
 
 2. Create Cluster using ClusterClass:
@@ -333,10 +333,10 @@ metadata:
 spec:
   topology:
     class: eks-class
-    version: "1.31"
+    version: "1.33"
     variables:
       - name: controlPlane.version
-        value: "1.31"
+        value: "1.33"
       - name: environment
         value: dev
 ```

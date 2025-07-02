@@ -44,12 +44,25 @@ help: ## Display this help.
 
 ##@ Development
 
+.PHONY: manifests
+manifests: controller-gen
+	mkdir -p config/clusterapi/controlplane/bases
+	mkdir -p config/rbac
+	$(CONTROLLER_GEN) rbac:roleName=manager-role-controlplane paths="./internal/controller/controlplane/..." output:stdout > config/rbac/controlplane-role.yaml
+	$(CONTROLLER_GEN) crd:generateEmbeddedObjectMeta=true webhook paths="./api/controlplane/..." output:crd:artifacts:config=config/clusterapi/controlplane/bases
+	mkdir -p config/clusterapi/infrastructure/bases
+	$(CONTROLLER_GEN) rbac:roleName=manager-role-infrastructure paths="./internal/controller" output:stdout > config/rbac/infrastructure-role.yaml
+	$(CONTROLLER_GEN) crd:generateEmbeddedObjectMeta=true webhook paths="./api/v1beta1/..." output:crd:artifacts:config=config/clusterapi/infrastructure/bases
+
 .PHONY: clusterapi-manifests
 clusterapi-manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	mkdir -p config/clusterapi/controlplane/bases
-	$(CONTROLLER_GEN) rbac:roleName=manager-role crd:generateEmbeddedObjectMeta=true webhook paths="./api/controlplane/..." output:crd:artifacts:config=config/clusterapi/controlplane/bases
+	mkdir -p config/rbac
+	$(CONTROLLER_GEN) rbac:roleName=manager-role-controlplane paths="./internal/controller/controlplane/..." output:stdout > config/rbac/controlplane-role.yaml
+	$(CONTROLLER_GEN) crd:generateEmbeddedObjectMeta=true webhook paths="./api/controlplane/..." output:crd:artifacts:config=config/clusterapi/controlplane/bases
 	mkdir -p config/clusterapi/infrastructure/bases
-	$(CONTROLLER_GEN) rbac:roleName=manager-role crd:generateEmbeddedObjectMeta=true webhook paths="./api/v1beta1/..." output:crd:artifacts:config=config/clusterapi/infrastructure/bases
+	$(CONTROLLER_GEN) rbac:roleName=manager-role-infrastructure paths="./internal/controller" output:stdout > config/rbac/infrastructure-role.yaml
+	$(CONTROLLER_GEN) crd:generateEmbeddedObjectMeta=true webhook paths="./api/v1beta1/..." output:crd:artifacts:config=config/clusterapi/infrastructure/bases
 
 .PHONY: clusterctl-setup
 clusterctl-setup: clusterapi-manifests kustomize ## Build components and create local config for clusterctl testing.

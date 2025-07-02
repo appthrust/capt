@@ -79,13 +79,13 @@ sequenceDiagram
     participant VA as VPC Apply
     participant CT as ControlPlane Template
     participant CA as ControlPlane Apply
-    
+
     C->>CC: Create
     CC->>VT: Reference
     CC->>VA: Create
     VA->>VT: Use Template
     VA->>VA: Apply Infrastructure
-    
+
     C->>CP: Create
     CP->>CT: Reference
     CP->>CA: Create
@@ -148,6 +148,51 @@ The installation will deploy the following components:
 - RBAC configurations
 
 Note: Cluster API must be installed in your cluster before installing CAPT. For detailed installation instructions, please refer to [INSTALL.md](INSTALL.md).
+
+### Using clusterctl
+
+CAPT is compatible with clusterctl and follows the clusterctl provider contract. CAPT functions as both an Infrastructure Provider and Control Plane Provider.
+
+#### Configuration
+
+Add CAPT to your clusterctl configuration (`~/.cluster-api/clusterctl.yaml`):
+
+```yaml
+providers:
+  - name: "capt"
+    url: "https://github.com/appthrust/capt/releases/latest/infrastructure-components.yaml"
+    type: "InfrastructureProvider"
+  - name: "capt"
+    url: "https://github.com/appthrust/capt/releases/latest/control-plane-components.yaml"
+    type: "ControlPlaneProvider"
+```
+
+#### Installation
+
+```bash
+# Add CAPT as both Infrastructure and Control Plane provider
+clusterctl init --core cluster-api --infrastructure capt --control-plane capt
+```
+
+#### Creating Clusters
+
+```bash
+# Set environment variables
+export AWS_REGION=ap-northeast-1
+export CLUSTER_NAME=my-cluster
+export KUBERNETES_VERSION=1.31.0
+
+# Generate cluster manifest
+clusterctl generate cluster $CLUSTER_NAME \
+  --infrastructure capt \
+  --kubernetes-version $KUBERNETES_VERSION \
+  --target-namespace default > cluster.yaml
+
+# Apply the cluster
+kubectl apply -f cluster.yaml
+```
+
+For detailed clusterctl integration guide, see [docs/clusterctl-integration.md](docs/clusterctl-integration.md).
 
 ## Quick Start Guide
 
@@ -487,10 +532,10 @@ CAPT uses an automated release process through GitHub Actions. When creating a n
    ```bash
    # For Release Candidates
    git tag -a v1.0.0-rc1 -m "Release Candidate 1 for v1.0.0"
-   
+
    # For Stable Releases
    git tag -a v1.0.0 -m "Release v1.0.0"
-   
+
    git push origin <tag-name>
    ```
 

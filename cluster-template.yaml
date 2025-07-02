@@ -1,0 +1,469 @@
+# VPC WorkspaceTemplate
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplate
+metadata:
+  name: ${VPC_TEMPLATE_NAME:=vpc-template}
+  namespace: ${NAMESPACE}
+spec:
+  template:
+    metadata:
+      description: "Template for creating AWS VPC with public and private subnets"
+      version: "1.0.0"
+      tags:
+        provider: "aws"
+        resource: "vpc"
+        environment: "${ENVIRONMENT:=dev}"
+    spec:
+      providerConfigRef:
+        name: ${AWS_PROVIDER_CONFIG_NAME:=aws-provider-config}
+      forProvider:
+        source: Inline
+        vars:
+          - key: name
+            value: "${VPC_NAME:=${CLUSTER_NAME}-vpc}"
+          - key: cluster_name
+            value: "${CLUSTER_NAME}"
+          - key: vpc_cidr
+            value: "${VPC_CIDR:=10.0.0.0/16}"
+        module: |
+          data "aws_availability_zones" "available" {
+            filter {
+              name   = "opt-in-status"
+              values = ["opt-in-not-required"]
+            }
+          }
+
+          locals {
+            azs = slice(data.aws_availability_zones.available.names, 0, 3)
+            name = try(var.name, basename(path.cwd))
+            cluster_name = var.cluster_name
+            tags = {
+              Module     = basename(path.cwd)
+              GithubRepo = "github.com/appthrust/terraform-aws"
+              Environment = "${ENVIRONMENT:=dev}"
+              ManagedBy = "capt"
+            }
+          }
+
+          variable "name" {
+            type        = string
+            description = "Name of the VPC"
+          }
+
+          variable "cluster_name" {
+            type        = string
+            description = "Name of the cluster"
+          }
+
+          variable "vpc_cidr" {
+            type        = string
+            description = "CIDR block for VPC"
+            default     = "10.0.0.0/16"
+          }
+
+          module "vpc" {
+            source             = "terraform-aws-modules/vpc/aws"
+            version           = "~> 6.0"
+            name              = var.name
+            cidr              = var.vpc_cidr
+            azs               = local.azs
+            private_subnets   = [for k, v in local.azs : cidrsubnet(var.vpc_cidr, 4, k)]
+            public_subnets    = [for k, v in local.azs : cidrsubnet(var.vpc_cidr, 8, k + 48)]
+            enable_nat_gateway = true
+            single_nat_gateway = ${VPC_SINGLE_NAT_GATEWAY:=true}
+            public_subnet_tags = {
+              "kubernetes.io/role/elb" = "1"
+            }
+            private_subnet_tags = {
+              "karpenter.sh/discovery"          = "$${local.cluster_name}"
+              "kubernetes.io/role/internal-elb" = "1"
+            }
+            tags = merge(local.tags, {
+              "kubernetes.io/cluster/$${local.cluster_name}" = "shared"
+            })
+          }
+
+          output "vpc_id" {
+            description = "The ID of the VPC"
+            value       = module.vpc.vpc_id
+          }
+
+          output "private_subnets" {
+            description = "List of IDs of private subnets"
+            value       = module.vpc.private_subnets
+          }
+
+          output "public_subnets" {
+            description = "List of IDs of public subnets"
+            value       = module.vpc.public_subnets
+          }
+
+          output "vpc_config" {
+            description = "VPC configuration in HCL format"
+            value = <<-EOT
+            vpc_id = "$${module.vpc.vpc_id}"
+            private_subnets = $${jsonencode(module.vpc.private_subnets)}
+            public_subnets = $${jsonencode(module.vpc.public_subnets)}
+            EOT
+            sensitive   = true
+          }
+      writeConnectionSecretToRef:
+        name: "${CLUSTER_NAME}-vpc-connection"
+        namespace: ${NAMESPACE}
+---
+# EKS Control Plane WorkspaceTemplate
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplate
+metadata:
+  name: ${CONTROLPLANE_TEMPLATE_NAME:=eks-controlplane-template}
+  namespace: ${NAMESPACE}
+spec:
+  template:
+    metadata:
+      description: "Template for creating EKS Control Plane without Karpenter Helm installation"
+      version: "1.0.0"
+      tags:
+        provider: "aws"
+        resource: "eks"
+        environment: "${ENVIRONMENT:=dev}"
+    spec:
+      writeConnectionSecretToRef:
+        name: "${CLUSTER_NAME}-eks-connection"
+        namespace: ${NAMESPACE}
+      providerConfigRef:
+        name: ${AWS_PROVIDER_CONFIG_NAME:=aws-provider-config}
+      forProvider:
+        source: Inline
+        enableTerraformCLILogging: true
+        env:
+          - name: HELM_REPOSITORY_CACHE
+            value: /tmp/.helmcache
+        vars:
+          - key: cluster_name
+            value: "${CLUSTER_NAME}"
+          - key: kubernetes_version
+            value: "${KUBERNETES_VERSION}"
+          - key: region
+            value: "${AWS_REGION}"
+        varFiles:
+          - source: SecretKey
+            format: HCL
+            secretKeyRef:
+              namespace: ${NAMESPACE}
+              name: "${CLUSTER_NAME}-vpc-connection"
+              key: vpc_config
+        module: |
+          variable "region" {
+            type        = string
+            description = "Name of AWS Region"
+          }
+          variable "cluster_name" {
+            type        = string
+            description = "Name of the EKS cluster"
+          }
+          variable "kubernetes_version" {
+            type        = string
+            description = "Kubernetes version for the EKS cluster"
+          }
+          variable "vpc_id" {
+            type        = string
+            description = "ID of the VPC where EKS cluster will be created"
+          }
+          variable "private_subnets" {
+            type        = list(string)
+            description = "List of private subnet IDs for EKS cluster"
+          }
+
+          locals {
+            tags = {
+              Terraform = "true"
+              Environment = "${ENVIRONMENT:=dev}"
+              ManagedBy = "capt"
+            }
+          }
+
+          module "kms" {
+            source  = "terraform-aws-modules/kms/aws"
+            version = "~> 3.1"
+            description           = "$${var.cluster_name} cluster encryption key"
+            enable_default_policy = true
+            key_owners            = [data.aws_caller_identity.current.arn]
+            tags = local.tags
+          }
+
+          module "eks" {
+            source  = "terraform-aws-modules/eks/aws"
+            version = "~> ${EKS_MODULE_VERSION:=20.37}"
+            cluster_name    = var.cluster_name
+            cluster_version = var.kubernetes_version
+            # Give the Terraform identity admin access to the cluster
+            # which will allow it to deploy resources into the cluster
+            enable_cluster_creator_admin_permissions = true
+            cluster_endpoint_public_access           = ${ENDPOINT_ACCESS_PUBLIC:=true}
+            cluster_endpoint_private_access          = ${ENDPOINT_ACCESS_PRIVATE:=true}
+            create_kms_key = false
+            cluster_encryption_config = {
+              resources        = ["secrets"]
+              provider_key_arn = module.kms.key_arn
+            }
+            cluster_addons = {
+              coredns = {
+                configuration_values = jsonencode({
+                  computeType = "Fargate"
+                  resources = {
+                    limits = {
+                      cpu    = "0.25"
+                      memory = "256M"
+                    }
+                    requests = {
+                      cpu    = "0.25"
+                      memory = "256M"
+                    }
+                  }
+                })
+              }
+              aws-ebs-csi-driver = {
+                most_recent              = true
+                resolve_conflicts        = "OVERWRITE"
+              }
+              eks-pod-identity-agent = {
+                configuration_values = jsonencode({
+                  resources = {
+                    requests = {
+                      cpu    = "0.1"
+                      memory = "32M"
+                    }
+                  }
+                })
+              }
+              kube-proxy = {
+                configuration_values = jsonencode({
+                  resources = {
+                    requests = {
+                      cpu    = "0.1"
+                      memory = "64M"
+                    }
+                  }
+                })
+              }
+              vpc-cni = {
+                configuration_values = jsonencode({
+                  resources = {
+                    requests = {
+                      cpu    = "0.1"
+                      memory = "128M"
+                    }
+                  }
+                })
+              }
+            }
+            vpc_id     = var.vpc_id
+            subnet_ids = var.private_subnets
+            # Fargate profiles use the cluster primary security group
+            # Therefore these are not used and can be skipped
+            create_cluster_security_group = false
+            create_node_security_group    = false
+            fargate_profiles = {
+              karpenter = {
+                selectors = [
+                  { namespace = "karpenter" }
+                ]
+              }
+              coredns = {
+                name = "coredns"
+                selectors = [
+                  {
+                    k8s-app   = "kube-dns"
+                    namespace = "kube-system"
+                  }
+                ]
+              }
+            }
+            tags = merge(local.tags, {
+              "karpenter.sh/discovery" = var.cluster_name
+            })
+
+            depends_on = [aws_iam_role_policy_attachment.ebs_csi_policy]
+          }
+
+          module "karpenter" {
+            source  = "terraform-aws-modules/eks/aws//modules/karpenter"
+            version = "~> ${EKS_MODULE_VERSION:=20.37}"
+
+            cluster_name          = module.eks.cluster_name
+            enable_v1_permissions = true
+            namespace             = "karpenter"
+
+            # Name needs to match role name passed to the EC2NodeClass
+            node_iam_role_use_name_prefix = false
+            node_iam_role_name            = "$${module.eks.cluster_name}-node"
+
+            # EKS Fargate does not support pod identity
+            create_pod_identity_association = false
+            enable_irsa                     = true
+            irsa_oidc_provider_arn          = module.eks.oidc_provider_arn
+
+            tags = local.tags
+          }
+
+          output "cluster_endpoint" {
+            description = "Endpoint for EKS control plane"
+            value       = module.eks.cluster_endpoint
+          }
+          output "cluster_name" {
+            description = "The name of the EKS cluster"
+            value       = module.eks.cluster_name
+          }
+          output "cluster_certificate_authority_data" {
+            description = "Base64 encoded certificate data required to communicate with the cluster"
+            value       = module.eks.cluster_certificate_authority_data
+            sensitive   = true
+          }
+          output "oidc_provider" {
+            description = "The OpenID Connect identity provider (issuer URL without leading https://)"
+            value       = module.eks.oidc_provider
+          }
+          output "oidc_provider_arn" {
+            description = "The ARN of the OIDC Provider"
+            value       = module.eks.oidc_provider_arn
+          }
+          output "karpenter" {
+            value = {
+              service_account = {
+                annotations = {
+                  "eks.amazonaws.com/role-arn" = module.karpenter.iam_role_arn
+                }
+              }
+              ec2_node_class = {
+                role = "$${module.eks.cluster_name}-node"
+              }
+              discovery_tag = {
+                key = "karpenter.sh/discovery"
+                value = module.eks.cluster_name
+              }
+              queue_name = module.karpenter.queue_name
+            }
+          }
+          data "aws_caller_identity" "current" {}
+
+          # EBS CSI Driver
+
+          resource "aws_iam_role" "ebs_csi_driver" {
+            name               = "$${var.cluster_name}-ebs-csi-driver"
+            assume_role_policy = jsonencode({
+              Version = "2012-10-17",
+              Statement = [{
+                Sid       = "EBSCSIDriver",
+                Effect    = "Allow",
+                Principal = { Service = "pods.eks.amazonaws.com" },
+                Action    = ["sts:AssumeRole", "sts:TagSession"]
+              }]
+            })
+          }
+          resource "aws_iam_role_policy_attachment" "ebs_csi_policy" {
+            role       = aws_iam_role.ebs_csi_driver.name
+            policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+          }
+
+          resource "aws_eks_pod_identity_association" "ebs_csi" {
+            cluster_name    = module.eks.cluster_name
+            namespace       = "kube-system"
+            service_account = "ebs-csi-controller-sa"
+            role_arn        = aws_iam_role.ebs_csi_driver.arn
+          }
+
+          # AWS Load Balancer Controller
+          data "http" "aws_load_balancer_controller_policy" {
+            url = "https://raw.githubusercontent.com/kubernetes-sigs/aws-alb-ingress-controller/main/docs/install/iam_policy.json"
+          }
+
+          resource "aws_iam_policy" "aws_load_balancer_controller" {
+            name   = "$${var.cluster_name}-AWSLoadBalancerControllerPolicy"
+            policy = data.http.aws_load_balancer_controller_policy.response_body
+          }
+
+          resource "aws_iam_role" "aws_load_balancer_controller" {
+            name = "$${var.cluster_name}-AWSLoadBalancerControllerRole"
+            assume_role_policy = jsonencode({
+              Version = "2012-10-17",
+              Statement = [{
+                Sid       = "AWSLoadBalancerController",
+                Effect    = "Allow",
+                Principal = { Service = "pods.eks.amazonaws.com" },
+                Action    = ["sts:AssumeRole", "sts:TagSession"]
+              }]
+            })
+          }
+
+          resource "aws_iam_role_policy_attachment" "aws_load_balancer_controller" {
+            role       = aws_iam_role.aws_load_balancer_controller.name
+            policy_arn = aws_iam_policy.aws_load_balancer_controller.arn
+          }
+
+          resource "aws_eks_pod_identity_association" "aws_load_balancer_controller" {
+            cluster_name    = module.eks.cluster_name
+            namespace       = "kube-system"
+            service_account = "aws-load-balancer-controller"
+            role_arn        = aws_iam_role.aws_load_balancer_controller.arn
+          }
+---
+# CAPTCluster
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: CAPTCluster
+metadata:
+  name: ${CLUSTER_NAME}
+  namespace: ${NAMESPACE}
+spec:
+  region: ${AWS_REGION}
+  vpcTemplateRef:
+    name: ${VPC_TEMPLATE_NAME:=vpc-template}
+    namespace: ${NAMESPACE}
+---
+# CAPTControlPlane
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: CAPTControlPlane
+metadata:
+  name: ${CLUSTER_NAME}
+  namespace: ${NAMESPACE}
+spec:
+  version: ${KUBERNETES_VERSION}
+  workspaceTemplateRef:
+    name: ${CONTROLPLANE_TEMPLATE_NAME:=eks-controlplane-template}
+    namespace: ${NAMESPACE}
+  controlPlaneConfig:
+    region: ${AWS_REGION}
+    endpointAccess:
+      public: ${ENDPOINT_ACCESS_PUBLIC:=true}
+      private: ${ENDPOINT_ACCESS_PRIVATE:=true}
+  additionalTags:
+    Environment: ${ENVIRONMENT:=dev}
+    ManagedBy: capt
+---
+# Cluster
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: ${CLUSTER_NAME}
+  namespace: ${NAMESPACE}
+  labels:
+    installation.appthrust.com/cert-manager: ${INSTALL_CERT_MANAGER:=enabled}
+    installation.appthrust.com/aws-load-balancer-controller: ${INSTALL_ALB_CONTROLLER:=enabled}
+    installation.appthrust.com/eks-karpenter: ${INSTALL_KARPENTER:=enabled}
+    installation.appthrust.com/karpenter-provider-aws-default-nodepool: ${INSTALL_KARPENTER_NODEPOOL:=enabled}
+spec:
+  clusterNetwork:
+    services:
+      cidrBlocks: ["${SERVICE_CIDR:=10.96.0.0/12}"]
+    pods:
+      cidrBlocks: ["${POD_CIDR:=192.168.0.0/16}"]
+    serviceDomain: "cluster.local"
+  infrastructureRef:
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    kind: CAPTCluster
+    name: ${CLUSTER_NAME}
+    namespace: ${NAMESPACE}
+  controlPlaneRef:
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    kind: CAPTControlPlane
+    name: ${CLUSTER_NAME}
+    namespace: ${NAMESPACE}

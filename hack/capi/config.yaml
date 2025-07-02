@@ -1,0 +1,9 @@
+# clusterctl configuration file for CAPT local development
+# This allows testing CAPT components without releasing them
+providers:
+  - name: "capt"
+    url: "file://%pwd%/capt/infrastructure-capt/v0.0.0/infrastructure-components.yaml"
+    type: "InfrastructureProvider"
+  - name: "capt"
+    url: "file://%pwd%/capt/control-plane-capt/v0.0.0/control-plane-components.yaml"
+    type: "ControlPlaneProvider"

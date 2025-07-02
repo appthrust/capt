@@ -32,7 +32,7 @@ check_clusterctl() {
 # Function to install Cluster API
 install_cluster_api() {
     echo "Installing Cluster API..."
-    
+
     # Remove any existing Cluster API installation
     if kubectl get namespace capi-system >/dev/null 2>&1; then
         echo "Removing existing Cluster API installation..."
@@ -49,7 +49,7 @@ install_cluster_api() {
 # Function to verify installation
 verify_installation() {
     echo "Verifying installation..."
-    
+
     # Check if all required namespaces exist
     for ns in capi-system capi-kubeadm-bootstrap-system capi-kubeadm-control-plane-system; do
         if ! kubectl get namespace "$ns" >/dev/null 2>&1; then
@@ -85,15 +85,15 @@ verify_installation() {
 
 main() {
     echo "Starting Cluster API installation..."
-    
+
     # Check prerequisites
     check_clusterctl
     check_cert_manager
-    
+
     # Install and verify
     install_cluster_api
     verify_installation
-    
+
     echo "Cluster API installation completed successfully!"
 }
 

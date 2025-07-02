@@ -1,0 +1,312 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.1
+  name: captcontrolplanes.controlplane.cluster.x-k8s.io
+spec:
+  group: controlplane.cluster.x-k8s.io
+  names:
+    kind: CAPTControlPlane
+    listKind: CAPTControlPlaneList
+    plural: captcontrolplanes
+    singular: captcontrolplane
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - description: Control Plane Ready status
+      jsonPath: .status.ready
+      name: Ready
+      type: string
+    - description: Control Plane Phase
+      jsonPath: .status.phase
+      name: Phase
+      type: string
+    - description: Kubernetes version
+      jsonPath: .spec.version
+      name: Version
+      type: string
+    - description: API Server Endpoint
+      jsonPath: .spec.controlPlaneEndpoint.host
+      name: Endpoint
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: CAPTControlPlane is the Schema for the captcontrolplanes API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: CAPTControlPlaneSpec defines the desired state of CAPTControlPlane
+            properties:
+              additionalTags:
+                additionalProperties:
+                  type: string
+                description: AdditionalTags is an optional set of tags to add to AWS
+                  resources managed by the AWS provider.
+                type: object
+              controlPlaneConfig:
+                description: ControlPlaneConfig contains additional configuration
+                  for the EKS control plane.
+                properties:
+                  addons:
+                    description: Addons defines the EKS addons to be installed
+                    items:
+                      description: Addon represents an EKS addon
+                      properties:
+                        configurationValues:
+                          description: ConfigurationValues is a string containing
+                            configuration values
+                          type: string
+                        name:
+                          description: Name is the name of the addon
+                          type: string
+                        version:
+                          description: Version is the version of the addon
+                          type: string
+                      required:
+                      - name
+                      type: object
+                    type: array
+                  endpointAccess:
+                    description: EndpointAccess defines the access configuration for
+                      the API server endpoint
+                    properties:
+                      private:
+                        description: Private controls whether the API server has private
+                          access
+                        type: boolean
+                      public:
+                        description: Public controls whether the API server has public
+                          access
+                        type: boolean
+                      publicCIDRs:
+                        description: PublicCIDRs is a list of CIDR blocks that can
+                          access the API server
+                        items:
+                          type: string
+                        type: array
+                    type: object
+                  region:
+                    description: Region specifies the AWS region where the control
+                      plane will be created
+                    pattern: ^[a-z]{2}-[a-z]+-[0-9]$
+                    type: string
+                  timeouts:
+                    description: Timeouts defines timeout settings for various operations
+                    properties:
+                      controlPlaneTimeout:
+                        default: 30
+                        description: ControlPlaneTimeout is the timeout in minutes
+                          for control plane creation
+                        minimum: 1
+                        type: integer
+                      vpcReadyTimeout:
+                        default: 15
+                        description: VPCReadyTimeout is the timeout in minutes for
+                          VPC ready check
+                        minimum: 1
+                        type: integer
+                    type: object
+                required:
+                - region
+                type: object
+              controlPlaneEndpoint:
+                description: ControlPlaneEndpoint represents the endpoint used to
+                  communicate with the control plane.
+                properties:
+                  host:
+                    description: The hostname on which the API server is serving.
+                    type: string
+                  port:
+                    description: The port on which the API server is serving.
+                    format: int32
+                    type: integer
+                required:
+                - host
+                - port
+                type: object
+              version:
+                description: Version defines the desired Kubernetes version.
+                type: string
+              workspaceTemplateApplyName:
+                description: |-
+                  WorkspaceTemplateApplyName is the name of the WorkspaceTemplateApply used for this control plane.
+                  This field is managed by the controller and should not be modified manually.
+                type: string
+              workspaceTemplateRef:
+                description: WorkspaceTemplateRef is a reference to the WorkspaceTemplate
+                  used for creating the control plane.
+                properties:
+                  name:
+                    description: Name is the name of the WorkspaceTemplate.
+                    type: string
+                  namespace:
+                    description: Namespace is the namespace of the WorkspaceTemplate.
+                    type: string
+                required:
+                - name
+                type: object
+            required:
+            - version
+            - workspaceTemplateRef
+            type: object
+          status:
+            description: CAPTControlPlaneStatus defines the observed state of CAPTControlPlane
+            properties:
+              conditions:
+                description: Conditions defines current service state of the CAPTControlPlane.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              failureMessage:
+                description: |-
+                  FailureMessage indicates that there is a terminal problem reconciling the
+                  state, and will be set to a descriptive error message.
+                type: string
+              failureReason:
+                description: |-
+                  FailureReason indicates that there is a terminal problem reconciling the
+                  state, and will be set to a token value suitable for programmatic
+                  interpretation.
+                type: string
+              initialized:
+                description: Initialized denotes if the control plane has been initialized
+                type: boolean
+              phase:
+                description: |-
+                  Phase represents the current phase of the control plane
+                  Valid values are: "Creating", "Ready", "Failed"
+                enum:
+                - Creating
+                - Ready
+                - Failed
+                type: string
+              ready:
+                description: Ready denotes that the control plane is ready
+                type: boolean
+              secretsReady:
+                default: false
+                description: SecretsReady denotes that all required secrets have been
+                  created and are ready
+                type: boolean
+              workspaceStatus:
+                description: WorkspaceStatus contains the status of the associated
+                  Workspace
+                properties:
+                  atProvider:
+                    description: AtProvider contains the observed state of the provider
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                  ready:
+                    description: Ready indicates if the Workspace is ready
+                    type: boolean
+                  state:
+                    description: State represents the current state of the Workspace
+                    type: string
+                type: object
+              workspaceTemplateStatus:
+                description: WorkspaceTemplateStatus contains the status of the WorkspaceTemplate
+                properties:
+                  lastAppliedRevision:
+                    description: LastAppliedRevision is the revision of the WorkspaceTemplate
+                      that was last applied
+                    type: string
+                  lastFailedRevision:
+                    description: LastFailedRevision is the revision of the WorkspaceTemplate
+                      that last failed
+                    type: string
+                  lastFailureMessage:
+                    description: LastFailureMessage contains the error message from
+                      the last failure
+                    type: string
+                  outputs:
+                    additionalProperties:
+                      type: string
+                    description: Outputs contains the outputs from the WorkspaceTemplate
+                    type: object
+                  ready:
+                    description: Ready indicates if the WorkspaceTemplate is ready
+                    type: boolean
+                  state:
+                    description: State represents the current state of the WorkspaceTemplate
+                    type: string
+                type: object
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

@@ -1,0 +1,8 @@
+bases:
+- bases/infrastructure.cluster.x-k8s.io_captclusters.yaml
+- bases/infrastructure.cluster.x-k8s.io_captmachinedeployments.yaml
+- bases/infrastructure.cluster.x-k8s.io_captmachines.yaml
+- bases/infrastructure.cluster.x-k8s.io_captmachinesets.yaml
+- bases/infrastructure.cluster.x-k8s.io_captmachinetemplates.yaml
+- bases/infrastructure.cluster.x-k8s.io_workspacetemplateapplies.yaml
+- bases/infrastructure.cluster.x-k8s.io_workspacetemplates.yaml 

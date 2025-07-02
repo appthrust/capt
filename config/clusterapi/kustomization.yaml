@@ -1,0 +1,22 @@
+# This kustomization.yaml is not intended to be run by itself,
+# since it depends on service name and namespace that are out of this kustomize package.
+# It should be run by config/default
+resources:
+- controlplane
+- infrastructure
+#+kubebuilder:scaffold:crdkustomizeresource
+
+# patches:
+# patches here are applied to all resources in this kustomization.
+# - patch: |-
+#     - op: add
+#       path: /spec/names/kind
+#       value: CustomResourceDefinition
+#   target:
+#     version: v1
+#     kind: CustomResourceDefinition
+#     name: .*
+#+kubebuilder:scaffold:crdkustomizecainjectionpatch
+
+configurations:
+- kustomizeconfig.yaml

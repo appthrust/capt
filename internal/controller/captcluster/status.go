@@ -139,5 +139,5 @@ func (r *Reconciler) setFailedStatus(ctx context.Context, captCluster *infrastru
 	if err := r.updateStatus(ctx, captCluster, cluster); err != nil {
 		return Result{}, err
 	}
-	return Result{}, fmt.Errorf(message)
+	return Result{}, fmt.Errorf("%s", message)
 }

@@ -295,7 +295,7 @@ func (r *Reconciler) setFailedStatus(
 		// Set ControlPlaneInitialized condition to false when control plane fails
 		conditions.MarkFalse(cluster, clusterv1.ControlPlaneInitializedCondition,
 			reason, clusterv1.ConditionSeverityError,
-			message)
+			"%s", message)
 
 		if err := r.Status().Patch(ctx, cluster, client.MergeFrom(patchBase)); err != nil {
 			return ctrl.Result{}, err

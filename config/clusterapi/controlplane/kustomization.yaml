@@ -1,0 +1,3 @@
+bases:
+- bases/controlplane.cluster.x-k8s.io_captcontrolplanes.yaml
+- bases/controlplane.cluster.x-k8s.io_captcontrolplanetemplates.yaml 

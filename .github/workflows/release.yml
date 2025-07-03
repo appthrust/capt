@@ -8,7 +8,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/capt  # Changed back to original name
+  IMAGE_NAME: ${{ github.repository_owner }}/capt
   TEST_IMAGE_NAME: ${{ github.repository_owner }}/capt-test
 
 jobs:
@@ -47,12 +47,13 @@ jobs:
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.TEST_IMAGE_NAME }}:${{ github.ref_name }}
 
-  release:
+  build-image:
     if: "!contains(github.ref, '-rc')"  # Only run for release tags
     runs-on: ubuntu-latest
     permissions:
-      contents: write
       packages: write
+    outputs:
+      image_tag: ${{ steps.image_tag.outputs.IMAGE_TAGS }}
 
     steps:
       - name: Checkout repository
@@ -61,7 +62,14 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: '1.23.3'
+          go-version: '1.24.4'
+
+      # Get the tag name for image
+      - name: Prepare image tags
+        id: image_tag
+        run: |
+          TAGS=${GITHUB_REF#refs/tags/}
+          echo IMAGE_TAGS="${TAGS//+/-}" >> $GITHUB_OUTPUT
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -76,35 +84,75 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.image_tag.outputs.IMAGE_TAGS }}
 
-      - name: Install dependencies
-        run: |
-          make kustomize
-          make controller-gen
+  create-release:
+    needs:
+      - build-image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      tag_name: ${{ steps.branch_name.outputs.TAG_NAME }}
 
-      - name: Generate capt.yaml
+    steps:
+      # Get the tag name for release
+      - name: Branch name
+        id: branch_name
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v} make build-installer
+          echo TAG_NAME="${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
-      - name: Create GitHub Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Release
+        id: create_release
+        uses: shogo82148/actions-create-release@v1.7.8
+        with:
+          release_name: ${{ steps.branch_name.outputs.TAG_NAME }}
+          draft: true # So we can manually edit before publishing
+          prerelease: ${{ contains(github.ref, '-') }}
+
+  upload-assets:
+    needs:
+      - build-image
+      - create-release
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        asset:
+          - name: infrastructure-metadata.yaml
+            path: ./metadata.yaml
+          - name: control-plane-metadata.yaml
+            path: ./metadata.yaml
+          - name: infrastructure-components.yaml
+            path: ./capt/infrastructure-capt/v0.0.0/infrastructure-components.yaml
+          - name: control-plane-components.yaml
+            path: ./capt/control-plane-capt/v0.0.0/control-plane-components.yaml
+          - name: cluster-template.yaml
+            path: ./cluster-template.yaml
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.24.4'
+
+      - name: Generate Cluster API manifests
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v} gh release create ${GITHUB_REF#refs/tags/} \
-            dist/capt.yaml \
-            --title "Release ${GITHUB_REF#refs/tags/}" \
-            --notes-file CHANGELOG.md
+          make clusterctl-setup IMG=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-image.outputs.image_tag }}
+
+      - name: Upload Release Asset - ${{ matrix.asset.name }}
+        uses: shogo82148/actions-upload-release-asset@v1.8.1
+        with:
+          upload_url: ${{ needs.release.outputs.upload_url }}
+          asset_path: ${{ matrix.asset.path }}
+          asset_name: ${{ matrix.asset.name }}
+          asset_content_type: application/octet-stream

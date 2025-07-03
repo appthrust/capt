@@ -35,3 +35,9 @@ dist
 
 *.tgz
 .DS_Store
+
+# CAPI CI generated files
+capt/
+capi-local-config.yaml
+
+refs

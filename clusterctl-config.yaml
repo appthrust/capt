@@ -1,0 +1,36 @@
+# clusterctl configuration file example for CAPT
+# Save this as ~/.cluster-api/clusterctl.yaml
+
+providers:
+  - name: "capt"
+    url: "https://github.com/appthrust/capt/releases/latest/infrastructure-components.yaml"
+    type: "InfrastructureProvider"
+  - name: "capt"
+    url: "https://github.com/appthrust/capt/releases/latest/control-plane-components.yaml"
+    type: "ControlPlaneProvider"
+
+# Variables for cluster creation
+# These can be set via environment variables or clusterctl config
+variables:
+  # AWS Configuration
+  AWS_REGION: "ap-northeast-1"
+
+  # Cluster Configuration
+  CLUSTER_NAME: "my-cluster"
+  NAMESPACE: "default"
+  KUBERNETES_VERSION: "1.31.0"
+
+  # Network Configuration
+  SERVICE_CIDR: "10.96.0.0/12"
+  POD_CIDR: "192.168.0.0/16"
+
+  # Template References
+  VPC_TEMPLATE_NAME: "vpc-template"
+  CONTROLPLANE_TEMPLATE_NAME: "eks-controlplane-template"
+
+  # Control Plane Configuration
+  ENDPOINT_ACCESS_PUBLIC: "true"
+  ENDPOINT_ACCESS_PRIVATE: "true"
+
+  # Tagging
+  ENVIRONMENT: "dev"

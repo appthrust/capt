@@ -44,12 +44,42 @@ help: ## Display this help.
 
 ##@ Development
 
+.PHONY: manifests
+manifests: controller-gen
+	mkdir -p config/clusterapi/controlplane/bases
+	mkdir -p config/rbac
+	$(CONTROLLER_GEN) rbac:roleName=manager-role-controlplane paths="./internal/controller/controlplane/..." output:stdout > config/rbac/controlplane-role.yaml
+	$(CONTROLLER_GEN) crd:generateEmbeddedObjectMeta=true webhook paths="./api/controlplane/..." output:crd:artifacts:config=config/clusterapi/controlplane/bases
+	mkdir -p config/clusterapi/infrastructure/bases
+	$(CONTROLLER_GEN) rbac:roleName=manager-role-infrastructure paths="./internal/controller" output:stdout > config/rbac/infrastructure-role.yaml
+	$(CONTROLLER_GEN) crd:generateEmbeddedObjectMeta=true webhook paths="./api/v1beta1/..." output:crd:artifacts:config=config/clusterapi/infrastructure/bases
+
 .PHONY: clusterapi-manifests
 clusterapi-manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	mkdir -p config/clusterapi/controlplane/bases
-	$(CONTROLLER_GEN) rbac:roleName=manager-role crd:generateEmbeddedObjectMeta=true webhook paths="./api/controlplane/..." output:crd:artifacts:config=config/clusterapi/controlplane/bases
+	mkdir -p config/rbac
+	$(CONTROLLER_GEN) rbac:roleName=manager-role-controlplane paths="./internal/controller/controlplane/..." output:stdout > config/rbac/controlplane-role.yaml
+	$(CONTROLLER_GEN) crd:generateEmbeddedObjectMeta=true webhook paths="./api/controlplane/..." output:crd:artifacts:config=config/clusterapi/controlplane/bases
 	mkdir -p config/clusterapi/infrastructure/bases
-	$(CONTROLLER_GEN) rbac:roleName=manager-role crd:generateEmbeddedObjectMeta=true webhook paths="./api/v1beta1/..." output:crd:artifacts:config=config/clusterapi/infrastructure/bases
+	$(CONTROLLER_GEN) rbac:roleName=manager-role-infrastructure paths="./internal/controller" output:stdout > config/rbac/infrastructure-role.yaml
+	$(CONTROLLER_GEN) crd:generateEmbeddedObjectMeta=true webhook paths="./api/v1beta1/..." output:crd:artifacts:config=config/clusterapi/infrastructure/bases
+
+.PHONY: clusterctl-setup
+clusterctl-setup: clusterapi-manifests kustomize ## Build components and create local config for clusterctl testing.
+	# Build kustomize manifests with proper image reference
+	mkdir -p capt/infrastructure-capt/v0.0.0
+	mkdir -p capt/control-plane-capt/v0.0.0
+	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+	$(KUSTOMIZE) build config/clusterapi/infrastructure > capt/infrastructure-capt/v0.0.0/infrastructure-components.yaml
+	$(KUSTOMIZE) build config/clusterapi/controlplane > capt/control-plane-capt/v0.0.0/control-plane-components.yaml
+	git checkout config/manager/kustomization.yaml
+	# Copy metadata files
+	cp hack/capi/metadata.yaml capt/infrastructure-capt/v0.0.0/metadata.yaml
+	cp hack/capi/metadata.yaml capt/control-plane-capt/v0.0.0/metadata.yaml
+	# Create config file with current directory
+	sed -e 's#%pwd%#'`pwd`'#g' ./hack/capi/config.yaml > capi-local-config.yaml
+	@echo "CAPI components ready for clusterctl testing"
+	@echo "Use: clusterctl init --infrastructure capt --control-plane capt --config capi-local-config.yaml"
 
 .PHONY: generate
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
@@ -119,12 +149,6 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 	- $(CONTAINER_TOOL) buildx rm capt-builder
 	rm Dockerfile.cross
 
-.PHONY: build-installer
-build-installer: clusterapi-manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
-	mkdir -p dist
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/default > dist/capt.yaml
-
 ##@ Deployment
 
 ifndef ignore-not-found
@@ -148,30 +172,21 @@ deploy: clusterapi-manifests kustomize ## Deploy controller to the K8s cluster s
 undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
 
-##@ Release
-
-.PHONY: release
-release: update-version update-changelog docker-buildx build-installer create-github-release ## Perform a release
-
-.PHONY: update-version
-update-version: ## Update version number
-	@echo "Updating version number to $(VERSION)"
-	@sed -i 's/^VERSION = .*/VERSION = $(VERSION)/' VERSION
-	@yq e -i '.version = "$(VERSION)"' charts/capt/Chart.yaml
-	@yq e -i '.appVersion = "v$(VERSION)"' charts/capt/Chart.yaml
-
-.PHONY: update-changelog
-update-changelog: ## Update CHANGELOG.md
-	@echo "Updating CHANGELOG.md"
-	@sed -i '/^## \[Unreleased\]/a \n## [$(VERSION)] - $(shell date +%Y-%m-%d)\n' CHANGELOG.md
-
-.PHONY: create-github-release
-create-github-release: ## Create a GitHub release
-	@echo "Creating GitHub release v$(VERSION)"
-	@gh release create v$(VERSION) dist/capt.yaml \
-		--title "Release v$(VERSION)" \
-		--notes-file CHANGELOG.md \
-		--draft
+##@ Kind
+.PHONY: kind-capt
+kind-capt: clusterapi-manifests clusterctl-setup docker-build ## Setup complete kind environment with CAPI and CAPT
+	@echo "Setting up kind cluster with CAPI and CAPT..."
+	kind create cluster --name capt
+	@echo "✓ Kind cluster created"
+	@echo "Deploying CAPT..."
+	$(CONTAINER_TOOL) save ${IMG} | kind load image-archive /dev/stdin --name capt
+	export EXP_MACHINE_POOL=true && \
+	export CLUSTER_TOPOLOGY="true" && \
+	export EXP_RUNTIME_SDK="true" && \
+	export EXP_MACHINE_SET_PREFLIGHT_CHECKS="true" && \
+	clusterctl init --core cluster-api --infrastructure capt --control-plane capt --config capi-local-config.yaml
+	@echo "✓ CAPT deployed"
+	@echo "Setup complete!"
 
 ##@ Dependencies
 
@@ -224,6 +239,12 @@ helm: clusterapi-manifests kustomize helmify ## Generate helm charts
 	@echo "Generating Helm chart in charts/capt"
 	@mkdir -p charts/capt
 	$(KUSTOMIZE) build config/default | $(HELMIFY) charts/capt
+
+.PHONY: clean
+clean: ## Clean up generated files
+	rm -f capt-image-bundle.tar
+	rm -rf capt/
+	rm -f capi-local-config.yaml
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary

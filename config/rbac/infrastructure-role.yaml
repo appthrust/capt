@@ -1,0 +1,74 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role-infrastructure
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - infrastructure.cluster.x-k8s.io
+  resources:
+  - captmachinedeployments
+  - captmachines
+  - captmachinesets
+  - captmachinetemplates
+  - workspacetemplateapplies
+  - workspacetemplates
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - infrastructure.cluster.x-k8s.io
+  resources:
+  - captmachinedeployments/finalizers
+  - captmachines/finalizers
+  - captmachinesets/finalizers
+  - workspacetemplateapplies/finalizers
+  - workspacetemplates/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - infrastructure.cluster.x-k8s.io
+  resources:
+  - captmachinedeployments/status
+  - captmachines/status
+  - captmachinesets/status
+  - captmachinetemplates/status
+  - workspacetemplateapplies/status
+  - workspacetemplates/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - tf.upbound.io
+  resources:
+  - workspaces
+  - workspaces/status
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch

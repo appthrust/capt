@@ -70,9 +70,15 @@ clusterctl-setup: clusterapi-manifests kustomize ## Build components and create 
 	mkdir -p capt/infrastructure-capt/v0.0.0
 	mkdir -p capt/control-plane-capt/v0.0.0
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
+	# Add controller args patch for infrastructure components
+	cd config/manager && $(KUSTOMIZE) edit add patch --path infrastructure-args-patch.yaml
 	$(KUSTOMIZE) build config/clusterapi/infrastructure > capt/infrastructure-capt/v0.0.0/infrastructure-components.yaml
+	cd config/manager && $(KUSTOMIZE) edit remove patch --path infrastructure-args-patch.yaml
+	# Add controller args patch for control plane components
+	cd config/manager && $(KUSTOMIZE) edit add patch --path controlplane-args-patch.yaml
 	$(KUSTOMIZE) build config/clusterapi/controlplane > capt/control-plane-capt/v0.0.0/control-plane-components.yaml
-	git checkout config/manager/kustomization.yaml
+	cd config/manager && $(KUSTOMIZE) edit remove patch --path controlplane-args-patch.yaml
+	git restore config/manager/kustomization.yaml
 	# Copy metadata files
 	cp hack/capi/metadata.yaml capt/infrastructure-capt/v0.0.0/metadata.yaml
 	cp hack/capi/metadata.yaml capt/control-plane-capt/v0.0.0/metadata.yaml

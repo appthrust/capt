@@ -198,9 +198,7 @@ jobs:
     strategy:
       matrix:
         asset:
-          - name: infrastructure-metadata.yaml
-            path: ./metadata.yaml
-          - name: control-plane-metadata.yaml
+          - name: metadata.yaml
             path: ./metadata.yaml
           - name: infrastructure-components.yaml
             path: ./capt/infrastructure-capt/v0.0.0/infrastructure-components.yaml

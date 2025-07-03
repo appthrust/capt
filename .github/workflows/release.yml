@@ -58,9 +58,18 @@ jobs:
 
   build-image:
     if: "!contains(github.ref, '-rc')"  # Only run for release tags
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     permissions:
       packages: write
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            platform: linux/amd64
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            platform: linux/arm64
+            arch: arm64
     outputs:
       image_tag: ${{ steps.meta.outputs.tags }}
       image_digest: ${{ steps.build.outputs.digest }}
@@ -73,9 +82,6 @@ jobs:
         uses: actions/setup-go@v4
         with:
           go-version: '1.24.4'
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -93,10 +99,8 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=tag
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}},enable={{is_default_branch}}
+            type=ref,event=tag,suffix=-${{ matrix.arch }}
+            type=semver,pattern={{version}},suffix=-${{ matrix.arch }}
           labels: |
             org.opencontainers.image.title=CAPT
             org.opencontainers.image.description=Cluster API Provider for Terraform
@@ -107,14 +111,62 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ matrix.platform }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-  create-release:
+  create-manifest:
     needs:
       - build-image
+    if: "!contains(github.ref, '-rc')"  # Only run for release tags
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    outputs:
+      image_tag: ${{ steps.get_tag.outputs.tag }}
+
+    steps:
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get tag name
+        id: get_tag
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+
+      - name: Create and push manifest list
+        run: |
+          TAG=${{ steps.get_tag.outputs.tag }}
+
+          # Create manifest list
+          docker manifest create \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG} \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG}-amd64 \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG}-arm64
+
+          # Annotate architectures (optional but recommended)
+          docker manifest annotate \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG} \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG}-amd64 \
+            --arch amd64 --os linux
+
+          docker manifest annotate \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG} \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG}-arm64 \
+            --arch arm64 --os linux
+
+          # Push manifest list
+          docker manifest push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${TAG}
+
+  create-release:
+    needs:
+      - create-manifest
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -139,7 +191,7 @@ jobs:
 
   upload-assets:
     needs:
-      - build-image
+      - create-manifest
       - create-release
     runs-on: ubuntu-latest
     strategy:
@@ -167,7 +219,7 @@ jobs:
 
       - name: Generate Cluster API manifests
         run: |
-          make clusterctl-setup IMG=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build-image.outputs.image_tag }}
+          make clusterctl-setup IMG=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.create-manifest.outputs.image_tag }}
 
       - name: Upload Release Asset - ${{ matrix.asset.name }}
         uses: shogo82148/actions-upload-release-asset@v1.8.1

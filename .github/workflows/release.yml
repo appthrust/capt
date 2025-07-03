@@ -38,6 +38,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Extract metadata for test image
+        id: meta-test
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.TEST_IMAGE_NAME }}
+          tags: |
+            type=ref,event=tag
+
       - name: Build and push test Docker image
         uses: docker/build-push-action@v5
         with:
@@ -45,7 +53,8 @@ jobs:
           file: ./Dockerfile.rc
           platforms: linux/amd64
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.TEST_IMAGE_NAME }}:${{ github.ref_name }}
+          tags: ${{ steps.meta-test.outputs.tags }}
+          labels: ${{ steps.meta-test.outputs.labels }}
 
   build-image:
     if: "!contains(github.ref, '-rc')"  # Only run for release tags
@@ -53,7 +62,8 @@ jobs:
     permissions:
       packages: write
     outputs:
-      image_tag: ${{ steps.image_tag.outputs.IMAGE_TAGS }}
+      image_tag: ${{ steps.meta.outputs.tags }}
+      image_digest: ${{ steps.build.outputs.digest }}
 
     steps:
       - name: Checkout repository
@@ -63,13 +73,6 @@ jobs:
         uses: actions/setup-go@v4
         with:
           go-version: '1.24.4'
-
-      # Get the tag name for image
-      - name: Prepare image tags
-        id: image_tag
-        run: |
-          TAGS=${GITHUB_REF#refs/tags/}
-          echo IMAGE_TAGS="${TAGS//+/-}" >> $GITHUB_OUTPUT
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -84,13 +87,30 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}},enable={{is_default_branch}}
+          labels: |
+            org.opencontainers.image.title=CAPT
+            org.opencontainers.image.description=Cluster API Provider for Terraform
+            org.opencontainers.image.vendor=AppThrust
+
       - name: Build and push Docker image
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.image_tag.outputs.IMAGE_TAGS }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
 
   create-release:
     needs:
@@ -152,7 +172,7 @@ jobs:
       - name: Upload Release Asset - ${{ matrix.asset.name }}
         uses: shogo82148/actions-upload-release-asset@v1.8.1
         with:
-          upload_url: ${{ needs.release.outputs.upload_url }}
+          upload_url: ${{ needs.create-release.outputs.upload_url }}
           asset_path: ${{ matrix.asset.path }}
           asset_name: ${{ matrix.asset.name }}
           asset_content_type: application/octet-stream

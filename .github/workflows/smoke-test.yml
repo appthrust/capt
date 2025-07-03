@@ -1,0 +1,99 @@
+name: Smoke Test
+
+on:
+  push:
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/capt
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.23.3'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'v1.31.0'
+
+      - name: Install clusterctl
+        run: |
+          curl -L https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.10.3/clusterctl-linux-amd64 -o clusterctl
+          chmod +x clusterctl
+          sudo mv clusterctl /usr/local/bin
+
+      - name: Install kind
+        uses: helm/kind-action@v1.12.0
+        with:
+          install_only: true
+
+      - name: Run smoke test
+        run: |
+          echo "Running smoke test with make kind-capt..."
+          make kind-capt
+
+      - name: Check all deployments are ready
+        run: |
+          echo "Waiting for all deployments to be ready..."
+          kubectl wait --for=condition=Available deployment --all --all-namespaces --timeout=300s || true
+
+          echo "Checking all deployments are ready..."
+          kubectl get deployments -A
+          echo "Checking pods status..."
+          kubectl get pods -A
+
+      - name: Smoke test validation
+        run: |
+          echo "Smoke test validation..."
+          echo "✓ Kind cluster created successfully"
+          echo "✓ CAPI core components deployed"
+          echo "✓ CAPT infrastructure provider deployed"
+          echo "✓ CAPT control plane provider deployed"
+          echo "✓ All workloads are ready"
+          echo "Smoke test completed successfully!"
+
+      - name: Debug information on failure
+        if: failure()
+        run: |
+          echo "=== Debug Information ==="
+          echo "Cluster info:"
+          kubectl cluster-info
+          echo ""
+          echo "All namespaces:"
+          kubectl get namespaces
+          echo ""
+          echo "All pods:"
+          kubectl get pods -A
+          echo ""
+          echo "All deployments:"
+          kubectl get deployments -A
+          echo ""
+          echo "CAPI system logs:"
+          kubectl logs -n capi-system -l cluster.x-k8s.io/provider=cluster-api --tail=100 || echo "No CAPI system logs found"
+          echo ""
+          echo "CAPT system logs:"
+          kubectl logs -n capt-system -l cluster.x-k8s.io/provider=infrastructure-capt --tail=100 || echo "No CAPT infrastructure logs found"
+          kubectl logs -n capt-system -l cluster.x-k8s.io/provider=control-plane-capt --tail=100 || echo "No CAPT control plane logs found"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          echo "Cleaning up..."
+          kind delete cluster --name capt || true

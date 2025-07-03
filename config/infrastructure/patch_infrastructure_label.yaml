@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: List
+items:
+# Remove Control Plane CRDs from infrastructure provider
+- $patch: delete
+  apiVersion: apiextensions.k8s.io/v1
+  kind: CustomResourceDefinition
+  metadata:
+    name: captcontrolplanes.controlplane.cluster.x-k8s.io
+- $patch: delete
+  apiVersion: apiextensions.k8s.io/v1
+  kind: CustomResourceDefinition
+  metadata:
+    name: captcontrolplanetemplates.controlplane.cluster.x-k8s.io

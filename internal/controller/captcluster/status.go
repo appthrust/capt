@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/cluster-api/api/v1beta1"
@@ -73,13 +72,8 @@ func (r *Reconciler) updateStatus(ctx context.Context, captCluster *infrastructu
 			logger.Info("Cleared failure status due to ready state")
 
 			// Set InfrastructureReady condition
-			conditions.Set(cluster, &v1beta1.Condition{
-				Type:               InfrastructureReadyCondition,
-				Status:             corev1.ConditionTrue,
-				LastTransitionTime: metav1.Now(),
-				Reason:             "InfrastructureReady",
-				Message:            "Infrastructure is ready",
-			})
+			// MarkTrue preserves LastTransitionTime if already true
+			conditions.MarkTrue(cluster, InfrastructureReadyCondition)
 			logger.Info("Set InfrastructureReady condition to True")
 		} else if captCluster.Status.FailureReason != nil {
 			// Update failure reason and message only if not ready
@@ -91,13 +85,7 @@ func (r *Reconciler) updateStatus(ctx context.Context, captCluster *infrastructu
 				"message", *captCluster.Status.FailureMessage)
 
 			// Set InfrastructureReady condition to false
-			conditions.Set(cluster, &v1beta1.Condition{
-				Type:               InfrastructureReadyCondition,
-				Status:             corev1.ConditionFalse,
-				LastTransitionTime: metav1.Now(),
-				Reason:             string(reason),
-				Message:            *captCluster.Status.FailureMessage,
-			})
+			conditions.MarkFalse(cluster, InfrastructureReadyCondition, string(reason), v1beta1.ConditionSeverityError, "%s", *captCluster.Status.FailureMessage)
 			logger.Info("Set InfrastructureReady condition to False")
 		}
 

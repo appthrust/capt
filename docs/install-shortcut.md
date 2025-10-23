@@ -3,7 +3,7 @@ kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/
 ```
 
 ```
-clusterctl init --addon helm
+clusterctl init --core cluster-api --bootstrap kubeadm --infrastructure capt --control-plane capt
 ```
 
 ```bash
@@ -46,8 +46,17 @@ kubectl apply -f config/samples/workspacetemplates/spot-role-create.yaml
 kubectl apply -f config/samples/workspacetemplates/vpc.yaml
 ```
 
-## Create Cluster
+## ClusterClass (Topology) templates
 
 ```bash
-kubectl apply -f config/samples/demo-cluster6/cluster.yaml
+kubectl apply -f templates/clusterclass/capt-clusterclass.yaml
+kubectl apply -f config/samples/clustertopology/controlplanetemplate.yaml
+```
+
+## Create Cluster (Topology flavor)
+
+```bash
+export CLUSTER_NAME=demo
+clusterctl generate cluster $CLUSTER_NAME --flavor topology --infrastructure capt --control-plane capt --target-namespace default > cluster.yaml
+kubectl apply -f cluster.yaml
 ```

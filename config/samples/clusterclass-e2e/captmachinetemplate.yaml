@@ -1,0 +1,15 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: CaptMachineTemplate
+metadata:
+  name: worker-machine-noop
+  namespace: default
+spec:
+  template:
+    spec:
+      workspaceTemplateRef:
+        name: noop-template
+        namespace: default
+      instanceType: "m5.large"
+      nodeGroupRef:
+        name: default-ng
+        namespace: default

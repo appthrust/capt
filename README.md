@@ -170,8 +170,8 @@ providers:
 #### Installation
 
 ```bash
-# Add CAPT as both Infrastructure and Control Plane provider
-clusterctl init --core cluster-api --infrastructure capt --control-plane capt
+# Add CAPT as both Infrastructure and Control Plane provider (Topology requires bootstrap kubeadm)
+clusterctl init --core cluster-api --bootstrap kubeadm --infrastructure capt --control-plane capt
 ```
 
 #### Creating Clusters
@@ -182,17 +182,28 @@ export AWS_REGION=ap-northeast-1
 export CLUSTER_NAME=my-cluster
 export KUBERNETES_VERSION=1.33.2
 
-# Generate cluster manifest
+# Apply ClusterClass templates (control plane template, ClusterClass, etc.)
+kubectl apply -f templates/clusterclass/capt-clusterclass.yaml
+kubectl apply -f config/samples/clustertopology/controlplanetemplate.yaml
+# Apply required WorkspaceTemplates used by ClusterClass (worker)
+kubectl apply -f config/samples/workspacetemplates/eks-node-template.yaml
+
+# Generate cluster manifest using the topology flavor
 clusterctl generate cluster $CLUSTER_NAME \
   --infrastructure capt \
-  --kubernetes-version $KUBERNETES_VERSION \
+  --control-plane capt \
+  --flavor topology \
   --target-namespace default > cluster.yaml
 
 # Apply the cluster
 kubectl apply -f cluster.yaml
 ```
 
+> Note: region is sourced from the ClusterClass variable `region` and is applied to both control plane and infrastructure via patches.
+
 For detailed clusterctl integration guide, see [docs/clusterctl-integration.md](docs/clusterctl-integration.md).
+
+**Note:** It is recommended to use `clusterctl` version `v1.5.x` or newer to ensure compatibility with the `ClusterTopology` feature gate.
 
 ## Quick Start Guide
 

@@ -3,6 +3,7 @@ package controlplane
 import (
 	"context"
 	"fmt"
+	"reflect"
 
 	controlplanev1beta1 "github.com/appthrust/capt/api/controlplane/v1beta1"
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
@@ -253,14 +254,20 @@ func (r *Reconciler) reconcileKubeconfigSecret(ctx context.Context, controlPlane
 		}
 		logger.Info("Created kubeconfig secret")
 	} else {
-		// Update existing secret
-		existingKubeconfigSecret.Data = kubeconfigSecret.Data
-		existingKubeconfigSecret.Labels = kubeconfigSecret.Labels
-		if err := r.Update(ctx, existingKubeconfigSecret); err != nil {
-			logger.Error(err, "Failed to update kubeconfig secret")
-			return err
+		// Update existing secret only if data or labels changed
+		needsUpdate := !reflect.DeepEqual(existingKubeconfigSecret.Data, kubeconfigSecret.Data) ||
+			!reflect.DeepEqual(existingKubeconfigSecret.Labels, kubeconfigSecret.Labels)
+		if needsUpdate {
+			existingKubeconfigSecret.Data = kubeconfigSecret.Data
+			existingKubeconfigSecret.Labels = kubeconfigSecret.Labels
+			if err := r.Update(ctx, existingKubeconfigSecret); err != nil {
+				logger.Error(err, "Failed to update kubeconfig secret")
+				return err
+			}
+			logger.Info("Updated kubeconfig secret")
+		} else {
+			logger.Info("Kubeconfig secret unchanged, skipping update")
 		}
-		logger.Info("Updated kubeconfig secret")
 	}
 
 	return nil

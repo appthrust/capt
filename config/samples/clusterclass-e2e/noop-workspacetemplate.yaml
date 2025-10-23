@@ -1,0 +1,33 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplate
+metadata:
+  name: noop-template
+  namespace: default
+spec:
+  template:
+    metadata:
+      description: "No-Op template for ClusterClass e2e (no AWS)"
+      version: "0.0.1"
+      tags:
+        provider: "noop"
+        resource: "noop"
+    spec:
+      providerConfigRef:
+        name: noop-provider-config
+      forProvider:
+        source: Inline
+        enableTerraformCLILogging: false
+        vars:
+          - key: cluster_name
+            value: "${cluster_name}"
+          - key: region
+            value: "${region}"
+        module: |
+          variable "cluster_name" { type = string }
+          variable "region" { type = string }
+          # No-op module: just outputs fixed strings
+          output "vpc_id" { value = "vpc-00000000" }
+          output "cluster_endpoint" { value = "https://127.0.0.1:6443" }
+          output "cluster_certificate_authority_data" { value = base64encode("dummy") }
+
+

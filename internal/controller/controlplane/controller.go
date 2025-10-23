@@ -3,6 +3,7 @@ package controlplane
 import (
 	"context"
 	"fmt"
+	"reflect"
 
 	controlplanev1beta1 "github.com/appthrust/capt/api/controlplane/v1beta1"
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
@@ -154,12 +155,16 @@ func (r *Reconciler) createKubeconfigWorkspaceTemplateApply(ctx context.Context,
 			return fmt.Errorf("failed to get kubeconfig WorkspaceTemplateApply: %v", err)
 		}
 	} else {
-		// Update existing WorkspaceTemplateApply
-		existingApply.Spec = kubeconfigApply.Spec
-		if err := r.Update(ctx, existingApply); err != nil {
-			return fmt.Errorf("failed to update kubeconfig WorkspaceTemplateApply: %v", err)
+		// Update existing WorkspaceTemplateApply only if spec changed
+		if !reflect.DeepEqual(existingApply.Spec, kubeconfigApply.Spec) {
+			existingApply.Spec = kubeconfigApply.Spec
+			if err := r.Update(ctx, existingApply); err != nil {
+				return fmt.Errorf("failed to update kubeconfig WorkspaceTemplateApply: %v", err)
+			}
+			logger.Info("Updated kubeconfig WorkspaceTemplateApply")
+		} else {
+			logger.Info("Kubeconfig WorkspaceTemplateApply unchanged, skipping update")
 		}
-		logger.Info("Updated kubeconfig WorkspaceTemplateApply")
 	}
 
 	return nil
@@ -283,15 +288,29 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	// Get owner Cluster
-	cluster := &clusterv1.Cluster{}
-	if err := r.Get(ctx, types.NamespacedName{
-		Name:      controlPlane.Name,
-		Namespace: controlPlane.Namespace,
-	}, cluster); err != nil {
-		if !apierrors.IsNotFound(err) {
-			return ctrl.Result{}, err
+	var clusterName string
+	if name, ok := controlPlane.Labels[clusterv1.ClusterNameLabel]; ok && name != "" {
+		clusterName = name
+	} else {
+		// Fallback to OwnerReference if present
+		for _, ref := range controlPlane.OwnerReferences {
+			if ref.Kind == "Cluster" && ref.APIVersion == clusterv1.GroupVersion.String() && ref.Name != "" {
+				clusterName = ref.Name
+				break
+			}
 		}
-		cluster = nil
+	}
+
+	var cluster *clusterv1.Cluster
+	if clusterName != "" {
+		c := &clusterv1.Cluster{}
+		if err := r.Get(ctx, types.NamespacedName{Name: clusterName, Namespace: controlPlane.Namespace}, c); err != nil {
+			if !apierrors.IsNotFound(err) {
+				return ctrl.Result{}, err
+			}
+		} else {
+			cluster = c
+		}
 	}
 
 	// Handle deletion

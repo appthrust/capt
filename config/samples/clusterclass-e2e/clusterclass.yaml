@@ -1,0 +1,60 @@
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: ClusterClass
+metadata:
+  name: cc-noop
+  namespace: default
+spec:
+  controlPlane:
+    ref:
+      apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+      kind: CAPTControlPlaneTemplate
+      name: cp-noop-template
+      namespace: default
+  infrastructure:
+    ref:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+      kind: CAPTClusterTemplate
+      name: cluster-noop-template
+      namespace: default
+  workers:
+    machineDeployments:
+      - class: default-worker
+        template:
+          bootstrap:
+            ref:
+              apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+              kind: KubeadmConfigTemplate
+              name: worker-bootstrap-noop
+              namespace: default
+          infrastructure:
+            ref:
+              apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+              kind: CaptMachineTemplate
+              name: worker-machine-noop
+              namespace: default
+  variables:
+    - name: region
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: "local"
+    - name: controlPlane_endpointAccess_public
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: boolean
+          default: true
+    - name: controlPlane_endpointAccess_private
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: boolean
+          default: false
+    - name: cluster_environment
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: "dev"
+

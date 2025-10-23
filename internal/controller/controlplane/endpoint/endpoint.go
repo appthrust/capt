@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"net/url"
+	"strconv"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -42,12 +44,20 @@ func GetEndpointFromWorkspace(ctx context.Context, c client.Client, workspaceNam
 	}
 
 	if found && outputs != nil {
-		if endpoint, ok := outputs["cluster_endpoint"].(string); ok {
-			logger.Info("Found cluster_endpoint in Workspace outputs", "endpoint", endpoint)
-			return &clusterv1.APIEndpoint{
-				Host: endpoint,
-				Port: 443, // EKS API server always uses port 443
-			}, nil
+		if endpointStr, ok := outputs["cluster_endpoint"].(string); ok {
+			logger.Info("Found cluster_endpoint in Workspace outputs", "endpoint", endpointStr)
+			if u, err := url.Parse(endpointStr); err == nil {
+				host := u.Hostname()
+				portStr := u.Port()
+				if portStr == "" {
+					portStr = "443"
+				}
+				if port, err := strconv.ParseInt(portStr, 10, 32); err == nil {
+					return &clusterv1.APIEndpoint{Host: host, Port: int32(port)}, nil
+				}
+			}
+			// Fallback: treat as host string
+			return &clusterv1.APIEndpoint{Host: endpointStr, Port: 443}, nil
 		}
 		logger.Info("cluster_endpoint not found in Workspace outputs")
 	}
@@ -84,20 +94,24 @@ func GetEndpointFromWorkspace(ctx context.Context, c client.Client, workspaceNam
 		"namespace", secretNamespace)
 
 	if endpointData, ok := secret.Data["cluster_endpoint"]; ok {
-		logger.Info("Found cluster_endpoint in secret",
-			"raw_length", len(endpointData),
-			"raw_data", string(endpointData))
-
-		endpoint, err := base64.StdEncoding.DecodeString(string(endpointData))
-		if err != nil {
-			return nil, fmt.Errorf("failed to decode endpoint data: %w", err)
+		endpointValue := string(endpointData)
+		if decoded, err := base64.StdEncoding.DecodeString(endpointValue); err == nil {
+			endpointValue = string(decoded)
 		}
 
-		logger.Info("Successfully decoded endpoint", "endpoint", string(endpoint))
-		return &clusterv1.APIEndpoint{
-			Host: string(endpoint),
-			Port: 443, // EKS API server always uses port 443
-		}, nil
+		logger.Info("Using endpoint value from secret", "endpoint", endpointValue)
+		if u, err := url.Parse(endpointValue); err == nil {
+			host := u.Hostname()
+			portStr := u.Port()
+			if portStr == "" {
+				portStr = "443"
+			}
+			if port, err := strconv.ParseInt(portStr, 10, 32); err == nil {
+				return &clusterv1.APIEndpoint{Host: host, Port: int32(port)}, nil
+			}
+		}
+		// Fallback: treat as host string
+		return &clusterv1.APIEndpoint{Host: endpointValue, Port: 443}, nil
 	}
 
 	logger.Info("cluster_endpoint not found in secret")

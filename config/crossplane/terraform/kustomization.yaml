@@ -1,0 +1,7 @@
+namespace: crossplane-system
+
+resources:
+- flake-config.yaml
+- aws-cli-config.yaml
+- provider.yaml
+- upbound-namespace.yaml

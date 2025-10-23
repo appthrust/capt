@@ -1,0 +1,7 @@
+namespace: crossplane-system
+
+resources:
+- https://github.com/cert-manager/cert-manager/releases/download/v1.16.1/cert-manager.yaml
+- crossplane-helmrelease.yaml
+
+

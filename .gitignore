@@ -41,3 +41,7 @@ capt/
 capi-local-config.yaml
 
 refs
+
+# AI staff
+.specstory
+.cursorindexingignore

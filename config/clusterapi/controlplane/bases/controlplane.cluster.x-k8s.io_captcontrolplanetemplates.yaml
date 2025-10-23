@@ -10,8 +10,8 @@ spec:
   names:
     categories:
     - cluster-api
-    kind: CaptControlPlaneTemplate
-    listKind: CaptControlPlaneTemplateList
+    kind: CAPTControlPlaneTemplate
+    listKind: CAPTControlPlaneTemplateList
     plural: captcontrolplanetemplates
     singular: captcontrolplanetemplate
   scope: Namespaced
@@ -23,7 +23,7 @@ spec:
     name: v1beta1
     schema:
       openAPIV3Schema:
-        description: CaptControlPlaneTemplate is the Schema for the captcontrolplanetemplates
+        description: CAPTControlPlaneTemplate is the Schema for the captcontrolplanetemplates
           API
         properties:
           apiVersion:
@@ -44,8 +44,8 @@ spec:
           metadata:
             type: object
           spec:
-            description: CaptControlPlaneTemplateSpec defines the desired state of
-              CaptControlPlaneTemplate
+            description: CAPTControlPlaneTemplateSpec defines the desired state of
+              CAPTControlPlaneTemplate
             properties:
               template:
                 description: Template is the template for the CaptControlPlane
@@ -74,8 +74,8 @@ spec:
                     type: object
                   spec:
                     description: |-
-                      Spec is the specification of the desired behavior of the CaptControlPlane.
-                      This spec allows for all the same configuration as CaptControlPlane.
+                      Spec is the specification of the desired behavior of the CAPTControlPlane.
+                      This spec allows for all the same configuration as CAPTControlPlane.
                     properties:
                       additionalTags:
                         additionalProperties:

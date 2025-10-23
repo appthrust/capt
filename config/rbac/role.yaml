@@ -172,19 +172,22 @@ rules:
 - apiGroups:
   - infrastructure.cluster.x-k8s.io
   resources:
-  - '*'
   - captclusters
+  - captclusters/finalizers
+  - captclusters/status
+  - captclustertemplates
   - captmachinedeployments
+  - captmachinedeployments/finalizers
+  - captmachinedeployments/status
   - captmachines
+  - captmachines/finalizers
+  - captmachines/status
   - captmachinesets
   - captmachinetemplates
   - pooledremotemachines
   - pooledremotemachines/status
-  - remoteclusters
-  - remoteclusters/status
-  - remotemachines
-  - remotemachines/status
   - workspacetemplateapplies
+  - workspacetemplateapplies/finalizers
   - workspacetemplates
   verbs:
   - create
@@ -194,17 +197,6 @@ rules:
   - patch
   - update
   - watch
-- apiGroups:
-  - infrastructure.cluster.x-k8s.io
-  resources:
-  - captclusters/finalizers
-  - captmachinedeployments/finalizers
-  - captmachines/finalizers
-  - captmachinesets/finalizers
-  - workspacetemplateapplies/finalizers
-  - workspacetemplates/finalizers
-  verbs:
-  - update
 - apiGroups:
   - infrastructure.cluster.x-k8s.io
   resources:

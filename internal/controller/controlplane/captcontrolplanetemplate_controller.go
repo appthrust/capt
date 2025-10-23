@@ -16,7 +16,7 @@ import (
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
 )
 
-// CaptControlPlaneTemplateReconciler reconciles a CaptControlPlaneTemplate object
+// CaptControlPlaneTemplateReconciler reconciles a CAPTControlPlaneTemplate object
 type CaptControlPlaneTemplateReconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
@@ -28,12 +28,12 @@ type CaptControlPlaneTemplateReconciler struct {
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanetemplates/finalizers,verbs=update
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplates,verbs=get;list;watch
 
-// Reconcile handles CaptControlPlaneTemplate reconciliation
+// Reconcile handles CAPTControlPlaneTemplate reconciliation
 func (r *CaptControlPlaneTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 
-	// Fetch the CaptControlPlaneTemplate instance
-	template := &controlplanev1beta1.CaptControlPlaneTemplate{}
+	// Fetch the CAPTControlPlaneTemplate instance
+	template := &controlplanev1beta1.CAPTControlPlaneTemplate{}
 	if err := r.Get(ctx, req.NamespacedName, template); err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
@@ -54,7 +54,7 @@ func (r *CaptControlPlaneTemplateReconciler) Reconcile(ctx context.Context, req 
 }
 
 // validateWorkspaceTemplateRef validates that the referenced WorkspaceTemplate exists
-func (r *CaptControlPlaneTemplateReconciler) validateWorkspaceTemplateRef(ctx context.Context, template *controlplanev1beta1.CaptControlPlaneTemplate) error {
+func (r *CaptControlPlaneTemplateReconciler) validateWorkspaceTemplateRef(ctx context.Context, template *controlplanev1beta1.CAPTControlPlaneTemplate) error {
 	if template.Spec.Template.Spec.WorkspaceTemplateRef.Name == "" {
 		return fmt.Errorf("workspaceTemplateRef.name cannot be empty")
 	}
@@ -81,6 +81,6 @@ func (r *CaptControlPlaneTemplateReconciler) validateWorkspaceTemplateRef(ctx co
 // SetupWithManager sets up the controller with the Manager.
 func (r *CaptControlPlaneTemplateReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&controlplanev1beta1.CaptControlPlaneTemplate{}).
+		For(&controlplanev1beta1.CAPTControlPlaneTemplate{}).
 		Complete(r)
 }

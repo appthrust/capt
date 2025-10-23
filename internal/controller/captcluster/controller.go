@@ -2,7 +2,6 @@ package captcluster
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -17,6 +16,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
@@ -54,21 +54,33 @@ type Reconciler struct {
 func (r *Reconciler) getOwnerCluster(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster) (*clusterv1.Cluster, error) {
 	logger := log.FromContext(ctx)
 
-	// Get Cluster by name
-	cluster := &clusterv1.Cluster{}
-	key := types.NamespacedName{
-		Namespace: captCluster.Namespace,
-		Name:      captCluster.Name,
-	}
-	if err := r.Get(ctx, key, cluster); err != nil {
-		if !apierrors.IsNotFound(err) {
-			logger.Error(err, "Failed to get Cluster")
-			return nil, err
+	// Determine owner Cluster name from label or OwnerReference, fallback to same-name
+	var clusterName string
+	if name, ok := captCluster.Labels[clusterv1.ClusterNameLabel]; ok && name != "" {
+		clusterName = name
+	} else {
+		for _, ref := range captCluster.OwnerReferences {
+			if ref.Kind == "Cluster" && ref.APIVersion == clusterv1.GroupVersion.String() && ref.Name != "" {
+				clusterName = ref.Name
+				break
+			}
 		}
-		return nil, fmt.Errorf("no owner cluster found")
+		if clusterName == "" {
+			clusterName = captCluster.Name
+		}
 	}
 
-	return cluster, nil
+	c := &clusterv1.Cluster{}
+	key := types.NamespacedName{Namespace: captCluster.Namespace, Name: clusterName}
+	if err := r.Get(ctx, key, c); err != nil {
+		if !apierrors.IsNotFound(err) {
+			logger.Error(err, "Failed to get Cluster", "cluster", key.Name)
+			return nil, err
+		}
+		// Return a NotFound error so caller can handle waiting
+		return nil, apierrors.NewNotFound(schema.GroupResource{Group: clusterv1.GroupVersion.Group, Resource: "clusters"}, clusterName)
+	}
+	return c, nil
 }
 
 // ensureClusterLabels ensures that the required Cluster API labels are set
@@ -109,45 +121,41 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (Result, e
 		return Result{}, err
 	}
 
+	// Get owner Cluster
+	cluster, err := r.getOwnerCluster(ctx, captCluster)
+	if err != nil {
+		// If the owner Cluster is not found, it means the CAPTCluster is waiting for its owner to be created.
+		// This is a normal part of the bootstrap process.
+		if apierrors.IsNotFound(err) {
+			return r.handleMissingCluster(ctx, captCluster)
+		}
+		// Another error occurred, requeue.
+		return Result{}, err
+	}
+
 	// Handle deletion
 	if !captCluster.DeletionTimestamp.IsZero() {
 		return r.reconcileDelete(ctx, captCluster)
 	}
 
-	// Add finalizer if it doesn't exist
-	if !controllerutil.ContainsFinalizer(captCluster, CAPTClusterFinalizer) {
-		controllerutil.AddFinalizer(captCluster, CAPTClusterFinalizer)
-		if err := r.Update(ctx, captCluster); err != nil {
-			logger.Error(err, "Failed to add finalizer")
-			return Result{}, err
-		}
-		return Result{Requeue: true}, nil
-	}
-
-	// Get owner Cluster
-	cluster, err := r.getOwnerCluster(ctx, captCluster)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return r.handleMissingCluster(ctx, captCluster)
-		}
-		logger.Error(err, "Failed to get owner Cluster")
-		return Result{}, err
-	}
-
-	// Set owner reference if cluster exists
-	if err := controllerutil.SetControllerReference(cluster, captCluster, r.Scheme); err != nil {
-		logger.Error(err, "Failed to set owner reference")
-		return Result{}, err
-	}
-
-	// Ensure required labels are set
+	// Ensure required labels are set. This is done before the topology check
+	// to ensure that the cluster name label is always present, which is used
+	// by other parts of the system.
 	if err := r.ensureClusterLabels(ctx, captCluster, cluster); err != nil {
 		logger.Error(err, "Failed to ensure cluster labels")
 		return Result{}, err
 	}
 
-	// Clear WaitingForCluster condition if it exists
-	meta.RemoveStatusCondition(&captCluster.Status.Conditions, WaitingForClusterCondition)
+	if cluster.Spec.Topology == nil {
+		// Set owner reference if cluster exists
+		if err := controllerutil.SetControllerReference(cluster, captCluster, r.Scheme); err != nil {
+			logger.Error(err, "Failed to set owner reference")
+			return Result{}, err
+		}
+
+		// Clear WaitingForCluster condition if it exists
+		meta.RemoveStatusCondition(&captCluster.Status.Conditions, WaitingForClusterCondition)
+	}
 
 	// Validate VPC configuration
 	if err := captCluster.Spec.ValidateVPCConfiguration(); err != nil {
@@ -234,19 +242,20 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&infrastructurev1beta1.CAPTCluster{}).
 		Owns(&infrastructurev1beta1.WorkspaceTemplateApply{}).
-		// Watch Cluster deletions and map them to the corresponding CAPTCluster
+		// Watch Cluster and enqueue all CAPTClusters that belong to it (label match)
 		Watches(
 			&clusterv1.Cluster{},
 			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, o client.Object) []reconcile.Request {
 				cluster := o.(*clusterv1.Cluster)
-				return []reconcile.Request{
-					{
-						NamespacedName: types.NamespacedName{
-							Name:      cluster.Name,
-							Namespace: cluster.Namespace,
-						},
-					},
+				list := &infrastructurev1beta1.CAPTClusterList{}
+				if err := r.List(ctx, list, client.InNamespace(cluster.Namespace), client.MatchingLabels{ClusterNameLabel: cluster.Name}); err != nil {
+					return nil
 				}
+				reqs := make([]reconcile.Request, 0, len(list.Items))
+				for _, item := range list.Items {
+					reqs = append(reqs, reconcile.Request{NamespacedName: types.NamespacedName{Name: item.Name, Namespace: item.Namespace}})
+				}
+				return reqs
 			}),
 		).
 		Complete(r)

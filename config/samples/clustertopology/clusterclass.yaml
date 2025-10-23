@@ -13,8 +13,8 @@ spec:
   infrastructure:
     ref:
       apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-      kind: CAPTCluster
-      name: eks-cluster-template
+      kind: CAPTClusterTemplate
+      name: eks-cluster-class-template
       namespace: default
   workers:
     machineDeployments:
@@ -22,14 +22,14 @@ spec:
         template:
           bootstrap:
             ref:
-              apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-              kind: WorkspaceTemplate
-              name: eks-node-template
+              apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+              kind: KubeadmConfigTemplate
+              name: capt-default-worker-bootstrap
               namespace: default
           infrastructure:
             ref:
               apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-              kind: CaptMachineTemplate
+              kind: CAPTMachineTemplate
               name: eks-node-template
               namespace: default
   variables:
@@ -52,3 +52,16 @@ spec:
           type: string
           enum: ["dev", "staging", "prod"]
           default: "dev"
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: CAPTClusterTemplate
+metadata:
+  name: eks-cluster-class-template
+  namespace: default
+spec:
+  template:
+    spec:
+      region: "us-east-1"
+      vpcTemplateRef:
+        name: "vpc-template"
+        namespace: "default"

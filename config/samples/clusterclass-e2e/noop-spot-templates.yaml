@@ -1,0 +1,45 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplate
+metadata:
+  name: spot-role-check
+  namespace: default
+spec:
+  template:
+    metadata:
+      description: "No-Op spot role check"
+      version: "0.0.1"
+      tags:
+        provider: "noop"
+        resource: "spot-role-check"
+    spec:
+      providerConfigRef:
+        name: noop-provider-config
+      forProvider:
+        source: Inline
+        enableTerraformCLILogging: false
+        module: |
+          output "role_exists" { value = true }
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplate
+metadata:
+  name: spot-role-create
+  namespace: default
+spec:
+  template:
+    metadata:
+      description: "No-Op spot role create"
+      version: "0.0.1"
+      tags:
+        provider: "noop"
+        resource: "spot-role-create"
+    spec:
+      providerConfigRef:
+        name: noop-provider-config
+      forProvider:
+        source: Inline
+        enableTerraformCLILogging: false
+        module: |
+          output "role_arn" { value = "arn:aws:iam::123456789012:role/AWSEC2SpotServiceRole" }
+
+

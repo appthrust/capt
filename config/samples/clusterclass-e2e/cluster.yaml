@@ -1,0 +1,25 @@
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: Cluster
+metadata:
+  name: demo-noop
+  namespace: default
+spec:
+  topology:
+    class: cc-noop
+    version: v1.31.0
+    controlPlane:
+    workers:
+      machineDeployments:
+        - class: default-worker
+          name: md-0
+          replicas: 1
+    variables:
+      - name: region
+        value: local
+      - name: controlPlane_endpointAccess_public
+        value: true
+      - name: controlPlane_endpointAccess_private
+        value: false
+      - name: cluster_environment
+        value: dev
+

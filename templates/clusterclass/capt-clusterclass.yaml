@@ -6,7 +6,7 @@ spec:
   controlPlane:
     ref:
       apiVersion: controlplane.cluster.x-k8s.io/v1beta1
-      kind: CaptControlPlaneTemplate
+      kind: CAPTControlPlaneTemplate
       name: capt-default-control-plane
       namespace: default
     machineInfrastructure:
@@ -35,7 +35,7 @@ spec:
           infrastructure:
             ref:
               apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-              kind: CAPTMachineTemplate
+  kind: CAPTMachineTemplate
               name: capt-default-worker-machine
               namespace: default
   variables:
@@ -113,7 +113,7 @@ spec:
         namespace: default
 ---
 apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-kind: CAPTMachineTemplate
+  kind: CAPTMachineTemplate
 metadata:
   name: capt-default-control-plane-machine
   namespace: default

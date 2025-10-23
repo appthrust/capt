@@ -235,6 +235,12 @@ func main() {
 			setupLog.Error(err, "unable to create webhook", "webhook", "CAPTControlPlane")
 			os.Exit(1)
 		}
+
+		// Register CAPTControlPlaneTemplate webhooks
+		if err = (&controlplanev1beta1.CAPTControlPlaneTemplate{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "CAPTControlPlaneTemplate")
+			os.Exit(1)
+		}
 	}
 
 	if err = (&infrastructurev1beta1.CaptMachineTemplate{}).SetupWebhookWithManager(mgr); err != nil {

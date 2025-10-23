@@ -19,6 +19,18 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+// getParentClusterAnnotations returns annotations of the owner Cluster if available
+func (r *Reconciler) getParentClusterAnnotations(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster) (map[string]string, error) {
+	cluster, err := r.getOwnerCluster(ctx, captCluster)
+	if err != nil {
+		return nil, err
+	}
+	if cluster == nil {
+		return map[string]string{}, nil
+	}
+	return cluster.GetAnnotations(), nil
+}
+
 func (r *Reconciler) reconcileVPC(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster, cluster *clusterv1.Cluster) (Result, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Starting VPC reconciliation", "clusterName", captCluster.Name)
@@ -143,8 +155,20 @@ func (r *Reconciler) getOrCreateWorkspaceTemplateApply(ctx context.Context, capt
 			Variables: map[string]string{
 				"cluster_name": captCluster.Name,
 				"vpc_name":     vpcName,
-				"environment":  "production", // TODO: Make this configurable
 			},
+		}
+		// Inject region/environment from Cluster annotations if present
+		if ann, err := r.getParentClusterAnnotations(ctx, captCluster); err == nil {
+			if v := ann["cluster.x-k8s.io/region"]; v != "" {
+				desiredSpec.Variables["region"] = v
+			} else if captCluster.Spec.Region != "" {
+				desiredSpec.Variables["region"] = captCluster.Spec.Region
+			}
+			if v := ann["capt.dev/environment"]; v != "" {
+				desiredSpec.Variables["environment"] = v
+			}
+		} else if captCluster.Spec.Region != "" {
+			desiredSpec.Variables["region"] = captCluster.Spec.Region
 		}
 
 		// Only update when there is an actual spec difference to avoid hot reconcile loops
@@ -177,11 +201,25 @@ func (r *Reconciler) getOrCreateWorkspaceTemplateApply(ctx context.Context, capt
 		},
 		Spec: infrastructurev1beta1.WorkspaceTemplateApplySpec{
 			TemplateRef: *captCluster.Spec.VPCTemplateRef,
-			Variables: map[string]string{
-				"cluster_name": captCluster.Name,
-				"vpc_name":     vpcName,
-				"environment":  "production", // TODO: Make this configurable
-			},
+			Variables: func() map[string]string {
+				vars := map[string]string{
+					"cluster_name": captCluster.Name,
+					"vpc_name":     vpcName,
+				}
+				if ann, err := r.getParentClusterAnnotations(ctx, captCluster); err == nil {
+					if v := ann["cluster.x-k8s.io/region"]; v != "" {
+						vars["region"] = v
+					} else if captCluster.Spec.Region != "" {
+						vars["region"] = captCluster.Spec.Region
+					}
+					if v := ann["capt.dev/environment"]; v != "" {
+						vars["environment"] = v
+					}
+				} else if captCluster.Spec.Region != "" {
+					vars["region"] = captCluster.Spec.Region
+				}
+				return vars
+			}(),
 		},
 	}
 

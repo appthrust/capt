@@ -15,7 +15,7 @@ spec:
           replicas: 1
     variables:
       - name: region
-        value: local
+        value: ap-northeast-1
       - name: controlPlane_endpointAccess_public
         value: true
       - name: controlPlane_endpointAccess_private

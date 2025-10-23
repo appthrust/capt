@@ -198,12 +198,12 @@ func (r *Reconciler) reconcileCASecret(ctx context.Context, controlPlane *contro
 func (r *Reconciler) reconcileKubeconfigSecret(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane, cluster *clusterv1.Cluster) error {
 	logger := log.FromContext(ctx)
 
-	// Get outputs secret first
+	// Get outputs secret first (now stored in controlPlane namespace)
 	outputsSecretName := fmt.Sprintf("%s-outputs-kubeconfig", cluster.Name)
 	outputsSecret := &corev1.Secret{}
 	if err := r.Get(ctx, client.ObjectKey{
 		Name:      outputsSecretName,
-		Namespace: "default", // outputs-kubeconfigはdefaultネームスペースにある
+		Namespace: controlPlane.Namespace,
 	}, outputsSecret); err != nil {
 		if !apierrors.IsNotFound(err) {
 			logger.Error(err, "Failed to get outputs secret")

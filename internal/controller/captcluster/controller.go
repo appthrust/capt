@@ -163,6 +163,21 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (Result, e
 		return r.setFailedStatus(ctx, captCluster, cluster, "InvalidVPCConfig", err.Error())
 	}
 
+	// Ensure annotations on parent Cluster from CAPTCluster spec (region/environment)
+	if cluster != nil {
+		patchBase := cluster.DeepCopy()
+		ann := cluster.GetAnnotations()
+		if ann == nil {
+			ann = map[string]string{}
+		}
+		if captCluster.Spec.Region != "" && ann["cluster.x-k8s.io/region"] != captCluster.Spec.Region {
+			ann["cluster.x-k8s.io/region"] = captCluster.Spec.Region
+		}
+		// environment は ClusterClass 変数から注釈展開される想定。ここでは触らない。
+		cluster.SetAnnotations(ann)
+		_ = r.Patch(ctx, cluster, client.MergeFrom(patchBase))
+	}
+
 	// Handle VPC configuration
 	result, err := r.reconcileVPC(ctx, captCluster, cluster)
 	if err != nil {

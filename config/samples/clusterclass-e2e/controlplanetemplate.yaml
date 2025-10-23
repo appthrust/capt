@@ -19,5 +19,5 @@ spec:
         host: 127.0.0.1
         port: 6443
       additionalTags:
-        Environment: dev
+        Environment: ${cluster_environment}
 

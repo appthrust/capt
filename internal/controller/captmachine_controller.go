@@ -32,6 +32,8 @@ import (
 
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 
 const (
@@ -50,6 +52,9 @@ type CaptMachineReconciler struct {
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=captmachines,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=captmachines/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=captmachines/finalizers,verbs=update
+// Additional permissions for worker reconciliation
+//+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplateapplies;workspacetemplateapplies/status,verbs=get;list;watch
+//+kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters,verbs=get;list;watch
 
 // Reconcile handles CaptMachine reconciliation
 func (r *CaptMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -85,6 +90,24 @@ func (r *CaptMachineReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 // reconcileWorkspaceTemplateApply creates or updates the WorkspaceTemplateApply for the machine
 func (r *CaptMachineReconciler) reconcileWorkspaceTemplateApply(ctx context.Context, machine *infrastructurev1beta1.CaptMachine) error {
+	// Derive parent Cluster and annotations if possible
+	var clusterName string
+	if machine.Labels != nil {
+		if v, ok := machine.Labels[clusterv1.ClusterNameLabel]; ok && v != "" {
+			clusterName = v
+		}
+	}
+	var region, environment string
+	if clusterName != "" {
+		parent := &clusterv1.Cluster{}
+		if err := r.Get(ctx, types.NamespacedName{Name: clusterName, Namespace: machine.Namespace}, parent); err == nil {
+			if a := parent.GetAnnotations(); a != nil {
+				region = a["cluster.x-k8s.io/region"]
+				environment = a["capt.dev/environment"]
+			}
+		}
+	}
+
 	apply := &infrastructurev1beta1.WorkspaceTemplateApply{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("%s-machine", machine.Name),
@@ -99,11 +122,31 @@ func (r *CaptMachineReconciler) reconcileWorkspaceTemplateApply(ctx context.Cont
 			"node_group":    machine.Spec.NodeGroupRef.Name,
 		}
 
+		// Optional variables from parent cluster
+		if clusterName != "" {
+			apply.Spec.Variables["cluster_name"] = clusterName
+		}
+		if region != "" {
+			apply.Spec.Variables["region"] = region
+		}
+		if environment != "" {
+			apply.Spec.Variables["environment"] = environment
+		}
+
 		if machine.Spec.Labels != nil {
 			apply.Spec.Variables["labels"] = fmt.Sprintf("%v", machine.Spec.Labels)
 		}
 		if machine.Spec.Tags != nil {
 			apply.Spec.Variables["tags"] = fmt.Sprintf("%v", machine.Spec.Tags)
+		}
+
+		// Wait for VPC workspace if it exists
+		if clusterName != "" {
+			vpcApplyName := fmt.Sprintf("%s-vpc", clusterName)
+			wta := &infrastructurev1beta1.WorkspaceTemplateApply{}
+			if err := r.Get(ctx, types.NamespacedName{Name: vpcApplyName, Namespace: machine.Namespace}, wta); err == nil {
+				apply.Spec.WaitForWorkspaces = []infrastructurev1beta1.WorkspaceReference{{Name: vpcApplyName, Namespace: machine.Namespace}}
+			}
 		}
 
 		return controllerutil.SetControllerReference(machine, apply, r.Scheme)

@@ -25,6 +25,10 @@ import (
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanes,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanes/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanes/finalizers,verbs=update
+// Additional permissions required by the control plane reconciler
+//+kubebuilder:rbac:groups=tf.upbound.io,resources=workspaces;workspaces/status,verbs=get;list;watch
+//+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplates;workspacetemplateapplies;workspacetemplateapplies/status,verbs=get;list;watch;create;update;patch
+//+kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters;clusters/status,verbs=get;list;watch;update;patch
 
 const (
 	// CAPTControlPlaneFinalizer is the finalizer added to CAPTControlPlane instances
@@ -112,7 +116,7 @@ func (r *Reconciler) createKubeconfigWorkspaceTemplateApply(ctx context.Context,
 		Spec: infrastructurev1beta1.WorkspaceTemplateApplySpec{
 			TemplateRef: infrastructurev1beta1.WorkspaceTemplateReference{
 				Name:      "eks-kubeconfig-template",
-				Namespace: "default", // WorkspaceTemplateは常にdefaultネームスペースにある
+				Namespace: controlPlane.Spec.WorkspaceTemplateRef.Namespace,
 			},
 			Variables: map[string]string{
 				"cluster_name":                       cluster.Name,
@@ -122,7 +126,7 @@ func (r *Reconciler) createKubeconfigWorkspaceTemplateApply(ctx context.Context,
 			},
 			WriteConnectionSecretToRef: &xpv1.SecretReference{
 				Name:      fmt.Sprintf("%s-outputs-kubeconfig", cluster.Name),
-				Namespace: "default", // outputs-kubeconfigはdefaultネームスペースに作成
+				Namespace: controlPlane.Namespace,
 			},
 			WaitForWorkspaces: []infrastructurev1beta1.WorkspaceReference{
 				{
@@ -270,6 +274,30 @@ func (r *Reconciler) cleanupResources(ctx context.Context, controlPlane *control
 		return fmt.Errorf("failed to get kubeconfig WorkspaceTemplateApply: %v", err)
 	}
 
+	// Delete generated kubeconfig outputs secret if it exists
+	if cluster != nil {
+		outputsSecret := &corev1.Secret{}
+		outputsName := fmt.Sprintf("%s-outputs-kubeconfig", cluster.Name)
+		if err := r.Get(ctx, client.ObjectKey{Name: outputsName, Namespace: controlPlane.Namespace}, outputsSecret); err == nil {
+			if delErr := r.Delete(ctx, outputsSecret); delErr != nil && !apierrors.IsNotFound(delErr) {
+				logger.Error(delErr, "Failed to delete outputs kubeconfig secret", "name", outputsName)
+				return fmt.Errorf("failed to delete outputs secret: %v", delErr)
+			}
+			logger.Info("Successfully deleted outputs kubeconfig secret", "name", outputsName)
+		}
+	}
+
+	// Delete CA secret if it exists
+	caSecret := &corev1.Secret{}
+	caName := fmt.Sprintf("%s-ca", controlPlane.Name)
+	if err := r.Get(ctx, client.ObjectKey{Name: caName, Namespace: controlPlane.Namespace}, caSecret); err == nil {
+		if delErr := r.Delete(ctx, caSecret); delErr != nil && !apierrors.IsNotFound(delErr) {
+			logger.Error(delErr, "Failed to delete CA secret", "name", caName)
+			return fmt.Errorf("failed to delete CA secret: %v", delErr)
+		}
+		logger.Info("Successfully deleted CA secret", "name", caName)
+	}
+
 	return nil
 }
 
@@ -310,6 +338,38 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 			}
 		} else {
 			cluster = c
+		}
+	}
+
+	// Ensure region/environment annotations on parent Cluster from ControlPlane spec/AdditionalTags
+	if cluster != nil {
+		var region string
+		if controlPlane.Spec.ControlPlaneConfig != nil {
+			region = controlPlane.Spec.ControlPlaneConfig.Region
+		}
+		var environment string
+		if len(controlPlane.Spec.AdditionalTags) > 0 {
+			if v, ok := controlPlane.Spec.AdditionalTags["Environment"]; ok {
+				environment = v
+			}
+		}
+
+		if region != "" || environment != "" {
+			patchBase := cluster.DeepCopy()
+			ann := cluster.GetAnnotations()
+			if ann == nil {
+				ann = map[string]string{}
+			}
+			if region != "" && ann["cluster.x-k8s.io/region"] != region {
+				ann["cluster.x-k8s.io/region"] = region
+			}
+			if environment != "" && ann["capt.dev/environment"] != environment {
+				ann["capt.dev/environment"] = environment
+			}
+			cluster.SetAnnotations(ann)
+			if err := r.Patch(ctx, cluster, client.MergeFrom(patchBase)); err != nil {
+				logger.Error(err, "Failed to patch cluster annotations")
+			}
 		}
 	}
 

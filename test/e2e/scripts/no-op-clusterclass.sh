@@ -31,6 +31,36 @@ wait_ready_cond() {
 # 0) sanity
 log "namespace: ${NAMESPACE}"
 
+# 0.1) cleanup leftovers for re-run
+log "cleanup leftovers (if any)"
+# Delete Cluster (topology)
+kubectl delete cluster ${CLUSTER_NAME} -n ${NAMESPACE} --ignore-not-found=true --wait=false || true
+# Wait for Cluster to be fully deleted to avoid recreate during Deleting phase
+for i in $(seq 1 60); do
+  if ! kubectl get cluster ${CLUSTER_NAME} -n ${NAMESPACE} >/dev/null 2>&1; then
+    break
+  fi
+  sleep 2
+done
+# If still stuck in Deleting, force-remove finalizers
+for i in $(seq 1 30); do
+  ts=$(kubectl get cluster ${CLUSTER_NAME} -n ${NAMESPACE} -o jsonpath='{.metadata.deletionTimestamp}' 2>/dev/null || true)
+  if [[ -z "${ts}" ]]; then
+    break
+  fi
+  log "cluster ${CLUSTER_NAME} stuck deleting; removing finalizers (attempt ${i})"
+  kubectl patch cluster ${CLUSTER_NAME} -n ${NAMESPACE} --type=merge -p '{"metadata":{"finalizers":[]}}' >/dev/null 2>&1 || true
+  sleep 2
+done
+# Delete derived CAPT resources by label
+kubectl delete captclusters.infrastructure.cluster.x-k8s.io -n ${NAMESPACE} -l cluster.x-k8s.io/cluster-name=${CLUSTER_NAME} --ignore-not-found=true --wait=false || true
+kubectl delete captcontrolplanes.controlplane.cluster.x-k8s.io -n ${NAMESPACE} -l cluster.x-k8s.io/cluster-name=${CLUSTER_NAME} --ignore-not-found=true --wait=false || true
+# Delete WorkspaceTemplateApply objects that include cluster name in their names
+kubectl get workspacetemplateapplies.infrastructure.cluster.x-k8s.io -n ${NAMESPACE} -o name 2>/dev/null | grep "${CLUSTER_NAME}" | xargs -r kubectl delete -n ${NAMESPACE} --wait=false || true
+# Delete kubeconfig secret
+kubectl delete secret ${CLUSTER_NAME}-kubeconfig -n ${NAMESPACE} --ignore-not-found=true || true
+sleep 2
+
 # 1) apply no-op provider and templates
 kubectl_apply config/samples/clusterclass-e2e/noop-provider-config.yaml
 kubectl_apply config/samples/clusterclass-e2e/noop-workspacetemplate.yaml
@@ -47,7 +77,7 @@ kubectl_apply config/samples/clusterclass-e2e/kubeadmconfigtemplate.yaml
 kubectl_apply config/samples/clusterclass-e2e/captmachinetemplate.yaml
 kubectl_apply config/samples/clusterclass-e2e/clusterclass.yaml
 
-# 3) create cluster (topology)
+# 3) create cluster (proceed immediately; CAPI will reconcile CC asynchronously)
 kubectl_apply config/samples/clusterclass-e2e/cluster.yaml
 
 sleep 2

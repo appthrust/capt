@@ -253,17 +253,13 @@ setup-webhook-certs: ## Generate self-signed webhook certs for local 'make run'.
 
 ##@ Kind
 .PHONY: kind-capt
-kind-capt: clusterapi-manifests clusterctl-setup docker-build ## Setup complete kind environment with CAPI and CAPT
+kind-capt: clusterapi-manifests clusterctl-setup docker-build clusterctl ## Setup complete kind environment with CAPI and CAPT
 	@echo "Setting up kind cluster with CAPI and CAPT..."
 	kind create cluster --name capt
 	@echo "✓ Kind cluster created"
 	@echo "Deploying CAPT..."
 	$(CONTAINER_TOOL) save ${IMG} | kind load image-archive /dev/stdin --name capt
-	export EXP_MACHINE_POOL=true && \
-	export CLUSTER_TOPOLOGY="true" && \
-	export EXP_RUNTIME_SDK="true" && \
-	export EXP_MACHINE_SET_PREFLIGHT_CHECKS="true" && \
-	clusterctl init --core cluster-api --infrastructure capt --control-plane capt --config capi-local-config.yaml
+	$(MAKE) setup-capi
 	@echo "✓ CAPT deployed"
 	@echo "Setup complete!"
 

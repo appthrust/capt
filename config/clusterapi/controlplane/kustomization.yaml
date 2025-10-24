@@ -13,28 +13,4 @@ resources:
 
 commonLabels:
   cluster.x-k8s.io/provider: control-plane-capt
-
-patches:
-  # Ensure CAPI contract label is present on provider CRDs so ClusterClass contract resolution works after cluster re-creation
-  - target:
-      version: v1
-      kind: CustomResourceDefinition
-      name: captcontrolplanetemplates.controlplane.cluster.x-k8s.io
-    patch: |-
-      apiVersion: apiextensions.k8s.io/v1
-      kind: CustomResourceDefinition
-      metadata:
-        name: captcontrolplanetemplates.controlplane.cluster.x-k8s.io
-        labels:
-          cluster.x-k8s.io/v1beta1: v1beta1
-  - target:
-      version: v1
-      kind: CustomResourceDefinition
-      name: captcontrolplanes.controlplane.cluster.x-k8s.io
-    patch: |-
-      apiVersion: apiextensions.k8s.io/v1
-      kind: CustomResourceDefinition
-      metadata:
-        name: captcontrolplanes.controlplane.cluster.x-k8s.io
-        labels:
-          cluster.x-k8s.io/v1beta1: v1beta1
+  cluster.x-k8s.io/v1beta1: v1beta1

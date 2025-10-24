@@ -1,5 +1,9 @@
 # Image URL to use all building/pushing image targets
 VERSION ?= 0.1.0
+# If VERSION file exists, override VERSION with its value (format: "VERSION = X.Y.Z")
+ifneq ($(wildcard VERSION),)
+VERSION := $(shell sed -n 's/^VERSION *= *//p' VERSION)
+endif
 IMG ?= ghcr.io/appthrust/capt:v$(VERSION)
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.31.0
@@ -65,7 +69,7 @@ clusterapi-manifests: controller-gen ## Generate WebhookConfiguration, ClusterRo
 	$(CONTROLLER_GEN) crd:generateEmbeddedObjectMeta=true webhook paths="./api/v1beta1/..." output:crd:artifacts:config=config/clusterapi/infrastructure/bases
 
 .PHONY: clusterctl-setup
-clusterctl-setup: clusterapi-manifests $(KUSTOMIZE_PREREQ) ## Build components and create local config for clusterctl testing.
+clusterctl-setup: clusterapi-manifests kustomize $(KUSTOMIZE_PREREQ) ## Build components and create local config for clusterctl testing.
 	# Build kustomize manifests with proper image reference
 	mkdir -p capt/infrastructure-capt/v0.0.0
 	mkdir -p capt/control-plane-capt/v0.0.0

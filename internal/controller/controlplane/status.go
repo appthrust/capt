@@ -3,12 +3,14 @@ package controlplane
 import (
 	"context"
 	"fmt"
+	"reflect"
 
 	controlplanev1beta1 "github.com/appthrust/capt/api/controlplane/v1beta1"
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
 	"github.com/appthrust/capt/internal/controller/controlplane/endpoint"
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
@@ -106,24 +108,51 @@ func (r *Reconciler) updateStatus(
 			errMsg := fmt.Sprintf("Failed to get endpoint from workspace: %v", err)
 			return r.setFailedStatus(ctx, controlPlane, cluster, ReasonEndpointUpdateFailed, errMsg)
 		} else if apiEndpoint != nil {
-			logger.Info("Updating control plane endpoint", "endpoint", apiEndpoint)
-
-			// Update CAPTControlPlane endpoint
-			controlPlane.Spec.ControlPlaneEndpoint = *apiEndpoint
-			if err := r.Update(ctx, controlPlane); err != nil {
-				errMsg := fmt.Sprintf("Failed to update control plane endpoint: %v", err)
-				return r.setFailedStatus(ctx, controlPlane, cluster, ReasonEndpointUpdateFailed, errMsg)
+			// Update endpoints only if changed
+			needsCPUpdate := controlPlane.Spec.ControlPlaneEndpoint.Host != apiEndpoint.Host || controlPlane.Spec.ControlPlaneEndpoint.Port != apiEndpoint.Port
+			logger.Info("Endpoint diff check",
+				"needsUpdate", needsCPUpdate,
+				"currentCPHost", controlPlane.Spec.ControlPlaneEndpoint.Host,
+				"currentCPPort", controlPlane.Spec.ControlPlaneEndpoint.Port,
+				"newHost", apiEndpoint.Host,
+				"newPort", apiEndpoint.Port)
+			if needsCPUpdate {
+				logger.Info("Updating control plane endpoint", "endpoint", apiEndpoint)
+				// Update CAPTControlPlane endpoint (use Patch to avoid conflicts)
+				cpBase := controlPlane.DeepCopy()
+				controlPlane.Spec.ControlPlaneEndpoint = *apiEndpoint
+				if err := r.Patch(ctx, controlPlane, client.MergeFrom(cpBase)); err != nil {
+					if apierrors.IsConflict(err) {
+						// Requeue without marking failure on optimistic lock conflicts
+						return ctrl.Result{Requeue: true}, nil
+					}
+					errMsg := fmt.Sprintf("Failed to update control plane endpoint: %v", err)
+					return r.setFailedStatus(ctx, controlPlane, cluster, ReasonEndpointUpdateFailed, errMsg)
+				}
+			} else {
+				logger.Info("Control plane endpoint unchanged, skipping update")
 			}
 
 			// Update parent Cluster endpoint
 			if cluster != nil {
-				patchBase := cluster.DeepCopy()
-				cluster.Spec.ControlPlaneEndpoint = *apiEndpoint
-				if err := r.Patch(ctx, cluster, client.MergeFrom(patchBase)); err != nil {
-					errMsg := fmt.Sprintf("Failed to update cluster endpoint: %v", err)
-					return r.setFailedStatus(ctx, controlPlane, cluster, ReasonEndpointUpdateFailed, errMsg)
+				needsClusterUpdate := cluster.Spec.ControlPlaneEndpoint.Host != apiEndpoint.Host || cluster.Spec.ControlPlaneEndpoint.Port != apiEndpoint.Port
+				logger.Info("Parent cluster endpoint diff check",
+					"needsUpdate", needsClusterUpdate,
+					"currentHost", cluster.Spec.ControlPlaneEndpoint.Host,
+					"currentPort", cluster.Spec.ControlPlaneEndpoint.Port,
+					"newHost", apiEndpoint.Host,
+					"newPort", apiEndpoint.Port)
+				if needsClusterUpdate {
+					patchBase := cluster.DeepCopy()
+					cluster.Spec.ControlPlaneEndpoint = *apiEndpoint
+					if err := r.Patch(ctx, cluster, client.MergeFrom(patchBase)); err != nil {
+						errMsg := fmt.Sprintf("Failed to update cluster endpoint: %v", err)
+						return r.setFailedStatus(ctx, controlPlane, cluster, ReasonEndpointUpdateFailed, errMsg)
+					}
+					logger.Info("Updated parent cluster endpoint", "endpoint", apiEndpoint)
+				} else {
+					logger.Info("Parent cluster endpoint unchanged, skipping update")
 				}
-				logger.Info("Updated parent cluster endpoint", "endpoint", apiEndpoint)
 			}
 
 			// Re-initialize status fields after endpoint update
@@ -133,11 +162,10 @@ func (r *Reconciler) updateStatus(
 
 	// Only proceed with ready status if endpoint update was successful
 	meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
-		Type:               controlplanev1beta1.ControlPlaneReadyCondition,
-		Status:             metav1.ConditionTrue,
-		LastTransitionTime: metav1.Now(),
-		Reason:             controlplanev1beta1.ReasonReady,
-		Message:            "Control plane is ready",
+		Type:    controlplanev1beta1.ControlPlaneReadyCondition,
+		Status:  metav1.ConditionTrue,
+		Reason:  controlplanev1beta1.ReasonReady,
+		Message: "Control plane is ready",
 	})
 
 	controlPlane.Status.Phase = controlplanev1beta1.ControlPlaneReadyCondition
@@ -157,9 +185,15 @@ func (r *Reconciler) updateStatus(
 		"workspaceStatus", controlPlane.Status.WorkspaceStatus,
 		"workspaceTemplateStatus", controlPlane.Status.WorkspaceTemplateStatus)
 
-	// Update status
-	if err := r.Status().Patch(ctx, controlPlane, client.MergeFrom(patchBase)); err != nil {
-		return ctrl.Result{}, err
+	// Update status only if it actually changed
+	statusChanged := !reflect.DeepEqual(patchBase.Status, controlPlane.Status)
+	logger.Info("ControlPlane status diff check", "changed", statusChanged)
+	if statusChanged {
+		if err := r.Status().Patch(ctx, controlPlane, client.MergeFrom(patchBase)); err != nil {
+			return ctrl.Result{}, err
+		}
+	} else {
+		logger.Info("ControlPlane status unchanged, skipping status patch")
 	}
 
 	// Update Cluster status if it exists

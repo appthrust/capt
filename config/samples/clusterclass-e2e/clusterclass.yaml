@@ -1,0 +1,111 @@
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: ClusterClass
+metadata:
+  name: cc-noop
+  namespace: default
+spec:
+  controlPlane:
+    ref:
+      apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+      kind: CAPTControlPlaneTemplate
+      name: cp-noop-template
+      namespace: default
+  infrastructure:
+    ref:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+      kind: CAPTClusterTemplate
+      name: cluster-noop-template
+      namespace: default
+  workers:
+    machineDeployments:
+      - class: default-worker
+        template:
+          bootstrap:
+            ref:
+              apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+              kind: KubeadmConfigTemplate
+              name: worker-bootstrap-noop
+              namespace: default
+          infrastructure:
+            ref:
+              apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+              kind: CaptMachineTemplate
+              name: worker-machine-noop
+              namespace: default
+  variables:
+    - name: region
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: "local"
+    - name: controlPlane_endpointAccess_public
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: boolean
+          default: true
+    - name: controlPlane_endpointAccess_private
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: boolean
+          default: false
+    - name: cluster_environment
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: string
+          default: "dev"
+  patches:
+    - name: set-region-in-templates
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+            kind: CAPTClusterTemplate
+            matchResources:
+              infrastructureCluster: true
+          jsonPatches:
+            - op: replace
+              path: "/spec/template/spec/region"
+              valueFrom:
+                variable: "region"
+        - selector:
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+            kind: CAPTControlPlaneTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: replace
+              path: "/spec/template/spec/controlPlaneConfig/region"
+              valueFrom:
+                variable: "region"
+    - name: set-environment-tag
+      definitions:
+        - selector:
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+            kind: CAPTControlPlaneTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: add
+              path: "/spec/template/spec/additionalTags/Environment"
+              valueFrom:
+                variable: "cluster_environment"
+    - name: set-endpoint-access
+      definitions:
+        - selector:
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+            kind: CAPTControlPlaneTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: replace
+              path: "/spec/template/spec/controlPlaneConfig/endpointAccess/public"
+              valueFrom:
+                variable: "controlPlane_endpointAccess_public"
+            - op: replace
+              path: "/spec/template/spec/controlPlaneConfig/endpointAccess/private"
+              valueFrom:
+                variable: "controlPlane_endpointAccess_private"
+

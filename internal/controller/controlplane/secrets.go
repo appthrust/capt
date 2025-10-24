@@ -3,6 +3,7 @@ package controlplane
 import (
 	"context"
 	"fmt"
+	"reflect"
 
 	controlplanev1beta1 "github.com/appthrust/capt/api/controlplane/v1beta1"
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
@@ -197,12 +198,12 @@ func (r *Reconciler) reconcileCASecret(ctx context.Context, controlPlane *contro
 func (r *Reconciler) reconcileKubeconfigSecret(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane, cluster *clusterv1.Cluster) error {
 	logger := log.FromContext(ctx)
 
-	// Get outputs secret first
+	// Get outputs secret first (now stored in controlPlane namespace)
 	outputsSecretName := fmt.Sprintf("%s-outputs-kubeconfig", cluster.Name)
 	outputsSecret := &corev1.Secret{}
 	if err := r.Get(ctx, client.ObjectKey{
 		Name:      outputsSecretName,
-		Namespace: "default", // outputs-kubeconfigはdefaultネームスペースにある
+		Namespace: controlPlane.Namespace,
 	}, outputsSecret); err != nil {
 		if !apierrors.IsNotFound(err) {
 			logger.Error(err, "Failed to get outputs secret")
@@ -253,14 +254,20 @@ func (r *Reconciler) reconcileKubeconfigSecret(ctx context.Context, controlPlane
 		}
 		logger.Info("Created kubeconfig secret")
 	} else {
-		// Update existing secret
-		existingKubeconfigSecret.Data = kubeconfigSecret.Data
-		existingKubeconfigSecret.Labels = kubeconfigSecret.Labels
-		if err := r.Update(ctx, existingKubeconfigSecret); err != nil {
-			logger.Error(err, "Failed to update kubeconfig secret")
-			return err
+		// Update existing secret only if data or labels changed
+		needsUpdate := !reflect.DeepEqual(existingKubeconfigSecret.Data, kubeconfigSecret.Data) ||
+			!reflect.DeepEqual(existingKubeconfigSecret.Labels, kubeconfigSecret.Labels)
+		if needsUpdate {
+			existingKubeconfigSecret.Data = kubeconfigSecret.Data
+			existingKubeconfigSecret.Labels = kubeconfigSecret.Labels
+			if err := r.Update(ctx, existingKubeconfigSecret); err != nil {
+				logger.Error(err, "Failed to update kubeconfig secret")
+				return err
+			}
+			logger.Info("Updated kubeconfig secret")
+		} else {
+			logger.Info("Kubeconfig secret unchanged, skipping update")
 		}
-		logger.Info("Updated kubeconfig secret")
 	}
 
 	return nil

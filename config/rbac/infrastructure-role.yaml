@@ -20,6 +20,14 @@ rules:
   - list
   - watch
 - apiGroups:
+  - cluster.x-k8s.io
+  resources:
+  - clusters
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - infrastructure.cluster.x-k8s.io
   resources:
   - captmachinedeployments
@@ -53,12 +61,21 @@ rules:
   - captmachines/status
   - captmachinesets/status
   - captmachinetemplates/status
-  - workspacetemplateapplies/status
   - workspacetemplates/status
   verbs:
   - get
   - patch
   - update
+- apiGroups:
+  - infrastructure.cluster.x-k8s.io
+  resources:
+  - workspacetemplateapplies/status
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
 - apiGroups:
   - tf.upbound.io
   resources:

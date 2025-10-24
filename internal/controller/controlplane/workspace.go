@@ -73,7 +73,7 @@ func (r *Reconciler) getOrCreateWorkspaceTemplateApply(
 		return workspaceApply, nil
 	}
 
-	if err != nil && !apierrors.IsNotFound(err) {
+	if !apierrors.IsNotFound(err) {
 		return nil, err
 	}
 
@@ -133,8 +133,12 @@ func (r *Reconciler) generateWorkspaceTemplateApplySpec(controlPlane *controlpla
 		}
 	}
 
-	// Add VPC workspace dependency
-	vpcWorkspaceApplyName := fmt.Sprintf("%s-vpc", controlPlane.Name)
+	// Add VPC workspace dependency: use owner cluster name if available
+	vpcOwnerName := controlPlane.Name
+	if name, ok := controlPlane.Labels[clusterv1.ClusterNameLabel]; ok && name != "" {
+		vpcOwnerName = name
+	}
+	vpcWorkspaceApplyName := fmt.Sprintf("%s-vpc", vpcOwnerName)
 	vpcWorkspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
 	err := r.Get(context.Background(), types.NamespacedName{
 		Name:      vpcWorkspaceApplyName,

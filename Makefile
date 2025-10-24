@@ -1,5 +1,9 @@
 # Image URL to use all building/pushing image targets
 VERSION ?= 0.1.0
+# If VERSION file exists, override VERSION with its value (format: "VERSION = X.Y.Z")
+ifneq ($(wildcard VERSION),)
+VERSION := $(shell sed -n 's/^VERSION *= *//p' VERSION)
+endif
 IMG ?= ghcr.io/appthrust/capt:v$(VERSION)
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.31.0
@@ -65,7 +69,7 @@ clusterapi-manifests: controller-gen ## Generate WebhookConfiguration, ClusterRo
 	$(CONTROLLER_GEN) crd:generateEmbeddedObjectMeta=true webhook paths="./api/v1beta1/..." output:crd:artifacts:config=config/clusterapi/infrastructure/bases
 
 .PHONY: clusterctl-setup
-clusterctl-setup: clusterapi-manifests kustomize ## Build components and create local config for clusterctl testing.
+clusterctl-setup: clusterapi-manifests kustomize $(KUSTOMIZE_PREREQ) ## Build components and create local config for clusterctl testing.
 	# Build kustomize manifests with proper image reference
 	mkdir -p capt/infrastructure-capt/v0.0.0
 	mkdir -p capt/control-plane-capt/v0.0.0
@@ -162,35 +166,106 @@ ifndef ignore-not-found
 endif
 
 .PHONY: install
-install: clusterapi-manifests kustomize ## Install CRDs into the K8s cluster specified in ~/.kube/config.
-	$(KUSTOMIZE) build config/clusterapi | $(KUBECTL) apply -f -
+install: clusterapi-manifests $(KUSTOMIZE_PREREQ) ## Install CRDs into the K8s cluster specified in ~/.kube/config.
+	$(KUSTOMIZE_BUILD) config/clusterapi | $(KUBECTL) apply -f -
 
 .PHONY: uninstall
-uninstall: clusterapi-manifests kustomize ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	$(KUSTOMIZE) build config/clusterapi | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
+uninstall: clusterapi-manifests $(KUSTOMIZE_PREREQ) ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+	$(KUSTOMIZE_BUILD) config/clusterapi | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
 
 .PHONY: deploy
-deploy: clusterapi-manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
+deploy: clusterapi-manifests $(KUSTOMIZE_PREREQ) ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
+	$(KUSTOMIZE_BUILD) config/default | $(KUBECTL) apply -f -
 
 .PHONY: undeploy
-undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
+undeploy: $(KUSTOMIZE_PREREQ) ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+	$(KUSTOMIZE_BUILD) config/default | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
+
+##@ Setup
+
+.PHONY: setup
+setup: setup-capi-crds setup-cert-manager setup-capi setup-crossplane setup-provider-terraform setup-webhook-certs ## Prepare local dev cluster with CAPI (clusterctl init --bootstrap kubeadm), cert-manager, Crossplane, provider-terraform, webhook certs.
+
+.PHONY: setup-capi-crds
+setup-capi-crds: ## Install only Cluster API Core CRDs (avoid conflicting tf.upbound.io CRDs).
+	# Ensure no conflicting tf.upbound.io CRDs from third_party are present
+	$(KUBECTL) delete crd workspaces.tf.upbound.io --ignore-not-found
+	# Apply only the CAPI Cluster CRD
+	$(KUBECTL) apply -f third_party/cluster-api/config/crd/bases/cluster.x-k8s.io_clusters.yaml
+
+.PHONY: setup-capi
+CAPT_NAMESPACE ?= capt-system
+
+setup-capi: clusterctl-setup clusterctl ## Install CAPI via clusterctl with kubeadm bootstrap and CAPT providers.
+	@echo "Initializing Cluster API with kubeadm bootstrap and CAPT providers..."
+	# Cleanup stale clusterctl inventory to avoid decode errors
+	-$(KUBECTL) -n $(CAPT_NAMESPACE) delete configmap clusterctl --ignore-not-found
+	-$(KUBECTL) -n capi-system delete configmap clusterctl --ignore-not-found
+	export CLUSTER_TOPOLOGY=true && \
+	$(CLUSTERCTL_BIN) init --core cluster-api --bootstrap kubeadm --target-namespace $(CAPT_NAMESPACE) --config capi-local-config.yaml
+	@echo "✓ clusterctl init completed"
+	# Apply infrastructure & control-plane components (installed outside clusterctl to avoid provider inventory issues)
+	$(KUBECTL) apply -f capt/infrastructure-capt/v0.0.0/infrastructure-components.yaml
+	$(KUBECTL) apply -f capt/control-plane-capt/v0.0.0/control-plane-components.yaml
+	# Wait CRDs for ClusterClass topology & kubeadm bootstrap
+	$(KUBECTL) wait --for=condition=Established crd/clusterclasses.cluster.x-k8s.io --timeout=120s || true
+	$(KUBECTL) wait --for=condition=Established crd/kubeadmconfigtemplates.bootstrap.cluster.x-k8s.io --timeout=120s || true
+
+.PHONY: setup-cert-manager
+setup-cert-manager: ## Install cert-manager (required by Crossplane webhooks) and wait for CRDs.
+	$(KUBECTL) apply -f https://github.com/cert-manager/cert-manager/releases/download/$(CERT_MANAGER_VERSION)/cert-manager.yaml
+	$(KUBECTL) wait --for=condition=Established crd/certificates.cert-manager.io --timeout=300s || true
+
+.PHONY: setup-crossplane
+setup-crossplane: helm3 ## Install Crossplane via Helm and wait for CRDs (auto-installs helm locally if missing).
+	@HELM_CMD=helm; \
+	if ! command -v helm >/dev/null 2>&1; then HELM_CMD=$(HELM_BIN); fi; \
+	$$HELM_CMD repo add crossplane-stable https://charts.crossplane.io/stable >/dev/null 2>&1 || true; \
+	$$HELM_CMD repo update >/dev/null; \
+	$$HELM_CMD upgrade --install crossplane crossplane-stable/crossplane --namespace crossplane-system --create-namespace --version $(CROSSPLANE_VERSION); \
+	echo "Waiting for Crossplane CRDs to be created..."; \
+	i=0; until $(KUBECTL) get crd/providers.pkg.crossplane.io >/dev/null 2>&1; do i=$$((i+1)); if [ $$i -gt 120 ]; then echo "timeout waiting for providers.pkg.crossplane.io"; exit 1; fi; sleep 2; done; \
+	$(KUBECTL) wait --for=condition=Established crd/providers.pkg.crossplane.io --timeout=300s; \
+	i=0; until $(KUBECTL) get crd/deploymentruntimeconfigs.pkg.crossplane.io >/dev/null 2>&1; do i=$$((i+1)); if [ $$i -gt 120 ]; then echo "warn: deploymentruntimeconfigs.pkg.crossplane.io not found (older versions)"; break; fi; sleep 2; done; \
+	if $(KUBECTL) get crd/deploymentruntimeconfigs.pkg.crossplane.io >/dev/null 2>&1; then $(KUBECTL) wait --for=condition=Established crd/deploymentruntimeconfigs.pkg.crossplane.io --timeout=300s; fi; \
+	$(KUBECTL) -n crossplane-system rollout status deploy/crossplane --timeout=300s || true; \
+	$(KUBECTL) -n crossplane-system rollout status deploy/crossplane-rbac-manager --timeout=300s || true
+
+.PHONY: setup-provider-terraform
+setup-provider-terraform: ## Install Upbound provider-terraform and wait for tf.upbound.io CRDs (via kustomize in config/crossplane/terraform).
+	$(KUSTOMIZE_BUILD) config/crossplane/terraform | $(KUBECTL) apply -f -
+	# Poll until ProviderConfig CRD appears, then wait for Established
+	echo "Waiting for tf.upbound.io ProviderConfig CRD..."; \
+	i=0; until $(KUBECTL) get crd/providerconfigs.tf.upbound.io >/dev/null 2>&1; do i=$$((i+1)); if [ $$i -gt 180 ]; then echo "timeout waiting for providerconfigs.tf.upbound.io"; exit 1; fi; sleep 2; done; \
+	$(KUBECTL) wait --for=condition=Established crd/providerconfigs.tf.upbound.io --timeout=600s || true
+	# Ensure Workspaces CRD is Established (may already exist)
+	if $(KUBECTL) get crd/workspaces.tf.upbound.io >/dev/null 2>&1; then $(KUBECTL) wait --for=condition=Established crd/workspaces.tf.upbound.io --timeout=600s || true; fi
+
+.PHONY: setup-webhook-certs
+setup-webhook-certs: ## Generate self-signed webhook certs for local 'make run'.
+	mkdir -p /tmp/k8s-webhook-server/serving-certs
+	if [ ! -f /tmp/k8s-webhook-server/serving-certs/tls.crt ] || [ ! -f /tmp/k8s-webhook-server/serving-certs/tls.key ]; then \
+		if ! command -v openssl >/dev/null 2>&1; then \
+			echo "openssl is required to generate self-signed certs"; exit 1; \
+		fi; \
+		openssl req -x509 -nodes -newkey rsa:2048 \
+			-keyout /tmp/k8s-webhook-server/serving-certs/tls.key \
+			-out /tmp/k8s-webhook-server/serving-certs/tls.crt \
+			-subj "/CN=localhost" -days 365; \
+	else \
+		echo "Webhook certs already present in /tmp/k8s-webhook-server/serving-certs"; \
+	fi
 
 ##@ Kind
 .PHONY: kind-capt
-kind-capt: clusterapi-manifests clusterctl-setup docker-build ## Setup complete kind environment with CAPI and CAPT
+kind-capt: clusterapi-manifests clusterctl-setup docker-build clusterctl ## Setup complete kind environment with CAPI and CAPT
 	@echo "Setting up kind cluster with CAPI and CAPT..."
 	kind create cluster --name capt
 	@echo "✓ Kind cluster created"
 	@echo "Deploying CAPT..."
 	$(CONTAINER_TOOL) save ${IMG} | kind load image-archive /dev/stdin --name capt
-	export EXP_MACHINE_POOL=true && \
-	export CLUSTER_TOPOLOGY="true" && \
-	export EXP_RUNTIME_SDK="true" && \
-	export EXP_MACHINE_SET_PREFLIGHT_CHECKS="true" && \
-	clusterctl init --core cluster-api --infrastructure capt --control-plane capt --config capi-local-config.yaml
+	$(MAKE) setup-capi
 	@echo "✓ CAPT deployed"
 	@echo "Setup complete!"
 
@@ -208,17 +283,37 @@ CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 HELMIFY ?= $(LOCALBIN)/helmify
+HELM_BIN ?= $(LOCALBIN)/helm
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.4.3
 CONTROLLER_TOOLS_VERSION ?= v0.16.1
 ENVTEST_VERSION ?= release-0.19
 GOLANGCI_LINT_VERSION ?= v1.59.1
+CERT_MANAGER_VERSION ?= v1.16.1
+CROSSPLANE_VERSION ?= v1.16.0
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
 $(KUSTOMIZE): $(LOCALBIN)
 	$(call go-install-tool,$(KUSTOMIZE),sigs.k8s.io/kustomize/kustomize/v5,$(KUSTOMIZE_VERSION))
+
+# Optional: use kubectl kustomize instead of local binary for 'build' only.
+# Usage: make USE_KUBECTL_KUSTOMIZE=1 install
+USE_KUBECTL_KUSTOMIZE ?= 0
+ifeq ($(USE_KUBECTL_KUSTOMIZE),1)
+KUSTOMIZE_BUILD := kubectl kustomize
+KUSTOMIZE_PREREQ :=
+else
+KUSTOMIZE_WORKS := $(shell $(KUSTOMIZE) version >/dev/null 2>&1 && echo yes || echo no)
+ifeq ($(KUSTOMIZE_WORKS),yes)
+KUSTOMIZE_BUILD := $(KUSTOMIZE) build
+KUSTOMIZE_PREREQ := kustomize
+else
+KUSTOMIZE_BUILD := kubectl kustomize
+KUSTOMIZE_PREREQ :=
+endif
+endif
 
 .PHONY: controller-gen
 controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary.
@@ -240,11 +335,16 @@ helmify: $(HELMIFY) ## Download helmify locally if necessary. Used by 'helm' tar
 $(HELMIFY): $(LOCALBIN)
 	test -s $(LOCALBIN)/helmify || GOBIN=$(LOCALBIN) go install github.com/arttor/helmify/cmd/helmify@latest
 
+.PHONY: helm3
+helm3: $(HELM_BIN) ## Download helm locally if necessary.
+$(HELM_BIN): $(LOCALBIN)
+	@test -s $(HELM_BIN) || GOBIN=$(LOCALBIN) go install helm.sh/helm/v3/cmd/helm@v3.15.2
+
 .PHONY: helm
-helm: clusterapi-manifests kustomize helmify ## Generate helm charts
+helm: clusterapi-manifests $(KUSTOMIZE_PREREQ) helmify ## Generate helm charts
 	@echo "Generating Helm chart in charts/capt"
 	@mkdir -p charts/capt
-	$(KUSTOMIZE) build config/default | $(HELMIFY) charts/capt
+	$(KUSTOMIZE_BUILD) config/default | $(HELMIFY) charts/capt
 
 .PHONY: clean
 clean: ## Clean up generated files
@@ -267,3 +367,26 @@ mv $(1) $(1)-$(3) ;\
 } ;\
 ln -sf $(1)-$(3) $(1)
 endef
+
+.PHONY: clusterctl
+clusterctl: $(LOCALBIN) ## Download clusterctl locally (prebuilt release with GitVersion)
+	@set -e; \
+	url=https://github.com/kubernetes-sigs/cluster-api/releases/download/$(CLUSTERCTL_VERSION)/clusterctl-linux-$(CLUSTERCTL_ARCH); \
+	echo "Downloading $$url"; \
+	curl -fsSL $$url -o $(LOCALBIN)/clusterctl.tmp; \
+	chmod +x $(LOCALBIN)/clusterctl.tmp; \
+	mv $(LOCALBIN)/clusterctl.tmp $(LOCALBIN)/clusterctl; \
+	$(LOCALBIN)/clusterctl version || true
+
+CLUSTERCTL_BIN ?= $(LOCALBIN)/clusterctl
+
+# clusterctl prebuilt binary (ensures GitVersion is embedded)
+CLUSTERCTL_VERSION ?= v1.10.7
+UNAME_M := $(shell uname -m)
+ifeq ($(UNAME_M),x86_64)
+  CLUSTERCTL_ARCH := amd64
+else ifeq ($(UNAME_M),aarch64)
+  CLUSTERCTL_ARCH := arm64
+else
+  CLUSTERCTL_ARCH := amd64
+endif

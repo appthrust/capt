@@ -1,0 +1,150 @@
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: ClusterClass
+metadata:
+  name: capt-default
+spec:
+  controlPlane:
+    ref:
+      apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+      kind: CAPTControlPlaneTemplate
+      name: capt-default-control-plane
+      namespace: default
+    machineInfrastructure:
+      # This is not used by CAPT but required by the ClusterClass spec.
+      ref:
+        kind: CAPTMachineTemplate
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        name: capt-default-control-plane-machine
+        namespace: default
+  infrastructure:
+    ref:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+      kind: CAPTClusterTemplate
+      name: capt-default-cluster
+      namespace: default
+  workers:
+    machineDeployments:
+      - class: default-worker
+        template:
+          bootstrap:
+            ref:
+              apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+              kind: KubeadmConfigTemplate
+              name: capt-default-worker-bootstrap
+              namespace: default
+          infrastructure:
+            ref:
+              apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+  kind: CAPTMachineTemplate
+              name: capt-default-worker-machine
+              namespace: default
+  variables:
+    - name: region
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: string
+          description: "AWS region for the cluster"
+    - name: controlPlane.endpointAccess.public
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: boolean
+          default: true
+    - name: controlPlane.endpointAccess.private
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: boolean
+          default: true
+    - name: cluster.environment
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: string
+          enum: ["dev", "staging", "prod"]
+          default: "dev"
+  patches:
+    - name: region
+      definitions:
+        - jsonPatches:
+            - op: add
+              path: /spec/template/spec/region
+              valueFrom:
+                variable: region
+          selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+            kind: CAPTClusterTemplate
+            matchResources:
+              infrastructureResource: true
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: CaptControlPlaneTemplate
+metadata:
+  name: capt-default-control-plane
+  namespace: default
+spec:
+  template:
+    spec:
+      version: ${builtin.controlPlane.version}
+      workspaceTemplateRef:
+        name: eks-controlplane-template
+        namespace: default
+      controlPlaneConfig:
+        region: ${region}
+        endpointAccess:
+          public: ${controlPlane.endpointAccess.public}
+          private: ${controlPlane.endpointAccess.private}
+      additionalTags:
+        Environment: ${cluster.environment}
+        ManagedBy: "capt"
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: CAPTClusterTemplate
+metadata:
+  name: capt-default-cluster
+  namespace: default
+spec:
+  template:
+    spec:
+      # region will be patched by the ClusterClass
+      vpcTemplateRef:
+        name: vpc-template
+        namespace: default
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+  kind: CAPTMachineTemplate
+metadata:
+  name: capt-default-control-plane-machine
+  namespace: default
+spec:
+  template:
+    spec:
+      # This is a dummy template for control plane machines as CAPT manages them.
+      instanceType: "m5.large"
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: CAPTMachineTemplate
+metadata:
+  name: capt-default-worker-machine
+  namespace: default
+spec:
+  template:
+    spec:
+      workspaceTemplateRef:
+        name: eks-node-template
+        namespace: default
+      instanceType: "m5.large"
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+kind: KubeadmConfigTemplate
+metadata:
+  name: capt-default-worker-bootstrap
+  namespace: default
+spec:
+  template:
+    spec:
+      joinConfiguration:
+        nodeRegistration:
+          kubeletExtraArgs:
+            cloud-provider: "aws" 

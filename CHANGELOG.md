@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.4.0] - 2025-10-24
+
+### Added
+- ClusterClass 対応を追加 (clusterctl の ClusterClass 対応フローに適合)
+
+### Changed
+- マニフェストの CAPI contract ラベルの明確化と整理 (v1beta1)
+- `config/*/kustomization.yaml` のイメージタグを `v0.4.0` に更新
+
+### Notes
+- 次期 `v0.5.0` で `v1beta2` 互換を実装予定
+
 ## [v0.2.1] - 2024-01-25
 
 ### Added

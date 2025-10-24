@@ -10,19 +10,79 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /mutate-k0smotron-io-v1beta1-cluster
+      path: /mutate-infrastructure-cluster-x-k8s-io-v1beta1-captcluster
   failurePolicy: Fail
-  name: mutate-k0smotron-cluster-v1beta1.k0smotron.io
+  name: mcaptcluster.kb.io
   rules:
   - apiGroups:
-    - k0smotron.io
+    - infrastructure.cluster.x-k8s.io
     apiVersions:
     - v1beta1
     operations:
     - CREATE
     - UPDATE
     resources:
-    - clusters
+    - captclusters
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-infrastructure-cluster-x-k8s-io-v1beta1-captclustertemplate
+  failurePolicy: Fail
+  name: mcaptclustertemplate.kb.io
+  rules:
+  - apiGroups:
+    - infrastructure.cluster.x-k8s.io
+    apiVersions:
+    - v1beta1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - captclustertemplates
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-infrastructure-cluster-x-k8s-io-v1beta1-captmachine
+  failurePolicy: Fail
+  name: mcaptmachine.kb.io
+  rules:
+  - apiGroups:
+    - infrastructure.cluster.x-k8s.io
+    apiVersions:
+    - v1beta1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - captmachines
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /mutate-infrastructure-cluster-x-k8s-io-v1beta1-captmachinetemplate
+  failurePolicy: Fail
+  name: mcaptmachinetemplate.kb.io
+  rules:
+  - apiGroups:
+    - infrastructure.cluster.x-k8s.io
+    apiVersions:
+    - v1beta1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - captmachinetemplates
   sideEffects: None
 ---
 apiVersion: admissionregistration.k8s.io/v1
@@ -36,17 +96,77 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-controlplane-cluster-x-k8s-io-v1beta1-k0scontrolplane
+      path: /validate-infrastructure-cluster-x-k8s-io-v1beta1-captcluster
   failurePolicy: Fail
-  name: validate-k0scontrolplane-v1beta1.k0smotron.io
+  name: vcaptcluster.kb.io
   rules:
   - apiGroups:
-    - controlplane.cluster.x-k8s.io
+    - infrastructure.cluster.x-k8s.io
     apiVersions:
     - v1beta1
     operations:
     - CREATE
     - UPDATE
     resources:
-    - k0scontrolplanes
+    - captclusters
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-infrastructure-cluster-x-k8s-io-v1beta1-captclustertemplate
+  failurePolicy: Fail
+  name: vcaptclustertemplate.kb.io
+  rules:
+  - apiGroups:
+    - infrastructure.cluster.x-k8s.io
+    apiVersions:
+    - v1beta1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - captclustertemplates
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-infrastructure-cluster-x-k8s-io-v1beta1-captmachine
+  failurePolicy: Fail
+  name: vcaptmachine.kb.io
+  rules:
+  - apiGroups:
+    - infrastructure.cluster.x-k8s.io
+    apiVersions:
+    - v1beta1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - captmachines
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-infrastructure-cluster-x-k8s-io-v1beta1-captmachinetemplate
+  failurePolicy: Fail
+  name: vcaptmachinetemplate.kb.io
+  rules:
+  - apiGroups:
+    - infrastructure.cluster.x-k8s.io
+    apiVersions:
+    - v1beta1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - captmachinetemplates
   sideEffects: None

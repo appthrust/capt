@@ -1,0 +1,135 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.16.1
+  name: captclustertemplates.infrastructure.cluster.x-k8s.io
+spec:
+  group: infrastructure.cluster.x-k8s.io
+  names:
+    categories:
+    - cluster-api
+    kind: CAPTClusterTemplate
+    listKind: CAPTClusterTemplateList
+    plural: captclustertemplates
+    shortNames:
+    - captct
+    singular: captclustertemplate
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1beta1
+    schema:
+      openAPIV3Schema:
+        description: CAPTClusterTemplate is the Schema for the captclustertemplates
+          API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: CAPTClusterTemplateSpec defines the desired state of CAPTClusterTemplate
+            properties:
+              template:
+                description: CAPTClusterTemplateResource describes the data needed
+                  to create a CAPTCluster from a template
+                properties:
+                  metadata:
+                    description: |-
+                      Standard object's metadata.
+                      More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+                    properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      finalizers:
+                        items:
+                          type: string
+                        type: array
+                      labels:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+                    type: object
+                  spec:
+                    description: |-
+                      Spec is the specification of the desired behavior of the CAPTCluster.
+                      This spec allows for all the same configuration as CAPTCluster.
+                    properties:
+                      existingVpcId:
+                        description: |-
+                          ExistingVPCID is the ID of an existing VPC to use
+                          If specified, VPCTemplateRef must not be set
+                        type: string
+                      region:
+                        description: Region is the AWS region where the cluster will
+                          be created
+                        type: string
+                      retainVpcOnDelete:
+                        description: |-
+                          RetainVPCOnDelete specifies whether to retain the VPC when the parent cluster is deleted
+                          This is useful when the VPC is shared among multiple projects
+                          This field is only effective when VPCTemplateRef is set
+                        type: boolean
+                      vpcConfig:
+                        description: VPCConfig contains VPC-specific configuration
+                        properties:
+                          name:
+                            description: |-
+                              Name is the name of the VPC
+                              If not specified, defaults to {cluster-name}-vpc
+                            type: string
+                        type: object
+                      vpcTemplateRef:
+                        description: |-
+                          VPCTemplateRef is a reference to a WorkspaceTemplate resource for VPC configuration
+                          If specified, a new VPC will be created using this template
+                        properties:
+                          name:
+                            description: Name of the referenced WorkspaceTemplate
+                            type: string
+                          namespace:
+                            description: Namespace of the referenced WorkspaceTemplate
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      workspaceTemplateApplyName:
+                        description: |-
+                          WorkspaceTemplateApplyName is the name of the WorkspaceTemplateApply used for this cluster.
+                          This field is managed by the controller and should not be modified manually.
+                        type: string
+                    required:
+                    - region
+                    type: object
+                type: object
+            required:
+            - template
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources: {}

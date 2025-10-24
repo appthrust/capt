@@ -1,0 +1,13 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: CAPTClusterTemplate
+metadata:
+  name: cluster-noop-template
+  namespace: default
+spec:
+  template:
+    spec:
+      region: "local"
+      vpcTemplateRef:
+        name: noop-template
+        namespace: default
+

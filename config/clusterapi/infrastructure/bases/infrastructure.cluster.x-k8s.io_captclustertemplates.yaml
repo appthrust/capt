@@ -131,5 +131,99 @@ spec:
             type: object
         type: object
     served: true
+    storage: false
+    subresources: {}
+  - additionalPrinterColumns:
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1beta2
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              template:
+                properties:
+                  metadata:
+                    properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      finalizers:
+                        items:
+                          type: string
+                        type: array
+                      labels:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+                    type: object
+                  spec:
+                    description: CAPTClusterSpec defines the desired state of CAPTCluster
+                    properties:
+                      existingVpcId:
+                        type: string
+                      region:
+                        type: string
+                      retainVpcOnDelete:
+                        type: boolean
+                      vpcConfig:
+                        description: VPCConfig contains configuration for the VPC
+                        properties:
+                          name:
+                            description: |-
+                              Name is the name of the VPC
+                              If not specified, defaults to {cluster-name}-vpc
+                            type: string
+                        type: object
+                      vpcTemplateRef:
+                        description: WorkspaceTemplateReference contains the reference
+                          to WorkspaceTemplate
+                        properties:
+                          name:
+                            description: Name of the referenced WorkspaceTemplate
+                            type: string
+                          namespace:
+                            description: Namespace of the referenced WorkspaceTemplate
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      workspaceTemplateApplyName:
+                        type: string
+                    required:
+                    - region
+                    type: object
+                required:
+                - spec
+                type: object
+            required:
+            - template
+            type: object
+        type: object
+    served: true
     storage: true
     subresources: {}

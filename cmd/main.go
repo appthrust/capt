@@ -39,7 +39,9 @@ import (
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 
 	controlplanev1beta1 "github.com/appthrust/capt/api/controlplane/v1beta1"
+	controlplanev1beta2 "github.com/appthrust/capt/api/controlplane/v1beta2"
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
+	infrastructurev1beta2 "github.com/appthrust/capt/api/v1beta2"
 	"github.com/appthrust/capt/internal/controller"
 	controlplanecontroller "github.com/appthrust/capt/internal/controller/controlplane"
 	"github.com/crossplane/crossplane-runtime/pkg/logging"
@@ -78,6 +80,8 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(infrastructurev1beta1.AddToScheme(scheme))
 	utilruntime.Must(controlplanev1beta1.AddToScheme(scheme))
+	utilruntime.Must(infrastructurev1beta2.AddToScheme(scheme))
+	utilruntime.Must(controlplanev1beta2.AddToScheme(scheme))
 	utilruntime.Must(tfv1beta1.SchemeBuilder.AddToScheme(scheme))
 	utilruntime.Must(clusterv1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme

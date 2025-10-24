@@ -192,6 +192,162 @@ spec:
             type: object
         type: object
     served: true
+    storage: false
+    subresources:
+      status: {}
+  - additionalPrinterColumns:
+    - jsonPath: .status.workspaceName
+      name: WORKSPACE
+      type: string
+    - jsonPath: .status.applied
+      name: APPLIED
+      type: boolean
+    - jsonPath: .metadata.creationTimestamp
+      name: AGE
+      type: date
+    name: v1beta2
+    schema:
+      openAPIV3Schema:
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              retainWorkspaceOnDelete:
+                type: boolean
+              templateRef:
+                description: WorkspaceTemplateReference contains the reference to
+                  WorkspaceTemplate
+                properties:
+                  name:
+                    description: Name of the referenced WorkspaceTemplate
+                    type: string
+                  namespace:
+                    description: Namespace of the referenced WorkspaceTemplate
+                    type: string
+                required:
+                - name
+                type: object
+              variables:
+                additionalProperties:
+                  type: string
+                type: object
+              waitForSecrets:
+                items:
+                  description: A SecretReference is a reference to a secret in an
+                    arbitrary namespace.
+                  properties:
+                    name:
+                      description: Name of the secret.
+                      type: string
+                    namespace:
+                      description: Namespace of the secret.
+                      type: string
+                  required:
+                  - name
+                  - namespace
+                  type: object
+                type: array
+              waitForWorkspaces:
+                items:
+                  description: WorkspaceReference defines a reference to a Workspace
+                  properties:
+                    name:
+                      description: Name of the referenced Workspace
+                      type: string
+                    namespace:
+                      description: Namespace of the referenced Workspace
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
+              writeConnectionSecretToRef:
+                description: A SecretReference is a reference to a secret in an arbitrary
+                  namespace.
+                properties:
+                  name:
+                    description: Name of the secret.
+                    type: string
+                  namespace:
+                    description: Namespace of the secret.
+                    type: string
+                required:
+                - name
+                - namespace
+                type: object
+            required:
+            - templateRef
+            type: object
+          status:
+            properties:
+              applied:
+                type: boolean
+              conditions:
+                items:
+                  description: A Condition that may apply to a resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        LastTransitionTime is the last time this condition transitioned from one
+                        status to another.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        A Message containing details about this condition's last transition from
+                        one status to another, if any.
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        ObservedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      type: integer
+                    reason:
+                      description: A Reason for this condition's last transition from
+                        one status to another.
+                      type: string
+                    status:
+                      description: Status of this condition; is it currently True,
+                        False, or Unknown?
+                      type: string
+                    type:
+                      description: |-
+                        Type of this condition. At most one of each condition type may apply to
+                        a resource at any point in time.
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              lastAppliedTime:
+                format: date-time
+                type: string
+              workspaceName:
+                type: string
+            type: object
+        type: object
+    served: true
     storage: true
     subresources:
       status: {}

@@ -31,6 +31,10 @@ import (
 
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 const (
@@ -77,9 +81,29 @@ func (r *CaptMachineDeploymentReconciler) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	cluster, err := r.getOwnerCluster(ctx, deployment)
+	if err != nil {
+		// If the owner Cluster is not found, it means we are in a non-Cluster API managed environment.
+		// We can let the reconciliation proceed, but topology features will be disabled.
+		if client.IgnoreNotFound(err) != nil {
+			logger.Error(err, "failed to get owner cluster")
+			return ctrl.Result{}, err
+		}
+	}
+
 	// Handle deletion
 	if !deployment.DeletionTimestamp.IsZero() {
 		return r.reconcileDelete(ctx, deployment)
+	}
+
+	if cluster != nil && cluster.Spec.Topology != nil {
+		// In a topology-managed cluster, the creation, scaling, and rollout of MachineSets
+		// are orchestrated by the Cluster API controllers based on the definitions in the
+		// MachineDeployment topology. The CAPT MachineDeployment controller's role
+		// is to observe the state and report status, and in the future, it might handle
+		// provider-specific advanced features. For now, we do not need to reconcile
+		// MachineSets here as it would conflict with the CAPI topology controller.
+		return ctrl.Result{}, nil
 	}
 
 	// Add finalizer if it doesn't exist
@@ -123,6 +147,25 @@ func (r *CaptMachineDeploymentReconciler) Reconcile(ctx context.Context, req ctr
 	}
 
 	return ctrl.Result{}, nil
+}
+
+// getOwnerCluster gets the owner cluster for a CaptMachineDeployment.
+func (r *CaptMachineDeploymentReconciler) getOwnerCluster(ctx context.Context, deployment *infrastructurev1beta1.CaptMachineDeployment) (*clusterv1.Cluster, error) {
+	if deployment.Labels == nil {
+		return nil, nil // No labels, so cannot determine cluster.
+	}
+	clusterName, ok := deployment.Labels[clusterv1.ClusterNameLabel]
+	if !ok {
+		return nil, nil // No cluster name label.
+	}
+
+	cluster := &clusterv1.Cluster{}
+	key := types.NamespacedName{Namespace: deployment.Namespace, Name: clusterName}
+	if err := r.Get(ctx, key, cluster); err != nil {
+		return nil, err
+	}
+
+	return cluster, nil
 }
 
 // reconcileDelete handles CaptMachineDeployment deletion
@@ -272,5 +315,35 @@ func (r *CaptMachineDeploymentReconciler) SetupWithManager(mgr ctrl.Manager) err
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&infrastructurev1beta1.CaptMachineDeployment{}).
 		Owns(&infrastructurev1beta1.CaptMachineSet{}).
+		Watches(
+			&clusterv1.Cluster{},
+			handler.EnqueueRequestsFromMapFunc(r.clusterToMachineDeployments),
+		).
 		Complete(r)
+}
+
+func (r *CaptMachineDeploymentReconciler) clusterToMachineDeployments(ctx context.Context, o client.Object) []reconcile.Request {
+	c, ok := o.(*clusterv1.Cluster)
+	if !ok {
+		return nil
+	}
+
+	requests := []reconcile.Request{}
+	mdList := &infrastructurev1beta1.CaptMachineDeploymentList{}
+
+	// List all CaptMachineDeployments in the cluster's namespace that have the cluster name label.
+	if err := r.List(ctx, mdList, client.InNamespace(c.Namespace), client.MatchingLabels{clusterv1.ClusterNameLabel: c.Name}); err != nil {
+		return nil
+	}
+
+	for _, md := range mdList.Items {
+		requests = append(requests, reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Name:      md.Name,
+				Namespace: md.Namespace,
+			},
+		})
+	}
+
+	return requests
 }

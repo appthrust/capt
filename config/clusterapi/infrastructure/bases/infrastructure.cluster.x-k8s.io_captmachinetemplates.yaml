@@ -40,8 +40,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: CaptInfraMachineTemplateSpec defines the desired state of
-              CaptMachineTemplate
+            description: CAPTMachineTemplateSpec defines the desired state of CaptMachineTemplate
             properties:
               template:
                 description: Template is the template for creating a CaptMachine
@@ -50,12 +49,6 @@ spec:
                     description: Spec is the specification of the desired behavior
                       of the machine.
                     properties:
-                      additionalTags:
-                        additionalProperties:
-                          type: string
-                        description: AdditionalTags is a map of additional AWS tags
-                          to apply to the node group
-                        type: object
                       instanceType:
                         description: InstanceType is the EC2 instance type to use
                           for the node
@@ -66,70 +59,25 @@ spec:
                         description: Labels is a map of kubernetes labels to apply
                           to the node
                         type: object
-                      nodeType:
-                        description: NodeType specifies the type of node group (ManagedNodeGroup
-                          or Fargate)
-                        enum:
-                        - ManagedNodeGroup
-                        - Fargate
-                        type: string
-                      scaling:
-                        description: Scaling defines the scaling configuration for
-                          the node group
+                      nodeGroupRef:
+                        description: NodeGroupRef is a reference to the NodeGroup
+                          this machine belongs to
                         properties:
-                          desiredSize:
-                            description: DesiredSize is the desired size of the node
-                              group
-                            format: int32
-                            minimum: 0
-                            type: integer
-                          maxSize:
-                            description: MaxSize is the maximum size of the node group
-                            format: int32
-                            minimum: 1
-                            type: integer
-                          minSize:
-                            description: MinSize is the minimum size of the node group
-                            format: int32
-                            minimum: 0
-                            type: integer
+                          name:
+                            description: Name is the name of the NodeGroup
+                            type: string
+                          namespace:
+                            description: Namespace is the namespace of the NodeGroup
+                            type: string
                         required:
-                        - desiredSize
-                        - maxSize
-                        - minSize
+                        - name
+                        - namespace
                         type: object
-                      taints:
-                        description: Taints specifies the taints to apply to the nodes
-                        items:
-                          description: |-
-                            The node this Taint is attached to has the "effect" on
-                            any pod that does not tolerate the Taint.
-                          properties:
-                            effect:
-                              description: |-
-                                Required. The effect of the taint on pods
-                                that do not tolerate the taint.
-                                Valid effects are NoSchedule, PreferNoSchedule and NoExecute.
-                              type: string
-                            key:
-                              description: Required. The taint key to be applied to
-                                a node.
-                              type: string
-                            timeAdded:
-                              description: |-
-                                TimeAdded represents the time at which the taint was added.
-                                It is only written for NoExecute taints.
-                              format: date-time
-                              type: string
-                            value:
-                              description: The taint value corresponding to the taint
-                                key.
-                              type: string
-                          required:
-                          - effect
-                          - key
-                          type: object
-                        type: array
+                      tags:
+                        additionalProperties:
+                          type: string
+                        description: Tags is a map of tags to apply to the node
+                        type: object
                       workspaceTemplateRef:
                         description: WorkspaceTemplateRef is a reference to the WorkspaceTemplate
                           used for creating the machine
@@ -144,7 +92,8 @@ spec:
                         - name
                         type: object
                     required:
-                    - nodeType
+                    - instanceType
+                    - nodeGroupRef
                     - workspaceTemplateRef
                     type: object
                 required:

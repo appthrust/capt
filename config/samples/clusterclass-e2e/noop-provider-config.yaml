@@ -1,0 +1,16 @@
+apiVersion: tf.upbound.io/v1beta1
+kind: ProviderConfig
+metadata:
+  name: noop-provider-config
+  namespace: crossplane-system
+spec:
+  configuration: |
+    terraform {
+      backend "kubernetes" {
+        secret_suffix     = "noop"
+        namespace         = "upbound-system"
+        in_cluster_config = true
+      }
+    }
+
+

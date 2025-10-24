@@ -16,6 +16,17 @@ rules:
   - update
   - watch
 - apiGroups:
+  - cluster.x-k8s.io
+  resources:
+  - clusters
+  - clusters/status
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
   - controlplane.cluster.x-k8s.io
   resources:
   - captcontrolplanes
@@ -47,7 +58,21 @@ rules:
 - apiGroups:
   - infrastructure.cluster.x-k8s.io
   resources:
+  - workspacetemplateapplies
+  - workspacetemplateapplies/status
   - workspacetemplates
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - tf.upbound.io
+  resources:
+  - workspaces
+  - workspaces/status
   verbs:
   - get
   - list

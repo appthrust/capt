@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flake-config
+  namespace: upbound-system
+data:
+  flake.nix: |
+    {
+      description = "AWS CLI and jq in a container";
+
+      inputs.nixpkgs.url = "nixpkgs/nixos-unstable";
+
+      outputs = { self, nixpkgs }:
+        let
+          supportedSystems = [ "x86_64-linux" "aarch64-linux" ];
+          forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
+          nixpkgsFor = forAllSystems (system: import nixpkgs {
+            inherit system;
+            overlays = [
+              (final: prev: {
+                awscli = prev.awscli2;
+              })
+            ];
+          });
+        in
+        {
+          packages = forAllSystems (system:
+            let
+              pkgs = nixpkgsFor.${system};
+            in
+            {
+              default = pkgs.symlinkJoin {
+                name = "aws-cli-with-jq";
+                paths = [ pkgs.awscli pkgs.jq ];
+              };
+            });
+        };
+    }
+
+

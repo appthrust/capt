@@ -56,7 +56,7 @@ manifests: controller-gen
 	$(CONTROLLER_GEN) crd:generateEmbeddedObjectMeta=true webhook paths="./api/controlplane/..." output:crd:artifacts:config=config/clusterapi/controlplane/bases
 	mkdir -p config/clusterapi/infrastructure/bases
 	$(CONTROLLER_GEN) rbac:roleName=manager-role-infrastructure paths="./internal/controller" output:stdout > config/rbac/infrastructure-role.yaml
-	$(CONTROLLER_GEN) crd:generateEmbeddedObjectMeta=true webhook paths="./api/v1beta1/..." output:crd:artifacts:config=config/clusterapi/infrastructure/bases
+	$(CONTROLLER_GEN) crd:generateEmbeddedObjectMeta=true webhook paths="./api/..." output:crd:artifacts:config=config/clusterapi/infrastructure/bases
 
 .PHONY: clusterapi-manifests
 clusterapi-manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
@@ -66,7 +66,7 @@ clusterapi-manifests: controller-gen ## Generate WebhookConfiguration, ClusterRo
 	$(CONTROLLER_GEN) crd:generateEmbeddedObjectMeta=true webhook paths="./api/controlplane/..." output:crd:artifacts:config=config/clusterapi/controlplane/bases
 	mkdir -p config/clusterapi/infrastructure/bases
 	$(CONTROLLER_GEN) rbac:roleName=manager-role-infrastructure paths="./internal/controller" output:stdout > config/rbac/infrastructure-role.yaml
-	$(CONTROLLER_GEN) crd:generateEmbeddedObjectMeta=true webhook paths="./api/v1beta1/..." output:crd:artifacts:config=config/clusterapi/infrastructure/bases
+	$(CONTROLLER_GEN) crd:generateEmbeddedObjectMeta=true webhook paths="./api/..." output:crd:artifacts:config=config/clusterapi/infrastructure/bases
 
 .PHONY: clusterctl-setup
 clusterctl-setup: clusterapi-manifests kustomize $(KUSTOMIZE_PREREQ) ## Build components and create local config for clusterctl testing.
@@ -381,7 +381,7 @@ clusterctl: $(LOCALBIN) ## Download clusterctl locally (prebuilt release with Gi
 CLUSTERCTL_BIN ?= $(LOCALBIN)/clusterctl
 
 # clusterctl prebuilt binary (ensures GitVersion is embedded)
-CLUSTERCTL_VERSION ?= v1.10.7
+CLUSTERCTL_VERSION ?= v1.11.2
 UNAME_M := $(shell uname -m)
 ifeq ($(UNAME_M),x86_64)
   CLUSTERCTL_ARCH := amd64

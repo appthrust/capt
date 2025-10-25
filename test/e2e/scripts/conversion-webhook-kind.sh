@@ -183,6 +183,109 @@ EOF
   log "PASS: conversion roundtrip succeeded (region=${region})"
 }
 
+# Create v1beta1 resources and GET via v1beta2 to verify conversion works for other CRDs
+assert_conversion_roundtrip_more() {
+  # CaptMachineSet
+  log "create v1beta1 CaptMachineSet"
+  cat <<EOF | kubectl apply -f -
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: CaptMachineSet
+metadata:
+  name: conv-ms
+  namespace: default
+spec:
+  template:
+    spec:
+      instanceType: m5.large
+      nodeGroupRef:
+        name: ng1
+        namespace: default
+      workspaceTemplateRef:
+        name: wt
+        namespace: default
+EOF
+  ms_it=$(kubectl get --raw \
+    "/apis/infrastructure.cluster.x-k8s.io/v1beta2/namespaces/default/captmachinesets/conv-ms" \
+    | sed -n 's/.*"instanceType":"\([^"]*\)".*/\1/p' || true)
+  if [ "${ms_it:-}" != "m5.large" ]; then
+    log "FAIL: expected CaptMachineSet.spec.template.spec.instanceType=m5.large, got '${ms_it:-<empty>}'"
+    exit 1
+  fi
+
+  # CaptMachineDeployment
+  log "create v1beta1 CaptMachineDeployment"
+  cat <<EOF | kubectl apply -f -
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: CaptMachineDeployment
+metadata:
+  name: conv-md
+  namespace: default
+spec:
+  template:
+    spec:
+      instanceType: t3.medium
+      nodeGroupRef:
+        name: ng2
+        namespace: default
+      workspaceTemplateRef:
+        name: wt
+        namespace: default
+EOF
+  md_it=$(kubectl get --raw \
+    "/apis/infrastructure.cluster.x-k8s.io/v1beta2/namespaces/default/captmachinedeployments/conv-md" \
+    | sed -n 's/.*"instanceType":"\([^"]*\)".*/\1/p' || true)
+  if [ "${md_it:-}" != "t3.medium" ]; then
+    log "FAIL: expected CaptMachineDeployment.spec.template.spec.instanceType=t3.medium, got '${md_it:-<empty>}'"
+    exit 1
+  fi
+
+  # WorkspaceTemplate
+  log "create v1beta1 WorkspaceTemplate"
+  cat <<EOF | kubectl apply -f -
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplate
+metadata:
+  name: conv-wt
+  namespace: default
+spec:
+  template:
+    spec:
+      forProvider:
+        source: Inline
+        module: |
+          terraform {}
+EOF
+  wt_source=$(kubectl get --raw \
+    "/apis/infrastructure.cluster.x-k8s.io/v1beta2/namespaces/default/workspacetemplates/conv-wt" \
+    | sed -n 's/.*"source":"\([^"]*\)".*/\1/p' || true)
+  if [ "${wt_source:-}" != "Inline" ]; then
+    log "FAIL: expected WorkspaceTemplate.spec.template.spec.forProvider.source=Inline, got '${wt_source:-<empty>}'"
+    exit 1
+  fi
+
+  # WorkspaceTemplateApply
+  log "create v1beta1 WorkspaceTemplateApply"
+  cat <<EOF | kubectl apply -f -
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplateApply
+metadata:
+  name: conv-wta
+  namespace: default
+spec:
+  templateRef:
+    name: conv-wt
+EOF
+  wta_tpl=$(kubectl get --raw \
+    "/apis/infrastructure.cluster.x-k8s.io/v1beta2/namespaces/default/workspacetemplateapplies/conv-wta" \
+    | sed -n 's/.*"templateRef":{[^}]*"name":"\([^"]*\)".*/\1/p' || true)
+  if [ "${wta_tpl:-}" != "conv-wt" ]; then
+    log "FAIL: expected WorkspaceTemplateApply.spec.templateRef.name=conv-wt, got '${wta_tpl:-<empty>}'"
+    exit 1
+  fi
+
+  log "PASS: additional resource conversions succeeded"
+}
+
 main() {
   kind_up
   install_crds
@@ -195,6 +298,7 @@ main() {
   # Wait for controller-manager after mounting certs
   kubectl -n "${NAMESPACE}" rollout status deploy/controller-manager --timeout=180s
   assert_conversion_roundtrip
+  assert_conversion_roundtrip_more
   log "done"
 }
 

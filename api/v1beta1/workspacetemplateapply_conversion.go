@@ -60,4 +60,3 @@ func (dst *WorkspaceTemplateApply) ConvertFrom(srcRaw conversion.Hub) error {
 	dst.Status.Conditions = src.Status.Conditions
 	return nil
 }
-

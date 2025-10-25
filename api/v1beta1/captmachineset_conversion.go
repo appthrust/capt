@@ -96,4 +96,3 @@ func (dst *CaptMachineSet) ConvertFrom(srcRaw conversion.Hub) error {
 	dst.Status.FailureMessage = src.Status.FailureMessage
 	return nil
 }
-

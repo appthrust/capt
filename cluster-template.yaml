@@ -1,5 +1,5 @@
 # VPC WorkspaceTemplate
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
 kind: WorkspaceTemplate
 metadata:
   name: ${VPC_TEMPLATE_NAME:=vpc-template}
@@ -112,7 +112,7 @@ spec:
         namespace: ${NAMESPACE}
 ---
 # EKS Control Plane WorkspaceTemplate
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
 kind: WorkspaceTemplate
 metadata:
   name: ${CONTROLPLANE_TEMPLATE_NAME:=eks-controlplane-template}
@@ -408,7 +408,7 @@ spec:
           }
 ---
 # CAPTCluster
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
 kind: CAPTCluster
 metadata:
   name: ${CLUSTER_NAME}
@@ -420,7 +420,7 @@ spec:
     namespace: ${NAMESPACE}
 ---
 # CAPTControlPlane
-apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
 kind: CAPTControlPlane
 metadata:
   name: ${CLUSTER_NAME}
@@ -440,7 +440,7 @@ spec:
     ManagedBy: capt
 ---
 # Cluster
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: Cluster
 metadata:
   name: ${CLUSTER_NAME}
@@ -458,12 +458,12 @@ spec:
       cidrBlocks: ["${POD_CIDR:=192.168.0.0/16}"]
     serviceDomain: "cluster.local"
   infrastructureRef:
-    apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+    apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
     kind: CAPTCluster
     name: ${CLUSTER_NAME}
     namespace: ${NAMESPACE}
   controlPlaneRef:
-    apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+    apiVersion: controlplane.cluster.x-k8s.io/v1beta2
     kind: CAPTControlPlane
     name: ${CLUSTER_NAME}
     namespace: ${NAMESPACE}

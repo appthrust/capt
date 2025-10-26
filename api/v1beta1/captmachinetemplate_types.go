@@ -32,9 +32,9 @@ type CAPTMachineTemplateResource struct {
 	Spec CaptMachineSpec `json:"spec"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
-//+kubebuilder:resource:path=captmachinetemplates,scope=Namespaced,categories=cluster-api
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:path=captmachinetemplates,scope=Namespaced,categories=cluster-api
 
 // CaptMachineTemplate is the Schema for the captmachinetemplates API
 type CaptMachineTemplate struct {
@@ -44,7 +44,7 @@ type CaptMachineTemplate struct {
 	Spec CAPTMachineTemplateSpec `json:"spec,omitempty"`
 }
 
-//+kubebuilder:object:root=true
+// +kubebuilder:object:root=true
 
 // CaptMachineTemplateList contains a list of CaptMachineTemplate
 type CaptMachineTemplateList struct {

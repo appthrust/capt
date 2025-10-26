@@ -23,6 +23,7 @@ const (
 	InfrastructureReadyCondition v1beta1.ConditionType = "InfrastructureReady"
 )
 
+//nolint:unused // helper kept for potential reuse in reconciliation refactors
 func (r *Reconciler) setOwnerReference(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster, cluster *v1beta1.Cluster) error {
 	if cluster == nil {
 		return nil

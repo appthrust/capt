@@ -99,13 +99,13 @@ type WorkspaceTemplateApplyStatus struct {
 	Conditions []xpv1.Condition `json:"conditions,omitempty"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
-//+kubebuilder:printcolumn:name="WORKSPACE",type="string",JSONPath=".status.workspaceName"
-//+kubebuilder:printcolumn:name="APPLIED",type="boolean",JSONPath=".status.applied"
-//+kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
-//+kubebuilder:resource:categories={capt,terraform},shortName=wtapply,scope=Namespaced,path=workspacetemplateapplies,singular=workspacetemplateapply
-//+groupName=infrastructure.cluster.x-k8s.io
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="WORKSPACE",type="string",JSONPath=".status.workspaceName"
+// +kubebuilder:printcolumn:name="APPLIED",type="boolean",JSONPath=".status.applied"
+// +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:resource:categories={capt,terraform},shortName=wtapply,scope=Namespaced,path=workspacetemplateapplies,singular=workspacetemplateapply
+// +groupName=infrastructure.cluster.x-k8s.io
 
 // WorkspaceTemplateApply is the Schema for the workspacetemplateapplies API
 type WorkspaceTemplateApply struct {
@@ -116,7 +116,7 @@ type WorkspaceTemplateApply struct {
 	Status WorkspaceTemplateApplyStatus `json:"status,omitempty"`
 }
 
-//+kubebuilder:object:root=true
+// +kubebuilder:object:root=true
 
 // WorkspaceTemplateApplyList contains a list of WorkspaceTemplateApply
 type WorkspaceTemplateApplyList struct {

@@ -142,13 +142,13 @@ type CaptMachineDeploymentStatus struct {
 	FailureMessage *string `json:"failureMessage,omitempty"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
-//+kubebuilder:subresource:scale:specpath=.spec.replicas,statuspath=.status.replicas
-//+kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
-//+kubebuilder:printcolumn:name="Replicas",type="integer",JSONPath=".status.replicas"
-//+kubebuilder:printcolumn:name="Updated",type="integer",JSONPath=".status.updatedReplicas"
-//+kubebuilder:printcolumn:name="Available",type="integer",JSONPath=".status.availableReplicas"
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:subresource:scale:specpath=.spec.replicas,statuspath=.status.replicas
+// +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
+// +kubebuilder:printcolumn:name="Replicas",type="integer",JSONPath=".status.replicas"
+// +kubebuilder:printcolumn:name="Updated",type="integer",JSONPath=".status.updatedReplicas"
+// +kubebuilder:printcolumn:name="Available",type="integer",JSONPath=".status.availableReplicas"
 
 // CaptMachineDeployment is the Schema for the captmachinedeployments API
 type CaptMachineDeployment struct {
@@ -159,7 +159,7 @@ type CaptMachineDeployment struct {
 	Status CaptMachineDeploymentStatus `json:"status,omitempty"`
 }
 
-//+kubebuilder:object:root=true
+// +kubebuilder:object:root=true
 
 // CaptMachineDeploymentList contains a list of CaptMachineDeployment
 type CaptMachineDeploymentList struct {

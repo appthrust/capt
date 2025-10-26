@@ -30,7 +30,7 @@ func (r *CAPTControlPlane) SetupWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-//+kubebuilder:webhook:path=/mutate-controlplane-cluster-x-k8s-io-v1beta1-captcontrolplane,mutating=true,failurePolicy=fail,sideEffects=None,groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanes,verbs=create;update,versions=v1beta1,name=mcaptcontrolplane.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/mutate-controlplane-cluster-x-k8s-io-v1beta1-captcontrolplane,mutating=true,failurePolicy=fail,sideEffects=None,groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanes,verbs=create;update,versions=v1beta1,name=mcaptcontrolplane.kb.io,admissionReviewVersions=v1
 
 var _ webhook.Defaulter = &CAPTControlPlane{}
 
@@ -39,7 +39,7 @@ func (r *CAPTControlPlane) Default() {
 	captcontrolplanelog.Info("default", "name", r.Name)
 }
 
-//+kubebuilder:webhook:path=/validate-controlplane-cluster-x-k8s-io-v1beta1-captcontrolplane,mutating=false,failurePolicy=fail,sideEffects=None,groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanes,verbs=create;update,versions=v1beta1,name=vcaptcontrolplane.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/validate-controlplane-cluster-x-k8s-io-v1beta1-captcontrolplane,mutating=false,failurePolicy=fail,sideEffects=None,groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanes,verbs=create;update,versions=v1beta1,name=vcaptcontrolplane.kb.io,admissionReviewVersions=v1
 
 var _ webhook.Validator = &CAPTControlPlane{}
 

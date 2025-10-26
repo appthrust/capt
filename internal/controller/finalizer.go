@@ -12,9 +12,11 @@ import (
 )
 
 const (
+	//nolint:unused // retained for parity with docs and potential reuse
 	captClusterFinalizer = "infrastructure.cluster.x-k8s.io/finalizer"
 )
 
+//nolint:unused // utility retained for future use and parity with docs/CAPTEP
 func handleFinalizer(ctx context.Context, c client.Client, captCluster *infrastructurev1beta1.CAPTCluster) error {
 	// Check if the CAPTCluster instance is marked to be deleted
 	if captCluster.ObjectMeta.DeletionTimestamp.IsZero() {
@@ -46,6 +48,7 @@ func handleFinalizer(ctx context.Context, c client.Client, captCluster *infrastr
 	return nil
 }
 
+//nolint:unused // utility retained for future use and parity with docs/CAPTEP
 func deleteExternalResources(ctx context.Context, c client.Client, captCluster *infrastructurev1beta1.CAPTCluster) error {
 	logger := log.FromContext(ctx)
 

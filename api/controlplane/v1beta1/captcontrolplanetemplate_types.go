@@ -23,10 +23,10 @@ type CAPTControlPlaneTemplateResource struct {
 	Spec CAPTControlPlaneSpec `json:"spec"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
-//+kubebuilder:resource:path=captcontrolplanetemplates,scope=Namespaced,categories=cluster-api
-//+kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:path=captcontrolplanetemplates,scope=Namespaced,categories=cluster-api
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // CAPTControlPlaneTemplate is the Schema for the captcontrolplanetemplates API
 type CAPTControlPlaneTemplate struct {
@@ -36,7 +36,7 @@ type CAPTControlPlaneTemplate struct {
 	Spec CAPTControlPlaneTemplateSpec `json:"spec,omitempty"`
 }
 
-//+kubebuilder:object:root=true
+// +kubebuilder:object:root=true
 
 // CAPTControlPlaneTemplateList contains a list of CAPTControlPlaneTemplate
 type CAPTControlPlaneTemplateList struct {

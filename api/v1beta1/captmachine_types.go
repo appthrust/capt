@@ -88,11 +88,11 @@ type CaptMachineStatus struct {
 	FailureMessage *string `json:"failureMessage,omitempty"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
-//+kubebuilder:printcolumn:name="Ready",type="boolean",JSONPath=".status.ready",description="Machine Ready status"
-//+kubebuilder:printcolumn:name="Instance ID",type="string",JSONPath=".status.instanceId",description="EC2 Instance ID"
-//+kubebuilder:printcolumn:name="Node Group",type="string",JSONPath=".spec.nodeGroupRef.name",description="Node Group name"
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Ready",type="boolean",JSONPath=".status.ready",description="Machine Ready status"
+// +kubebuilder:printcolumn:name="Instance ID",type="string",JSONPath=".status.instanceId",description="EC2 Instance ID"
+// +kubebuilder:printcolumn:name="Node Group",type="string",JSONPath=".spec.nodeGroupRef.name",description="Node Group name"
 
 // CaptMachine is the Schema for the captmachines API
 type CaptMachine struct {
@@ -103,7 +103,7 @@ type CaptMachine struct {
 	Status CaptMachineStatus `json:"status,omitempty"`
 }
 
-//+kubebuilder:object:root=true
+// +kubebuilder:object:root=true
 
 // CaptMachineList contains a list of CaptMachine
 type CaptMachineList struct {

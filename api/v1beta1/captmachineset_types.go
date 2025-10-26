@@ -87,13 +87,13 @@ type CaptMachineSetStatus struct {
 	FailureMessage *string `json:"failureMessage,omitempty"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
-//+kubebuilder:subresource:scale:specpath=.spec.replicas,statuspath=.status.replicas
-//+kubebuilder:printcolumn:name="Desired",type="integer",JSONPath=".spec.replicas",description="Number of desired machines"
-//+kubebuilder:printcolumn:name="Current",type="integer",JSONPath=".status.replicas",description="Current number of machines"
-//+kubebuilder:printcolumn:name="Ready",type="integer",JSONPath=".status.readyReplicas",description="Number of ready machines"
-//+kubebuilder:printcolumn:name="Available",type="integer",JSONPath=".status.availableReplicas",description="Number of available machines"
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:subresource:scale:specpath=.spec.replicas,statuspath=.status.replicas
+// +kubebuilder:printcolumn:name="Desired",type="integer",JSONPath=".spec.replicas",description="Number of desired machines"
+// +kubebuilder:printcolumn:name="Current",type="integer",JSONPath=".status.replicas",description="Current number of machines"
+// +kubebuilder:printcolumn:name="Ready",type="integer",JSONPath=".status.readyReplicas",description="Number of ready machines"
+// +kubebuilder:printcolumn:name="Available",type="integer",JSONPath=".status.availableReplicas",description="Number of available machines"
 
 // CaptMachineSet is the Schema for the captmachinesets API
 type CaptMachineSet struct {
@@ -104,7 +104,7 @@ type CaptMachineSet struct {
 	Status CaptMachineSetStatus `json:"status,omitempty"`
 }
 
-//+kubebuilder:object:root=true
+// +kubebuilder:object:root=true
 
 // CaptMachineSetList contains a list of CaptMachineSet
 type CaptMachineSetList struct {

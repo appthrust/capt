@@ -41,6 +41,9 @@ func setupScheme() *runtime.Scheme {
 }
 
 // Helper function to create test conditions
+// Note: keep for future tests; referenced in docs and may be used by other packages.
+//
+//lint:ignore U1000 used by test documentation and future testcases
 func createTestCondition(conditionType string, status metav1.ConditionStatus, reason, message string) metav1.Condition {
 	return metav1.Condition{
 		Type:               conditionType,
@@ -52,6 +55,8 @@ func createTestCondition(conditionType string, status metav1.ConditionStatus, re
 }
 
 // Helper function to verify conditions
+//
+//lint:ignore U1000 used by test documentation and future testcases
 func containsCondition(conditions []metav1.Condition, conditionType string, status metav1.ConditionStatus) bool {
 	for _, condition := range conditions {
 		if condition.Type == conditionType && condition.Status == status {

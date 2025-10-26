@@ -66,10 +66,10 @@ type CaptMachineDeploymentReconciler struct {
 	Recorder record.EventRecorder
 }
 
-//+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=captmachinedeployments,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=captmachinedeployments/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=captmachinedeployments/finalizers,verbs=update
-//+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=captmachinesets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=captmachinedeployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=captmachinedeployments/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=captmachinedeployments/finalizers,verbs=update
+// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=captmachinesets,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile handles CaptMachineDeployment reconciliation
 func (r *CaptMachineDeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {

@@ -16,7 +16,11 @@ var _ = Describe("CRD basic operations (envtest)", Ordered, func() {
 	ctx := context.Background()
 
 	It("Create/Get v1beta2 CAPTCluster works", func() {
-		infraV1beta2 := schema.GroupVersionResource{Group: "infrastructure.cluster.x-k8s.io", Version: "v1beta2", Resource: "captclusters"}
+		infraV1beta2 := schema.GroupVersionResource{
+			Group:    "infrastructure.cluster.x-k8s.io",
+			Version:  "v1beta2",
+			Resource: "captclusters",
+		}
 
 		ns := "test-e2e"
 		// ensure namespace exists

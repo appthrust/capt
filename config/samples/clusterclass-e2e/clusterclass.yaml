@@ -61,7 +61,7 @@ spec:
     - name: set-region-in-templates
       definitions:
         - selector:
-            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
             kind: CAPTClusterTemplate
             matchResources:
               infrastructureCluster: true
@@ -71,7 +71,7 @@ spec:
               valueFrom:
                 variable: "region"
         - selector:
-            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta2
             kind: CAPTControlPlaneTemplate
             matchResources:
               controlPlane: true
@@ -83,7 +83,7 @@ spec:
     - name: set-environment-tag
       definitions:
         - selector:
-            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta2
             kind: CAPTControlPlaneTemplate
             matchResources:
               controlPlane: true
@@ -95,7 +95,7 @@ spec:
     - name: set-endpoint-access
       definitions:
         - selector:
-            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta2
             kind: CAPTControlPlaneTemplate
             matchResources:
               controlPlane: true

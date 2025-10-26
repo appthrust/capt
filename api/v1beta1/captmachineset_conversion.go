@@ -5,28 +5,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/conversion"
 )
 
-// ConvertTo converts this v1beta1 CaptMachineSet to the hub version (v1beta2).
 func (src *CaptMachineSet) ConvertTo(dstRaw conversion.Hub) error {
 	dst := dstRaw.(*v1beta2.CaptMachineSet)
-
-	// ObjectMeta
 	dst.ObjectMeta = src.ObjectMeta
 
-	// Spec
-	if src.Spec.Replicas != nil {
-		dst.Spec.Replicas = new(int32)
-		*dst.Spec.Replicas = *src.Spec.Replicas
-	} else {
-		dst.Spec.Replicas = nil
-	}
-	if src.Spec.Selector != nil {
-		cpy := *src.Spec.Selector
-		dst.Spec.Selector = &cpy
-	} else {
-		dst.Spec.Selector = nil
-	}
+	dst.Spec.Replicas = src.Spec.Replicas
+	dst.Spec.Selector = src.Spec.Selector
 	dst.Spec.Template.ObjectMeta = src.Spec.Template.ObjectMeta
-	// Machine spec mapping
 	dst.Spec.Template.Spec.InstanceType = src.Spec.Template.Spec.InstanceType
 	dst.Spec.Template.Spec.Labels = src.Spec.Template.Spec.Labels
 	dst.Spec.Template.Spec.Tags = src.Spec.Template.Spec.Tags
@@ -39,7 +24,6 @@ func (src *CaptMachineSet) ConvertTo(dstRaw conversion.Hub) error {
 		Namespace: src.Spec.Template.Spec.WorkspaceTemplateRef.Namespace,
 	}
 
-	// Status
 	dst.Status.Replicas = src.Status.Replicas
 	dst.Status.FullyLabeledReplicas = src.Status.FullyLabeledReplicas
 	dst.Status.ReadyReplicas = src.Status.ReadyReplicas
@@ -51,28 +35,13 @@ func (src *CaptMachineSet) ConvertTo(dstRaw conversion.Hub) error {
 	return nil
 }
 
-// ConvertFrom converts from the hub version (v1beta2) to this version.
 func (dst *CaptMachineSet) ConvertFrom(srcRaw conversion.Hub) error {
 	src := srcRaw.(*v1beta2.CaptMachineSet)
-
-	// ObjectMeta
 	dst.ObjectMeta = src.ObjectMeta
 
-	// Spec
-	if src.Spec.Replicas != nil {
-		dst.Spec.Replicas = new(int32)
-		*dst.Spec.Replicas = *src.Spec.Replicas
-	} else {
-		dst.Spec.Replicas = nil
-	}
-	if src.Spec.Selector != nil {
-		cpy := *src.Spec.Selector
-		dst.Spec.Selector = &cpy
-	} else {
-		dst.Spec.Selector = nil
-	}
+	dst.Spec.Replicas = src.Spec.Replicas
+	dst.Spec.Selector = src.Spec.Selector
 	dst.Spec.Template.ObjectMeta = src.Spec.Template.ObjectMeta
-	// Machine spec mapping
 	dst.Spec.Template.Spec.InstanceType = src.Spec.Template.Spec.InstanceType
 	dst.Spec.Template.Spec.Labels = src.Spec.Template.Spec.Labels
 	dst.Spec.Template.Spec.Tags = src.Spec.Template.Spec.Tags
@@ -85,7 +54,6 @@ func (dst *CaptMachineSet) ConvertFrom(srcRaw conversion.Hub) error {
 		Namespace: src.Spec.Template.Spec.WorkspaceTemplateRef.Namespace,
 	}
 
-	// Status
 	dst.Status.Replicas = src.Status.Replicas
 	dst.Status.FullyLabeledReplicas = src.Status.FullyLabeledReplicas
 	dst.Status.ReadyReplicas = src.Status.ReadyReplicas

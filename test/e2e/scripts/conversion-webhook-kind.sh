@@ -5,7 +5,9 @@ set -euo pipefail
 # - creates a kind cluster
 # - installs CRDs and manager + webhook service
 # - generates TLS (self-signed) and injects caBundle into CRDs
-# - verifies v1beta1 create → v1beta2 GET round-trip works
+# - verifies conversions:
+#   * v1beta1 create → v1beta2 GET
+#   * v1beta2 create → v1beta1 GET
 
 CLUSTER_NAME="capt-conv"
 NAMESPACE="capt-system"
@@ -17,6 +19,7 @@ KIND_WAIT_FLAG="${KIND_WAIT_FLAG:---wait 300s}"
 ROOT_DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
 
 log() { echo "[conv-e2e] $*" >&2; }
+has_jq() { command -v jq >/dev/null 2>&1; }
 
 kind_up() {
   if ! kind get clusters | grep -q "^${CLUSTER_NAME}$"; then
@@ -168,9 +171,14 @@ EOF
   log "get v1beta2 CAPTCluster via raw endpoint"
   local region
   for i in $(seq 1 20); do
-    region=$(kubectl get --raw \
-      "/apis/infrastructure.cluster.x-k8s.io/v1beta2/namespaces/default/captclusters/conv-sample" 2>/dev/null \
-      | sed -n 's/.*"region":"\([^"]*\)".*/\1/p') || true
+    if has_jq; then
+      region=$(kubectl get --raw \
+        "/apis/infrastructure.cluster.x-k8s.io/v1beta2/namespaces/default/captclusters/conv-sample" 2>/dev/null | jq -r '.spec.region // empty') || true
+    else
+      region=$(kubectl get --raw \
+        "/apis/infrastructure.cluster.x-k8s.io/v1beta2/namespaces/default/captclusters/conv-sample" 2>/dev/null \
+        | sed -n 's/.*"region":"\([^"]*\)".*/\1/p') || true
+    fi
     if [ "${region:-}" = "us-west-2" ]; then
       break
     fi
@@ -204,9 +212,14 @@ spec:
         name: wt
         namespace: default
 EOF
-  ms_it=$(kubectl get --raw \
-    "/apis/infrastructure.cluster.x-k8s.io/v1beta2/namespaces/default/captmachinesets/conv-ms" \
-    | sed -n 's/.*"instanceType":"\([^"]*\)".*/\1/p' || true)
+  if has_jq; then
+    ms_it=$(kubectl get --raw \
+      "/apis/infrastructure.cluster.x-k8s.io/v1beta2/namespaces/default/captmachinesets/conv-ms" | jq -r '.spec.template.spec.instanceType // empty' || true)
+  else
+    ms_it=$(kubectl get --raw \
+      "/apis/infrastructure.cluster.x-k8s.io/v1beta2/namespaces/default/captmachinesets/conv-ms" \
+      | sed -n 's/.*"instanceType":"\([^"]*\)".*/\1/p' || true)
+  fi
   if [ "${ms_it:-}" != "m5.large" ]; then
     log "FAIL: expected CaptMachineSet.spec.template.spec.instanceType=m5.large, got '${ms_it:-<empty>}'"
     exit 1
@@ -231,9 +244,14 @@ spec:
         name: wt
         namespace: default
 EOF
-  md_it=$(kubectl get --raw \
-    "/apis/infrastructure.cluster.x-k8s.io/v1beta2/namespaces/default/captmachinedeployments/conv-md" \
-    | sed -n 's/.*"instanceType":"\([^"]*\)".*/\1/p' || true)
+  if has_jq; then
+    md_it=$(kubectl get --raw \
+      "/apis/infrastructure.cluster.x-k8s.io/v1beta2/namespaces/default/captmachinedeployments/conv-md" | jq -r '.spec.template.spec.instanceType // empty' || true)
+  else
+    md_it=$(kubectl get --raw \
+      "/apis/infrastructure.cluster.x-k8s.io/v1beta2/namespaces/default/captmachinedeployments/conv-md" \
+      | sed -n 's/.*"instanceType":"\([^"]*\)".*/\1/p' || true)
+  fi
   if [ "${md_it:-}" != "t3.medium" ]; then
     log "FAIL: expected CaptMachineDeployment.spec.template.spec.instanceType=t3.medium, got '${md_it:-<empty>}'"
     exit 1
@@ -255,9 +273,14 @@ spec:
         module: |
           terraform {}
 EOF
-  wt_source=$(kubectl get --raw \
-    "/apis/infrastructure.cluster.x-k8s.io/v1beta2/namespaces/default/workspacetemplates/conv-wt" \
-    | sed -n 's/.*"source":"\([^"]*\)".*/\1/p' || true)
+  if has_jq; then
+    wt_source=$(kubectl get --raw \
+      "/apis/infrastructure.cluster.x-k8s.io/v1beta2/namespaces/default/workspacetemplates/conv-wt" | jq -r '.spec.template.spec.forProvider.source // empty' || true)
+  else
+    wt_source=$(kubectl get --raw \
+      "/apis/infrastructure.cluster.x-k8s.io/v1beta2/namespaces/default/workspacetemplates/conv-wt" \
+      | sed -n 's/.*"source":"\([^"]*\)".*/\1/p' || true)
+  fi
   if [ "${wt_source:-}" != "Inline" ]; then
     log "FAIL: expected WorkspaceTemplate.spec.template.spec.forProvider.source=Inline, got '${wt_source:-<empty>}'"
     exit 1
@@ -275,15 +298,178 @@ spec:
   templateRef:
     name: conv-wt
 EOF
-  wta_tpl=$(kubectl get --raw \
-    "/apis/infrastructure.cluster.x-k8s.io/v1beta2/namespaces/default/workspacetemplateapplies/conv-wta" \
-    | sed -n 's/.*"templateRef":{[^}]*"name":"\([^"]*\)".*/\1/p' || true)
+  if has_jq; then
+    wta_tpl=$(kubectl get --raw \
+      "/apis/infrastructure.cluster.x-k8s.io/v1beta2/namespaces/default/workspacetemplateapplies/conv-wta" | jq -r '.spec.templateRef.name // empty' || true)
+  else
+    wta_tpl=$(kubectl get --raw \
+      "/apis/infrastructure.cluster.x-k8s.io/v1beta2/namespaces/default/workspacetemplateapplies/conv-wta" \
+      | sed -n 's/.*"templateRef":{[^}]*"name":"\([^"]*\)".*/\1/p' || true)
+  fi
   if [ "${wta_tpl:-}" != "conv-wt" ]; then
     log "FAIL: expected WorkspaceTemplateApply.spec.templateRef.name=conv-wt, got '${wta_tpl:-<empty>}'"
     exit 1
   fi
 
   log "PASS: additional resource conversions succeeded"
+}
+
+# Create v1beta2 resources and GET via v1beta1 to verify reverse conversion
+assert_conversion_roundtrip_reverse() {
+  # CAPTCluster
+  log "create v1beta2 CAPTCluster (reverse)"
+  cat <<EOF | kubectl apply -f -
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: CAPTCluster
+metadata:
+  name: conv2-sample
+  namespace: default
+spec:
+  region: eu-central-1
+EOF
+  local region
+  for i in $(seq 1 20); do
+    if has_jq; then
+      region=$(kubectl get --raw \
+        "/apis/infrastructure.cluster.x-k8s.io/v1beta1/namespaces/default/captclusters/conv2-sample" 2>/dev/null | jq -r '.spec.region // empty') || true
+    else
+      region=$(kubectl get --raw \
+        "/apis/infrastructure.cluster.x-k8s.io/v1beta1/namespaces/default/captclusters/conv2-sample" 2>/dev/null \
+        | sed -n 's/.*"region":"\([^"]*\)".*/\1/p') || true
+    fi
+    if [ "${region:-}" = "eu-central-1" ]; then
+      break
+    fi
+    sleep 3
+  done
+  if [ "${region:-}" != "eu-central-1" ]; then
+    log "FAIL: reverse CAPTCluster region expected eu-central-1, got '${region:-<empty>}'"
+    exit 1
+  fi
+
+  # CaptMachineSet
+  log "create v1beta2 CaptMachineSet (reverse)"
+  cat <<EOF | kubectl apply -f -
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: CaptMachineSet
+metadata:
+  name: conv2-ms
+  namespace: default
+spec:
+  template:
+    spec:
+      instanceType: c6a.large
+      nodeGroupRef:
+        name: ng1
+        namespace: default
+      workspaceTemplateRef:
+        name: wt
+        namespace: default
+EOF
+  local ms_it
+  if has_jq; then
+    ms_it=$(kubectl get --raw \
+      "/apis/infrastructure.cluster.x-k8s.io/v1beta1/namespaces/default/captmachinesets/conv2-ms" | jq -r '.spec.template.spec.instanceType // empty' || true)
+  else
+    ms_it=$(kubectl get --raw \
+      "/apis/infrastructure.cluster.x-k8s.io/v1beta1/namespaces/default/captmachinesets/conv2-ms" \
+      | sed -n 's/.*"instanceType":"\([^"]*\)".*/\1/p' || true)
+  fi
+  if [ "${ms_it:-}" != "c6a.large" ]; then
+    log "FAIL: reverse CaptMachineSet.spec.template.spec.instanceType=c6a.large, got '${ms_it:-<empty>}'"
+    exit 1
+  fi
+
+  # CaptMachineDeployment
+  log "create v1beta2 CaptMachineDeployment (reverse)"
+  cat <<EOF | kubectl apply -f -
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: CaptMachineDeployment
+metadata:
+  name: conv2-md
+  namespace: default
+spec:
+  template:
+    spec:
+      instanceType: t3a.medium
+      nodeGroupRef:
+        name: ng2
+        namespace: default
+      workspaceTemplateRef:
+        name: wt
+        namespace: default
+EOF
+  local md_it
+  if has_jq; then
+    md_it=$(kubectl get --raw \
+      "/apis/infrastructure.cluster.x-k8s.io/v1beta1/namespaces/default/captmachinedeployments/conv2-md" | jq -r '.spec.template.spec.instanceType // empty' || true)
+  else
+    md_it=$(kubectl get --raw \
+      "/apis/infrastructure.cluster.x-k8s.io/v1beta1/namespaces/default/captmachinedeployments/conv2-md" \
+      | sed -n 's/.*"instanceType":"\([^"]*\)".*/\1/p' || true)
+  fi
+  if [ "${md_it:-}" != "t3a.medium" ]; then
+    log "FAIL: reverse CaptMachineDeployment.spec.template.spec.instanceType=t3a.medium, got '${md_it:-<empty>}'"
+    exit 1
+  fi
+
+  # WorkspaceTemplate
+  log "create v1beta2 WorkspaceTemplate (reverse)"
+  cat <<EOF | kubectl apply -f -
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: WorkspaceTemplate
+metadata:
+  name: conv2-wt
+  namespace: default
+spec:
+  template:
+    spec:
+      forProvider:
+        source: Inline
+        module: |
+          terraform {}
+EOF
+  local wt_source
+  if has_jq; then
+    wt_source=$(kubectl get --raw \
+      "/apis/infrastructure.cluster.x-k8s.io/v1beta1/namespaces/default/workspacetemplates/conv2-wt" | jq -r '.spec.template.spec.forProvider.source // empty' || true)
+  else
+    wt_source=$(kubectl get --raw \
+      "/apis/infrastructure.cluster.x-k8s.io/v1beta1/namespaces/default/workspacetemplates/conv2-wt" \
+      | sed -n 's/.*"source":"\([^"]*\)".*/\1/p' || true)
+  fi
+  if [ "${wt_source:-}" != "Inline" ]; then
+    log "FAIL: reverse WorkspaceTemplate.spec.template.spec.forProvider.source=Inline, got '${wt_source:-<empty>}'"
+    exit 1
+  fi
+
+  # WorkspaceTemplateApply
+  log "create v1beta2 WorkspaceTemplateApply (reverse)"
+  cat <<EOF | kubectl apply -f -
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: WorkspaceTemplateApply
+metadata:
+  name: conv2-wta
+  namespace: default
+spec:
+  templateRef:
+    name: conv2-wt
+EOF
+  local wta_tpl
+  if has_jq; then
+    wta_tpl=$(kubectl get --raw \
+      "/apis/infrastructure.cluster.x-k8s.io/v1beta1/namespaces/default/workspacetemplateapplies/conv2-wta" | jq -r '.spec.templateRef.name // empty' || true)
+  else
+    wta_tpl=$(kubectl get --raw \
+      "/apis/infrastructure.cluster.x-k8s.io/v1beta1/namespaces/default/workspacetemplateapplies/conv2-wta" \
+      | sed -n 's/.*"templateRef":{[^}]*"name":"\([^"]*\)".*/\1/p' || true)
+  fi
+  if [ "${wta_tpl:-}" != "conv2-wt" ]; then
+    log "FAIL: reverse WorkspaceTemplateApply.spec.templateRef.name=conv2-wt, got '${wta_tpl:-<empty>}'"
+    exit 1
+  fi
+
+  log "PASS: reverse conversions succeeded"
 }
 
 main() {
@@ -299,6 +485,7 @@ main() {
   kubectl -n "${NAMESPACE}" rollout status deploy/controller-manager --timeout=180s
   assert_conversion_roundtrip
   assert_conversion_roundtrip_more
+  assert_conversion_roundtrip_reverse
   log "done"
 }
 

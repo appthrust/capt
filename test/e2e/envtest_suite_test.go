@@ -1,6 +1,9 @@
 package e2e
 
 import (
+	"fmt"
+	"path/filepath"
+	"runtime"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -24,11 +27,13 @@ func TestEnvtestE2E(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
+	binDir := filepath.Join("..", "..", "bin", "k8s", fmt.Sprintf("1.31.0-%s-%s", runtime.GOOS, runtime.GOARCH))
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			"/home/reoring/dev/capt/config/clusterapi/infrastructure/bases",
 			"/home/reoring/dev/capt/config/clusterapi/controlplane/bases",
 		},
+		BinaryAssetsDirectory: binDir,
 	}
 	var err error
 	k8sCfg, err = testEnv.Start()

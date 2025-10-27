@@ -75,6 +75,8 @@ func (r *Reconciler) updateStatus(ctx context.Context, captCluster *infrastructu
 			// Set InfrastructureReady condition
 			// MarkTrue preserves LastTransitionTime if already true
 			conditions.MarkTrue(cluster, InfrastructureReadyCondition)
+			// Also set ControlPlaneInitialized to true when infrastructure is ready
+			conditions.MarkTrue(cluster, ControlPlaneInitializedCondition)
 			logger.Info("Set InfrastructureReady condition to True")
 		} else if captCluster.Status.FailureReason != nil {
 			// Update failure reason and message only if not ready

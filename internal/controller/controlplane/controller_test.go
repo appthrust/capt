@@ -140,6 +140,7 @@ func TestReconcile(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "test-controlplane",
 						Namespace: "default",
+						Labels:    map[string]string{clusterv1.ClusterNameLabel: "test-controlplane"},
 					},
 					Spec: controlplanev1beta1.CAPTControlPlaneSpec{
 						WorkspaceTemplateRef: controlplanev1beta1.WorkspaceTemplateReference{
@@ -182,6 +183,7 @@ func TestReconcile(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "test-controlplane",
 						Namespace: "default",
+						Labels:    map[string]string{clusterv1.ClusterNameLabel: "test-controlplane"},
 					},
 					Spec: controlplanev1beta1.CAPTControlPlaneSpec{
 						Version: "1.21",

@@ -123,7 +123,7 @@ func TestReconcileSecrets(t *testing.T) {
 				assert.Equal(t, []byte("test-ca-data"), caSecret.Data["tls.crt"])
 				assert.Equal(t, []byte("test-ca-data"), caSecret.Data["ca.crt"])
 
-				// Endpoint の設定は updateStatus 側で行うため、ここでは検証しない
+				// Endpoint configuration is handled in updateStatus; no validation here
 			},
 		},
 		{

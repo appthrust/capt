@@ -112,6 +112,14 @@ func (r *Reconciler) handleVPCTemplate(ctx context.Context, captCluster *infrast
 		return result, err
 	}
 
+	// Update workspaceStatus from Workspace
+	if err := r.updateWorkspaceStatus(ctx, captCluster, workspaceApply); err != nil {
+		logger := log.FromContext(ctx)
+		logger.Error(err, "Failed to update CAPTCluster workspaceStatus")
+		// non-fatal: continue reconciliation but requeue to retry fetching workspace status
+		return Result{RequeueAfter: requeueInterval}, nil
+	}
+
 	// Get and verify VPC ID
 	if result, err := r.verifyVPCID(ctx, captCluster, cluster, workspaceApply); err != nil || result.RequeueAfter > 0 {
 		return result, err

@@ -48,7 +48,8 @@ func (r *Reconciler) updateStatus(ctx context.Context, captCluster *infrastructu
 	logger.Info("Updating status", "captCluster.Status.Ready", captCluster.Status.Ready)
 
 	// Update CAPTCluster status
-	if err := r.Status().Update(ctx, captCluster); err != nil {
+	patchBase := captCluster.DeepCopy()
+	if err := r.Status().Patch(ctx, captCluster, client.MergeFrom(patchBase)); err != nil {
 		logger.Error(err, "Failed to update CAPTCluster status")
 		return fmt.Errorf("failed to update CAPTCluster status: %v", err)
 	}

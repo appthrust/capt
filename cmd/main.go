@@ -262,6 +262,9 @@ func main() {
 
 	// +kubebuilder:scaffold:builder
 
+	// Conversion webhook path "/convert" is registered by controller-runtime when
+	// types implement conversion interfaces via their webhook setup. Avoid manual double registration.
+
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")
 		os.Exit(1)

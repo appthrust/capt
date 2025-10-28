@@ -1,0 +1,36 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: capt-validating-webhook-configuration
+webhooks:
+- name: vcaptcontrolplane.kb.io
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+- name: vcaptcontrolplanetemplate.kb.io
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+- name: vcaptcluster.kb.io
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+- name: vcaptclustertemplate.kb.io
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+- name: vcaptmachine.kb.io
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+- name: vcaptmachinetemplate.kb.io
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+

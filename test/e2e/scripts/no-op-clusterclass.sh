@@ -28,6 +28,32 @@ wait_ready_cond() {
   kubectl wait --for=condition=Ready "${kind}/${name}" -n "${ns}" --timeout=300s || true
 }
 
+# Ensure CAPT webhook server is up before applying objects that trigger admission
+wait_capt_webhook() {
+  log "wait CAPT controller rollout"
+  kubectl -n capt-system rollout status deploy/capt-controller-manager --timeout=180s || true
+
+  log "wait webhook TLS secret"
+  for i in $(seq 1 90); do
+    if kubectl -n capt-system get secret webhook-server-cert >/dev/null 2>&1; then
+      break
+    fi
+    sleep 2
+  done
+
+  log "wait webhook service endpoints"
+  for i in $(seq 1 90); do
+    EP=$(kubectl -n capt-system get endpoints capt-webhook-service -o jsonpath='{range .subsets[*]}{.addresses[*].ip}{end}' 2>/dev/null || true)
+    if [[ -n "${EP}" ]]; then
+      break
+    fi
+    sleep 2
+  done
+
+  # small settle time to ensure webhook server is accepting connections
+  sleep 2
+}
+
 # 0) sanity
 log "namespace: ${NAMESPACE}"
 
@@ -70,7 +96,8 @@ kubectl_apply config/samples/clusterclass-e2e/noop-spot-templates.yaml
 # Ensure terraform backend namespace exists for provider-terraform (backend kubernetes)
 kubectl get ns upbound-system >/dev/null 2>&1 || kubectl create namespace upbound-system
 
-# 2) apply clusterclass stack
+# 2) ensure webhook is ready, then apply clusterclass stack
+wait_capt_webhook
 kubectl_apply config/samples/clusterclass-e2e/controlplanetemplate.yaml
 kubectl_apply config/samples/clusterclass-e2e/captclustertemplate.yaml
 kubectl_apply config/samples/clusterclass-e2e/kubeadmconfigtemplate.yaml

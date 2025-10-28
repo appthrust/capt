@@ -2,6 +2,7 @@ package v1beta2
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 
@@ -33,6 +34,15 @@ type CAPTClusterWorkspaceStatus struct {
 	LastAppliedTime     *metav1.Time `json:"lastAppliedTime,omitempty"`
 }
 
+// WorkspaceStatus contains the status of the associated Workspace
+type WorkspaceStatus struct {
+	Ready bool   `json:"ready"`
+	State string `json:"state,omitempty"`
+	// AtProvider contains provider-specific observed state
+	// +optional
+	AtProvider *runtime.RawExtension `json:"atProvider,omitempty"`
+}
+
 // CAPTClusterStatus defines the observed state of CAPTCluster
 type CAPTClusterStatus struct {
 	VPCWorkspaceName        string                      `json:"vpcWorkspaceName,omitempty"`
@@ -43,6 +53,7 @@ type CAPTClusterStatus struct {
 	FailureDomains          clusterv1.FailureDomains    `json:"failureDomains,omitempty"`
 	Conditions              []metav1.Condition          `json:"conditions,omitempty"`
 	WorkspaceTemplateStatus *CAPTClusterWorkspaceStatus `json:"workspaceTemplateStatus,omitempty"`
+	WorkspaceStatus         *WorkspaceStatus            `json:"workspaceStatus,omitempty"`
 }
 
 // +kubebuilder:object:root=true

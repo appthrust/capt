@@ -27,6 +27,7 @@ spec:
         kubectl.kubernetes.io/default-container: manager
       labels:
         control-plane: controller-manager
+        app.kubernetes.io/name: capt
     spec:
       # Prefer scheduling to linux nodes for kind e2e
       nodeSelector:

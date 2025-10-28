@@ -42,19 +42,6 @@ const (
 	// CaptMachineDeployment before removing it from the apiserver.
 	DeploymentFinalizer = "captmachinedeployment.infrastructure.cluster.x-k8s.io"
 
-	// DefaultDeploymentUniqueLabelKey is the default key of the selector that is added
-	// to existing MachineSets to prevent the existing MachineSets from selecting new machines.
-	DefaultDeploymentUniqueLabelKey = "capt-deployment-hash"
-
-	// DefaultRollingUpdateMaxUnavailable is the default value of MaxUnavailable for RollingUpdate strategy.
-	DefaultRollingUpdateMaxUnavailable = 0
-
-	// DefaultRollingUpdateMaxSurge is the default value of MaxSurge for RollingUpdate strategy.
-	DefaultRollingUpdateMaxSurge = 1
-
-	// DefaultRevisionHistoryLimit is the default value of RevisionHistoryLimit.
-	DefaultRevisionHistoryLimit = 10
-
 	// DefaultProgressDeadlineSeconds is the default value of ProgressDeadlineSeconds.
 	DefaultProgressDeadlineSeconds = 600
 )

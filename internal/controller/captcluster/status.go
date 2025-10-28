@@ -11,7 +11,6 @@ import (
 	capierrors "sigs.k8s.io/cluster-api/errors"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -22,27 +21,6 @@ const (
 	// InfrastructureReadyCondition represents the condition type for infrastructure readiness
 	InfrastructureReadyCondition v1beta1.ConditionType = "InfrastructureReady"
 )
-
-//nolint:unused // helper kept for potential reuse in reconciliation refactors
-func (r *Reconciler) setOwnerReference(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster, cluster *v1beta1.Cluster) error {
-	if cluster == nil {
-		return nil
-	}
-
-	// Check if owner reference is already set
-	for _, ref := range captCluster.OwnerReferences {
-		if ref.Kind == "Cluster" && ref.APIVersion == v1beta1.GroupVersion.String() {
-			return nil
-		}
-	}
-
-	// Set owner reference
-	if err := controllerutil.SetControllerReference(cluster, captCluster, r.Scheme); err != nil {
-		return fmt.Errorf("failed to set owner reference: %v", err)
-	}
-
-	return r.Update(ctx, captCluster)
-}
 
 func (r *Reconciler) updateStatus(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster, cluster *v1beta1.Cluster) error {
 	logger := log.FromContext(ctx)

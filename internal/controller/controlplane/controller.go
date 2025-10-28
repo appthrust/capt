@@ -329,7 +329,6 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		clusterName = name
 	} else {
 		// Fallback to OwnerReference if present
-		const kindCluster = "Cluster"
 		for _, ref := range controlPlane.OwnerReferences {
 			if ref.Kind == kindCluster && ref.APIVersion == clusterv1.GroupVersion.String() && ref.Name != "" {
 				clusterName = ref.Name

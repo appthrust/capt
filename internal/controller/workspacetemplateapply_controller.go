@@ -31,7 +31,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -42,16 +41,12 @@ import (
 
 const (
 	// Errors
-	errNotWorkspaceTemplateApply = "managed resource is not a WorkspaceTemplateApply custom resource"
-	errTrackPCUsage              = "cannot track ProviderConfig usage"
-	errGetPC                     = "cannot get ProviderConfig"
-	errGetCreds                  = "cannot get credentials"
-	errGetTemplate               = "cannot get WorkspaceTemplate"
-	errCreateWorkspace           = "cannot create Workspace"
-	errWaitingForSecrets         = "waiting for required secrets"
-	errGetWorkspace              = "cannot get Workspace"
-	errWaitingForWorkspace       = "waiting for required workspace"
-	errDeleteWorkspace           = "cannot delete Workspace"
+	errGetTemplate         = "cannot get WorkspaceTemplate"
+	errCreateWorkspace     = "cannot create Workspace"
+	errWaitingForSecrets   = "waiting for required secrets"
+	errGetWorkspace        = "cannot get Workspace"
+	errWaitingForWorkspace = "waiting for required workspace"
+	errDeleteWorkspace     = "cannot delete Workspace"
 
 	// Event reasons
 	reasonCreatedWorkspace    = "CreatedWorkspace"
@@ -79,12 +74,6 @@ const (
 	// Suffixes
 	applySuffix = "-apply"
 )
-
-// WorkspaceTemplateApplyGroupKind is the group and kind of the WorkspaceTemplateApply resource
-var WorkspaceTemplateApplyGroupKind = schema.GroupKind{
-	Group: "infrastructure.cluster.x-k8s.io",
-	Kind:  "WorkspaceTemplateApply",
-}
 
 // FindStatusCondition finds the condition that matches the given type in the condition slice.
 func FindStatusCondition(conditions []xpv1.Condition, conditionType xpv1.ConditionType) *xpv1.Condition {

@@ -197,6 +197,21 @@ spec:
                 description: VPCWorkspaceName is the name of the associated VPC Terraform
                   Workspace
                 type: string
+              workspaceStatus:
+                description: WorkspaceStatus contains the status of the associated
+                  Workspace
+                properties:
+                  atProvider:
+                    description: AtProvider contains the observed state of the provider
+                    type: object
+                    x-kubernetes-preserve-unknown-fields: true
+                  ready:
+                    description: Ready indicates if the Workspace is ready
+                    type: boolean
+                  state:
+                    description: State represents the current state of the Workspace
+                    type: string
+                type: object
               workspaceTemplateStatus:
                 description: WorkspaceTemplateStatus contains the status of the WorkspaceTemplate
                 properties:

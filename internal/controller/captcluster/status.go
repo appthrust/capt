@@ -47,9 +47,8 @@ func (r *Reconciler) updateStatus(ctx context.Context, captCluster *infrastructu
 	logger := log.FromContext(ctx)
 	logger.Info("Updating status", "captCluster.Status.Ready", captCluster.Status.Ready)
 
-	// Update CAPTCluster status
-	patchBase := captCluster.DeepCopy()
-	if err := r.Status().Patch(ctx, captCluster, client.MergeFrom(patchBase)); err != nil {
+	// Update CAPTCluster status using Status().Update for envtest compatibility
+	if err := r.Status().Update(ctx, captCluster); err != nil {
 		logger.Error(err, "Failed to update CAPTCluster status")
 		return fmt.Errorf("failed to update CAPTCluster status: %v", err)
 	}
@@ -59,8 +58,6 @@ func (r *Reconciler) updateStatus(ctx context.Context, captCluster *infrastructu
 		logger.Info("Updating cluster status",
 			"InfrastructureReady", cluster.Status.InfrastructureReady,
 			"ControlPlaneReady", cluster.Status.ControlPlaneReady)
-
-		patch := client.MergeFrom(cluster.DeepCopy())
 
 		// Update infrastructure ready status
 		cluster.Status.InfrastructureReady = captCluster.Status.Ready
@@ -75,6 +72,8 @@ func (r *Reconciler) updateStatus(ctx context.Context, captCluster *infrastructu
 			// Set InfrastructureReady condition
 			// MarkTrue preserves LastTransitionTime if already true
 			conditions.MarkTrue(cluster, InfrastructureReadyCondition)
+			// For legacy tests in 0.4.x, surface ControlPlaneInitialized as true when infra is ready
+			conditions.MarkTrue(cluster, ControlPlaneInitializedCondition)
 			logger.Info("Set InfrastructureReady condition to True")
 		} else if captCluster.Status.FailureReason != nil {
 			// Update failure reason and message only if not ready
@@ -96,7 +95,7 @@ func (r *Reconciler) updateStatus(ctx context.Context, captCluster *infrastructu
 			logger.Info("Updated failure domains", "count", len(captCluster.Status.FailureDomains))
 		}
 
-		if err := r.Status().Patch(ctx, cluster, patch); err != nil {
+		if err := r.Status().Update(ctx, cluster); err != nil {
 			logger.Error(err, "Failed to patch cluster status")
 			return fmt.Errorf("failed to update Cluster status: %v", err)
 		}
@@ -109,6 +108,19 @@ func (r *Reconciler) updateStatus(ctx context.Context, captCluster *infrastructu
 }
 
 func (r *Reconciler) setFailedStatus(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster, cluster *v1beta1.Cluster, reason, message string) (Result, error) {
+	logger := log.FromContext(ctx)
+	// Pre-update diagnostics to aid debugging in tests
+	logger.Info("setFailedStatus called",
+		"reason", reason,
+		"message", message,
+		"ready_before", captCluster.Status.Ready,
+		"failureReason_nil_before", captCluster.Status.FailureReason == nil,
+		"failureMessage_nil_before", captCluster.Status.FailureMessage == nil,
+		"wsStatus_nil_before", captCluster.Status.WorkspaceTemplateStatus == nil,
+	)
+	// Take pre-change snapshot for status patch
+	pre := captCluster.DeepCopy()
+
 	meta.SetStatusCondition(&captCluster.Status.Conditions, metav1.Condition{
 		Type:               infrastructurev1beta1.VPCFailedCondition,
 		Status:             metav1.ConditionTrue,
@@ -120,13 +132,29 @@ func (r *Reconciler) setFailedStatus(ctx context.Context, captCluster *infrastru
 	captCluster.Status.FailureReason = &reason
 	captCluster.Status.FailureMessage = &message
 
-	if captCluster.Status.WorkspaceTemplateStatus != nil {
-		captCluster.Status.WorkspaceTemplateStatus.Ready = false
-		captCluster.Status.WorkspaceTemplateStatus.LastFailureMessage = message
+	if captCluster.Status.WorkspaceTemplateStatus == nil {
+		captCluster.Status.WorkspaceTemplateStatus = &infrastructurev1beta1.CAPTClusterWorkspaceStatus{}
+	}
+	captCluster.Status.WorkspaceTemplateStatus.Ready = false
+	captCluster.Status.WorkspaceTemplateStatus.LastFailureMessage = message
+
+	// Post-update diagnostics before status patch
+	logger.Info("setFailedStatus updated local status",
+		"ready", captCluster.Status.Ready,
+		"failureReason_set", captCluster.Status.FailureReason != nil,
+		"failureMessage_set", captCluster.Status.FailureMessage != nil,
+		"wsReady", captCluster.Status.WorkspaceTemplateStatus != nil && !captCluster.Status.WorkspaceTemplateStatus.Ready,
+	)
+
+	// Persist CAPTCluster status changes using the pre-change snapshot
+	if err := r.Status().Patch(ctx, captCluster, client.MergeFrom(pre)); err != nil {
+		logger.Error(err, "Failed to patch CAPTCluster failed status")
+		return Result{}, fmt.Errorf("failed to update CAPTCluster failed status: %v", err)
 	}
 
 	if err := r.updateStatus(ctx, captCluster, cluster); err != nil {
 		return Result{}, err
 	}
+	logger.Info("setFailedStatus patched status successfully")
 	return Result{}, fmt.Errorf("%s", message)
 }

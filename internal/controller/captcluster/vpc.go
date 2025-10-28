@@ -163,6 +163,8 @@ func (r *Reconciler) getOrCreateWorkspaceTemplateApply(ctx context.Context, capt
 			Variables: map[string]string{
 				"cluster_name": captCluster.Name,
 				"vpc_name":     vpcName,
+				// Some templates expect a generic "name" variable
+				"name": vpcName,
 			},
 		}
 		// Inject region/environment from Cluster annotations if present
@@ -213,6 +215,8 @@ func (r *Reconciler) getOrCreateWorkspaceTemplateApply(ctx context.Context, capt
 				vars := map[string]string{
 					"cluster_name": captCluster.Name,
 					"vpc_name":     vpcName,
+					// Some templates expect a generic "name" variable
+					"name": vpcName,
 				}
 				if ann, err := r.getParentClusterAnnotations(ctx, captCluster); err == nil {
 					if v := ann["cluster.x-k8s.io/region"]; v != "" {

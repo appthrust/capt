@@ -37,7 +37,7 @@ func (r *Reconciler) reconcileSecrets(ctx context.Context, controlPlane *control
 	// Verify WorkspaceTemplateApply is ready and has a workspace name
 	if workspaceApply.Status.WorkspaceName == "" {
 		logger.Info("Workspace name not set, waiting for WorkspaceTemplateApply to be ready")
-		return nil
+		return fmt.Errorf("workspace name not set")
 	}
 
 	// Get workspace
@@ -119,6 +119,14 @@ func (r *Reconciler) reconcileSecrets(ctx context.Context, controlPlane *control
 			logger.Error(setErr, "Failed to set status")
 		}
 		return nil
+	}
+
+	// Update control plane endpoint (patch to avoid conflicts)
+	cpBase := controlPlane.DeepCopy()
+	controlPlane.Spec.ControlPlaneEndpoint = *endpoint
+	if err := r.Patch(ctx, controlPlane, client.MergeFrom(cpBase)); err != nil {
+		logger.Error(err, "Failed to update control plane endpoint in secrets reconciliation")
+		return err
 	}
 
 	// Create CA secret

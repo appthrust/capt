@@ -15,6 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
+	controlplanev1beta1 "github.com/appthrust/capt/api/controlplane/v1beta1"
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
 )
 
@@ -150,6 +151,7 @@ func TestReconciler_reconcileDelete(t *testing.T) {
 			_ = infrastructurev1beta1.AddToScheme(scheme)
 			_ = clusterv1.AddToScheme(scheme)
 			_ = corev1.AddToScheme(scheme)
+			_ = controlplanev1beta1.AddToScheme(scheme)
 
 			// Create the fake client with all objects
 			fakeClient := fake.NewClientBuilder().

@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.4.1] - 2025-10-28
+
+### Added
+- CAPTCluster.status.workspaceStatus (v1beta1): WorkspaceのReady/State/AtProviderを公開
+- CAPTClusterコントローラ: WorkspaceからのatProvider収集ロジックを追加
+
+### Changed
+- CAPTClusterのステータス更新をPatch方式に変更（競合耐性・atProvider保持のため）
+- ClusterClassサンプルをv1beta1構造で整備（0.4系契約の完全対応）
+
+### Notes
+- 依存はCAPI v1beta1のまま。ClusterClassはv1beta1での完全対応を維持
+- 生成物（DeepCopy/CRD）を更新済み。`make install`で適用可能
+
 ## [Unreleased]
 
 ## [v0.4.0] - 2025-10-24

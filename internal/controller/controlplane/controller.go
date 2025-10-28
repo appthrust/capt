@@ -327,6 +327,10 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 				break
 			}
 		}
+		// As a final fallback in v0.4.x, default to same name as controlPlane
+		if clusterName == "" {
+			clusterName = controlPlane.Name
+		}
 	}
 
 	var cluster *clusterv1.Cluster
@@ -477,16 +481,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	// Set the WorkspaceTemplateApplyName if it's not set
-	if controlPlane.Spec.WorkspaceTemplateApplyName == "" {
-		controlPlane.Spec.WorkspaceTemplateApplyName = workspaceApply.Name
-		if err := r.Update(ctx, controlPlane); err != nil {
-			return ctrl.Result{}, err
-		}
+	controlPlane.Spec.WorkspaceTemplateApplyName = workspaceApply.Name
+	if err := r.Update(ctx, controlPlane); err != nil {
+		return ctrl.Result{}, err
+	}
 
-		// Fetch the updated object
-		if err := r.Get(ctx, req.NamespacedName, controlPlane); err != nil {
-			return ctrl.Result{}, err
-		}
+	// Fetch the updated object
+	if err := r.Get(ctx, req.NamespacedName, controlPlane); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	// Update status based on WorkspaceTemplateApply conditions

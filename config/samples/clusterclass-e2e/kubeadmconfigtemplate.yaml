@@ -1,4 +1,4 @@
-apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
 kind: KubeadmConfigTemplate
 metadata:
   name: worker-bootstrap-noop
@@ -6,8 +6,5 @@ metadata:
 spec:
   template:
     spec:
-      joinConfiguration:
-        nodeRegistration:
-          kubeletExtraArgs:
-            cloud-provider: "external"
-
+      preKubeadmCommands:
+      - echo "noop"

@@ -1,13 +1,13 @@
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: Cluster
 metadata:
   name: demo-noop
   namespace: default
 spec:
   topology:
-    class: cc-noop
+    classRef:
+      name: cc-noop
     version: v1.31.0
-    controlPlane:
     workers:
       machineDeployments:
         - class: default-worker

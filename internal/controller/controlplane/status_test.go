@@ -105,7 +105,7 @@ func TestUpdateStatus(t *testing.T) {
 			},
 			expectedPhase: "Ready",
 			expectedReady: true,
-			expectRequeue: false,
+			expectRequeue: true,
 			expectedConditions: []metav1.Condition{
 				{
 					Type:   controlplanev1beta1.ControlPlaneReadyCondition,
@@ -208,7 +208,7 @@ func TestUpdateStatus(t *testing.T) {
 			},
 			expectedPhase: "Ready",
 			expectedReady: true,
-			expectRequeue: false,
+			expectRequeue: true,
 			expectedConditions: []metav1.Condition{
 				{
 					Type:   controlplanev1beta1.ControlPlaneReadyCondition,

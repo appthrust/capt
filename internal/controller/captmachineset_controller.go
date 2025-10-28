@@ -49,10 +49,10 @@ type CaptMachineSetReconciler struct {
 	Recorder record.EventRecorder
 }
 
-//+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=captmachinesets,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=captmachinesets/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=captmachinesets/finalizers,verbs=update
-//+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=captmachines,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=captmachinesets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=captmachinesets/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=captmachinesets/finalizers,verbs=update
+// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=captmachines,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile handles CaptMachineSet reconciliation
 func (r *CaptMachineSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {

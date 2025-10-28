@@ -1,4 +1,4 @@
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
 kind: WorkspaceTemplate
 metadata:
   name: spot-role-check
@@ -20,7 +20,7 @@ spec:
         module: |
           output "role_exists" { value = true }
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
 kind: WorkspaceTemplate
 metadata:
   name: spot-role-create

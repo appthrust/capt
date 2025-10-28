@@ -23,10 +23,10 @@ type CaptControlPlaneTemplateReconciler struct {
 	Recorder record.EventRecorder
 }
 
-//+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanetemplates,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanetemplates/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanetemplates/finalizers,verbs=update
-//+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplates,verbs=get;list;watch
+// +kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanetemplates,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanetemplates/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanetemplates/finalizers,verbs=update
+// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplates,verbs=get;list;watch
 
 // Reconcile handles CAPTControlPlaneTemplate reconciliation
 func (r *CaptControlPlaneTemplateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {

@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 
@@ -89,6 +90,21 @@ type CAPTClusterWorkspaceStatus struct {
 	LastAppliedTime *metav1.Time `json:"lastAppliedTime,omitempty"`
 }
 
+// WorkspaceStatus contains the status of the associated Workspace
+type WorkspaceStatus struct {
+	// Ready indicates if the Workspace is ready
+	// +optional
+	Ready bool `json:"ready"`
+
+	// State represents the current state of the Workspace
+	// +optional
+	State string `json:"state,omitempty"`
+
+	// AtProvider contains the observed state of the provider
+	// +optional
+	AtProvider *runtime.RawExtension `json:"atProvider,omitempty"`
+}
+
 // CAPTClusterStatus defines the observed state of CAPTCluster
 type CAPTClusterStatus struct {
 	// VPCWorkspaceName is the name of the associated VPC Terraform Workspace
@@ -125,6 +141,10 @@ type CAPTClusterStatus struct {
 	// WorkspaceTemplateStatus contains the status of the WorkspaceTemplate
 	// +optional
 	WorkspaceTemplateStatus *CAPTClusterWorkspaceStatus `json:"workspaceTemplateStatus,omitempty"`
+
+	// WorkspaceStatus contains the status of the associated Workspace
+	// +optional
+	WorkspaceStatus *WorkspaceStatus `json:"workspaceStatus,omitempty"`
 }
 
 const (

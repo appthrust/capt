@@ -29,6 +29,7 @@ import (
 
 const namespace = "capt-system"
 
+// Skipped in envtest environment (requires real cluster, image build & kind)
 var _ = Describe("controller", Ordered, func() {
 	BeforeAll(func() {
 		By("installing prometheus operator")

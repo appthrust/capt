@@ -5,6 +5,8 @@ ifneq ($(wildcard VERSION),)
 VERSION := $(shell sed -n 's/^VERSION *= *//p' VERSION)
 endif
 IMG ?= ghcr.io/appthrust/capt:v$(VERSION)
+# Default image used by `make setup` for local dev. Override with SETUP_IMG=<image>.
+SETUP_IMG ?= ghcr.io/appthrust/capt:dev
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.31.0
 
@@ -56,7 +58,7 @@ manifests: controller-gen
 	$(CONTROLLER_GEN) crd:generateEmbeddedObjectMeta=true webhook paths="./api/controlplane/..." output:crd:artifacts:config=config/clusterapi/controlplane/bases
 	mkdir -p config/clusterapi/infrastructure/bases
 	$(CONTROLLER_GEN) rbac:roleName=manager-role-infrastructure paths="./internal/controller" output:stdout > config/rbac/infrastructure-role.yaml
-	$(CONTROLLER_GEN) crd:generateEmbeddedObjectMeta=true webhook paths="./api/v1beta1/..." output:crd:artifacts:config=config/clusterapi/infrastructure/bases
+	$(CONTROLLER_GEN) crd:generateEmbeddedObjectMeta=true webhook paths="./api/..." output:crd:artifacts:config=config/clusterapi/infrastructure/bases
 
 .PHONY: clusterapi-manifests
 clusterapi-manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
@@ -66,7 +68,7 @@ clusterapi-manifests: controller-gen ## Generate WebhookConfiguration, ClusterRo
 	$(CONTROLLER_GEN) crd:generateEmbeddedObjectMeta=true webhook paths="./api/controlplane/..." output:crd:artifacts:config=config/clusterapi/controlplane/bases
 	mkdir -p config/clusterapi/infrastructure/bases
 	$(CONTROLLER_GEN) rbac:roleName=manager-role-infrastructure paths="./internal/controller" output:stdout > config/rbac/infrastructure-role.yaml
-	$(CONTROLLER_GEN) crd:generateEmbeddedObjectMeta=true webhook paths="./api/v1beta1/..." output:crd:artifacts:config=config/clusterapi/infrastructure/bases
+	$(CONTROLLER_GEN) crd:generateEmbeddedObjectMeta=true webhook paths="./api/..." output:crd:artifacts:config=config/clusterapi/infrastructure/bases
 
 .PHONY: clusterctl-setup
 clusterctl-setup: clusterapi-manifests kustomize $(KUSTOMIZE_PREREQ) ## Build components and create local config for clusterctl testing.
@@ -184,8 +186,77 @@ undeploy: $(KUSTOMIZE_PREREQ) ## Undeploy controller from the K8s cluster specif
 
 ##@ Setup
 
+.PHONY: setup-v1beta1
+setup-v1beta1: setup-capi-crds setup-cert-manager setup-capi setup-crossplane setup-provider-terraform setup-webhook-certs ## Legacy v1beta1 bootstrap (pre-installs v1beta1 CRDs). Prefer `make setup`.
+
+# Ideal, one-shot bootstrap that avoids pre-installing legacy v1beta1 CRDs
+# Flow:
+#  1) kind cluster (fresh)
+#  2) cert-manager
+#  3) clusterctl init (CAPI core + kubeadm)
+#  4) apply CAPT control-plane/infrastructure CRDs
+#  5) install Crossplane and provider-terraform
+#  6) deploy CAPT (manager + webhooks + certs)
+#  7) wait for CA injection (fallback to manual inject if needed)
 .PHONY: setup
-setup: setup-capi-crds setup-cert-manager setup-capi setup-crossplane setup-provider-terraform setup-webhook-certs ## Prepare local dev cluster with CAPI (clusterctl init --bootstrap kubeadm), cert-manager, Crossplane, provider-terraform, webhook certs.
+KIND_NAME ?= capt
+setup: ## One-shot bootstrap (v1beta2-compatible): kind, cert-manager, clusterctl, Crossplane, CAPT, CA
+	$(MAKE) kind-recreate
+	$(MAKE) setup-cert-manager
+	$(MAKE) setup-capi
+	$(MAKE) setup-crossplane
+	$(MAKE) setup-provider-terraform
+	# Build local manager image and load into kind
+	$(MAKE) docker-build IMG=$(SETUP_IMG)
+	- kind load docker-image $(SETUP_IMG) --name $(KIND_NAME) || { \
+		$(CONTAINER_TOOL) save $(SETUP_IMG) | kind load image-archive /dev/stdin --name $(KIND_NAME); \
+	}
+	# Deploy CAPT using the locally built image
+	$(MAKE) deploy IMG=$(SETUP_IMG)
+	# Wait for CA injection in webhooks & CRDs
+	$(MAKE) wait-ca
+
+.PHONY: setup-ideal
+setup-ideal: setup ## Alias of `setup`
+
+.PHONY: kind-recreate
+kind-recreate: ## Recreate kind cluster named $(KIND_NAME)
+	- kind delete cluster --name $(KIND_NAME)
+	kind create cluster --name $(KIND_NAME)
+
+.PHONY: wait-ca
+wait-ca: ## Wait for cainjector to inject caBundle (verification only; no manual patch)
+	@echo "Waiting for webhook TLS secret..."
+	@i=0; until kubectl -n capt-system get secret webhook-server-cert >/dev/null 2>&1; do i=$$((i+1)); if [ $$i -gt 120 ]; then echo "timeout waiting for webhook-server-cert"; exit 1; fi; sleep 2; done
+	@echo "Waiting for cainjector to inject caBundle into admission webhooks..."
+	@i=0; until [ $$(kubectl get mutatingwebhookconfiguration capt-mutating-webhook-configuration -o jsonpath='{.webhooks[*].clientConfig.caBundle}' | wc -c) -gt 1 ]; do i=$$((i+1)); if [ $$i -gt 60 ]; then echo "error: cainjector did not inject caBundle in time"; exit 1; fi; sleep 2; done
+	@echo "Waiting for CRD conversion caBundle..."
+	@for crd in \
+	  captclusters.infrastructure.cluster.x-k8s.io \
+	  captclustertemplates.infrastructure.cluster.x-k8s.io \
+	  captmachines.infrastructure.cluster.x-k8s.io \
+	  captmachinesets.infrastructure.cluster.x-k8s.io \
+	  captmachinetemplates.infrastructure.cluster.x-k8s.io \
+	  captmachinedeployments.infrastructure.cluster.x-k8s.io \
+	  workspacetemplates.infrastructure.cluster.x-k8s.io \
+	  workspacetemplateapplies.infrastructure.cluster.x-k8s.io \
+	  captcontrolplanes.controlplane.cluster.x-k8s.io \
+	  captcontrolplanetemplates.controlplane.cluster.x-k8s.io; do \
+	  i=0; \
+	  until [ $$(kubectl get crd $$crd -o jsonpath='{.spec.conversion.webhook.clientConfig.caBundle}' | wc -c) -gt 1 ]; do \
+	    i=$$((i+1)); \
+	    if [ $$i -gt 60 ]; then echo "error: cainjector did not inject caBundle to CRD $$crd in time"; exit 1; fi; \
+	    sleep 2; \
+	  done; \
+	done
+	@echo "CA injection ensured."
+
+.PHONY: all-in-one-noop
+all-in-one-noop: setup run-noop-e2e ## Bootstrap and run no-op ClusterClass e2e
+
+.PHONY: run-noop-e2e
+run-noop-e2e: ## Run the no-op ClusterClass e2e script
+	./test/e2e/scripts/no-op-clusterclass.sh
 
 .PHONY: setup-capi-crds
 setup-capi-crds: ## Install only Cluster API Core CRDs (avoid conflicting tf.upbound.io CRDs).
@@ -289,7 +360,7 @@ HELM_BIN ?= $(LOCALBIN)/helm
 KUSTOMIZE_VERSION ?= v5.4.3
 CONTROLLER_TOOLS_VERSION ?= v0.16.1
 ENVTEST_VERSION ?= release-0.19
-GOLANGCI_LINT_VERSION ?= v1.59.1
+GOLANGCI_LINT_VERSION ?= v1.63.4
 CERT_MANAGER_VERSION ?= v1.16.1
 CROSSPLANE_VERSION ?= v1.16.0
 
@@ -381,7 +452,7 @@ clusterctl: $(LOCALBIN) ## Download clusterctl locally (prebuilt release with Gi
 CLUSTERCTL_BIN ?= $(LOCALBIN)/clusterctl
 
 # clusterctl prebuilt binary (ensures GitVersion is embedded)
-CLUSTERCTL_VERSION ?= v1.10.7
+CLUSTERCTL_VERSION ?= v1.11.2
 UNAME_M := $(shell uname -m)
 ifeq ($(UNAME_M),x86_64)
   CLUSTERCTL_ARCH := amd64

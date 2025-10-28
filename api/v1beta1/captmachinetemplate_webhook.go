@@ -25,7 +25,7 @@ func (r *CaptMachineTemplate) SetupWebhookWithManager(mgr ctrl.Manager) error {
 		Complete()
 }
 
-//+kubebuilder:webhook:path=/mutate-infrastructure-cluster-x-k8s-io-v1beta1-captmachinetemplate,mutating=true,failurePolicy=fail,sideEffects=None,groups=infrastructure.cluster.x-k8s.io,resources=captmachinetemplates,verbs=create;update,versions=v1beta1,name=mcaptmachinetemplate.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/mutate-infrastructure-cluster-x-k8s-io-v1beta1-captmachinetemplate,mutating=true,failurePolicy=fail,sideEffects=None,groups=infrastructure.cluster.x-k8s.io,resources=captmachinetemplates,verbs=create;update,versions=v1beta1,name=mcaptmachinetemplate.kb.io,admissionReviewVersions=v1
 
 var _ webhook.Defaulter = &CaptMachineTemplate{}
 
@@ -34,7 +34,7 @@ func (r *CaptMachineTemplate) Default() {
 	captmachinetemplatelog.Info("default", "name", r.Name)
 }
 
-//+kubebuilder:webhook:path=/validate-infrastructure-cluster-x-k8s-io-v1beta1-captmachinetemplate,mutating=false,failurePolicy=fail,sideEffects=None,groups=infrastructure.cluster.x-k8s.io,resources=captmachinetemplates,verbs=create;update,versions=v1beta1,name=vcaptmachinetemplate.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/validate-infrastructure-cluster-x-k8s-io-v1beta1-captmachinetemplate,mutating=false,failurePolicy=fail,sideEffects=None,groups=infrastructure.cluster.x-k8s.io,resources=captmachinetemplates,verbs=create;update,versions=v1beta1,name=vcaptmachinetemplate.kb.io,admissionReviewVersions=v1
 
 var _ webhook.Validator = &CaptMachineTemplate{}
 

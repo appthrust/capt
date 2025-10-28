@@ -2,6 +2,7 @@ package captcluster
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -49,6 +50,7 @@ type Reconciler struct {
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters/status,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=tf.upbound.io,resources=workspaces;workspaces/status,verbs=get;list;watch
 
 // getOwnerCluster returns the owner Cluster for a CAPTCluster
 func (r *Reconciler) getOwnerCluster(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster) (*clusterv1.Cluster, error) {
@@ -173,7 +175,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (Result, e
 		if captCluster.Spec.Region != "" && ann["cluster.x-k8s.io/region"] != captCluster.Spec.Region {
 			ann["cluster.x-k8s.io/region"] = captCluster.Spec.Region
 		}
-		// environment は ClusterClass 変数から注釈展開される想定。ここでは触らない。
+		// The environment annotation is expected to be expanded from ClusterClass variables; do not modify here.
 		cluster.SetAnnotations(ann)
 		_ = r.Patch(ctx, cluster, client.MergeFrom(patchBase))
 	}
@@ -203,7 +205,8 @@ func (r *Reconciler) handleMissingCluster(ctx context.Context, captCluster *infr
 	})
 	captCluster.Status.Ready = false
 
-	// Clean up any existing WorkspaceTemplateApply
+	// Clean up any existing WorkspaceTemplateApply (best-effort);
+	// do not rely on spec field presence since it's immutable under topology.
 	if err := r.cleanupWorkspaceTemplateApply(ctx, captCluster); err != nil {
 		return Result{}, err
 	}
@@ -221,13 +224,15 @@ func (r *Reconciler) handleMissingCluster(ctx context.Context, captCluster *infr
 func (r *Reconciler) cleanupWorkspaceTemplateApply(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster) error {
 	logger := log.FromContext(ctx)
 
-	if captCluster.Spec.WorkspaceTemplateApplyName == "" {
-		return nil
+	// Resolve apply name deterministically when spec field is empty
+	applyName := captCluster.Spec.WorkspaceTemplateApplyName
+	if applyName == "" {
+		applyName = fmt.Sprintf("%s-vpc", captCluster.Name)
 	}
 
 	workspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
 	err := r.Get(ctx, types.NamespacedName{
-		Name:      captCluster.Spec.WorkspaceTemplateApplyName,
+		Name:      applyName,
 		Namespace: captCluster.Namespace,
 	}, workspaceApply)
 
@@ -242,12 +247,7 @@ func (r *Reconciler) cleanupWorkspaceTemplateApply(ctx context.Context, captClus
 		return err
 	}
 
-	// Clear the reference
-	captCluster.Spec.WorkspaceTemplateApplyName = ""
-	if err := r.Update(ctx, captCluster); err != nil {
-		logger.Error(err, "Failed to clear WorkspaceTemplateApplyName")
-		return err
-	}
+	// Do not clear spec field under topology; nothing more to do
 
 	return nil
 }

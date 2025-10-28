@@ -305,6 +305,10 @@ spec:
                   state:
                     description: State represents the current state of the WorkspaceTemplate
                     type: string
+                  workspaceName:
+                    description: WorkspaceName is the name of the associated Terraform
+                      Workspace
+                    type: string
                 type: object
             type: object
         type: object
@@ -526,6 +530,10 @@ spec:
                   ready:
                     type: boolean
                   state:
+                    type: string
+                  workspaceName:
+                    description: WorkspaceName is the name of the associated Terraform
+                      Workspace
                     type: string
                 required:
                 - ready

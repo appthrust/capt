@@ -94,6 +94,15 @@ sequenceDiagram
     CA->>CA: Apply Infrastructure
 ```
 
+### Topology Immutability and Naming
+
+When using ClusterTopology, CAPT avoids mutating `spec` fields post-creation. Controllers resolve a deterministic name for `WorkspaceTemplateApply` without writing it back to `spec` and surface the actual Terraform workspace via `status.workspaceTemplateStatus.workspaceName`.
+
+- Control plane WTA: `<captcontrolplane-name>-eks-controlplane-apply`
+- Cluster VPC WTA: `<captcluster-name>-vpc`
+
+Consumers should rely on status for observability rather than controller-driven spec mutations.
+
 Each component is managed independently through WorkspaceTemplates and can be templated using ClusterClass. The controllers automatically manage WorkspaceTemplateApply resources for infrastructure provisioning.
 
 ## Key Benefits

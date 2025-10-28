@@ -24,24 +24,29 @@ Before you begin, ensure you have:
    kubectl cluster-info
    ```
 
-### Step 2: Install cert-manager
+### Step 2: Install cert-manager (required for automatic CA injection)
 
 ```
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.16.1/cert-manager.yaml
 ```
+Wait for CRDs to be established:
+```
+kubectl wait --for=condition=Established crd/certificates.cert-manager.io --timeout=300s || true
+```
 
-### Step 3: Install Cluster API
+### Step 3: Install Cluster API (management cluster v1beta2)
 
-1. Install clusterctl:
+1. Install clusterctl (v1.11.x):
    ```bash
-   curl -L https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.5.1/clusterctl-linux-amd64 -o clusterctl
+   # Match the version used by the Makefile (CLUSTERCTL_VERSION)
+   curl -L https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.11.2/clusterctl-linux-amd64 -o clusterctl
    chmod +x clusterctl
    sudo mv clusterctl /usr/local/bin/
    ```
 
-2. Initialize Cluster API:
+2. Initialize Cluster API (Topology requires kubeadm bootstrap):
    ```bash
-   clusterctl init
+   clusterctl init --core cluster-api --bootstrap kubeadm
    ```
 
 3. Verify the installation:
@@ -55,7 +60,7 @@ kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/
    kubectl get crds | grep cluster.x-k8s.io
    ```
 
-### Step 3: Install CAPT
+### Step 4: Install CAPT (with automatic CA injection)
 
 1. Download and apply the installer:
    ```bash
@@ -67,6 +72,17 @@ kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/
 
    # Apply the installer
    kubectl apply -f capt.yaml
+   ```
+
+3. If you build from source via kustomize (recommended one-shot bootstrap is `make setup`):
+   ```bash
+   # Option A: one-shot bootstrap for local kind env
+   make setup
+
+   # Option B: deploy only CAPT manifests with kustomize
+   # (Issuer/Certificate are in config/certmanager; CA injection for Webhooks/CRDs
+   #  is enabled via cert-manager annotations in config/default/kustomization.yaml)
+   make deploy
    ```
 
 2. Verify the installation:

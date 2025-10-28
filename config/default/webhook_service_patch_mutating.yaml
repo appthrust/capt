@@ -1,0 +1,36 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: capt-mutating-webhook-configuration
+webhooks:
+- name: mcaptcontrolplane.kb.io
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+- name: mcaptcontrolplanetemplate.kb.io
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+- name: mcaptcluster.kb.io
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+- name: mcaptclustertemplate.kb.io
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+- name: mcaptmachine.kb.io
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+- name: mcaptmachinetemplate.kb.io
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+

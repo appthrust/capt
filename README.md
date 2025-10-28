@@ -203,7 +203,7 @@ kubectl apply -f cluster.yaml
 
 For detailed clusterctl integration guide, see [docs/clusterctl-integration.md](docs/clusterctl-integration.md).
 
-**Note:** It is recommended to use `clusterctl` version `v1.5.x` or newer to ensure compatibility with the `ClusterTopology` feature gate.
+**Note:** It is recommended to use `clusterctl` version `v1.11.x` (management cluster v1beta2) to ensure compatibility with ClusterTopology and this repository's one-shot bootstrap (`make setup`).
 
 ## Quick Start Guide
 

@@ -16,15 +16,20 @@ namePrefix: capt-
 
 resources:
 - ../rbac
-- ../manager
+# [CERTMANAGER] Issuer/Certificate for CA injection (apply before manager)
+- ../certmanager
 # [WEBHOOK] enable webhook and service for conversion
 - ../webhook
+# [MANAGER] controller deployment
+- ../manager
 # [METRICS] Expose the controller manager metrics service.
 - metrics_service.yaml
 # Include CAPT CRDs (controlplane and infrastructure)
 - ../clusterapi
 
-# Uncomment the patches line if you enable Metrics, and/or are using webhooks and cert-manager
+configurations:
+- kustomizeconfig.yaml
+
 patches:
 # [METRICS] The following patch will enable the metrics endpoint using HTTPS and the port :8443.
 # More info: https://book.kubebuilder.io/reference/metrics
@@ -32,5 +37,132 @@ patches:
   target:
     kind: Deployment
 
-# If you want to customize your kustomize build even further, you can do so via bases and patches here.
-# (No legacy 'bases' entries to avoid duplicate resource IDs)
+# [WEBHOOK] Mount webhook TLS secret issued by cert-manager
+- path: manager_webhook_patch.yaml
+  target:
+    kind: Deployment
+
+# [CERTMANAGER] Inject CA bundle into webhook configurations (reference Certificate)
+- target:
+    kind: ValidatingWebhookConfiguration
+  patch: |-
+    - op: add
+      path: /metadata/annotations
+      value: {}
+    - op: add
+      path: /metadata/annotations/cert-manager.io~1inject-ca-from
+      value: capt-system/capt-serving-cert
+
+# [WEBHOOK] Ensure admission webhooks point to capt-webhook-service in capt-system (name-based merge, not index)
+- path: webhook_service_patch_mutating.yaml
+  target:
+    kind: MutatingWebhookConfiguration
+    name: capt-mutating-webhook-configuration
+- path: webhook_service_patch_validating.yaml
+  target:
+    kind: ValidatingWebhookConfiguration
+    name: capt-validating-webhook-configuration
+
+# Fallback: JSON6902 replace to ensure Service ref correctness (scoped by name)
+- target:
+    kind: MutatingWebhookConfiguration
+    name: capt-mutating-webhook-configuration
+  patch: |-
+    - op: replace
+      path: /webhooks/0/clientConfig/service/name
+      value: capt-webhook-service
+    - op: replace
+      path: /webhooks/0/clientConfig/service/namespace
+      value: capt-system
+    - op: replace
+      path: /webhooks/1/clientConfig/service/name
+      value: capt-webhook-service
+    - op: replace
+      path: /webhooks/1/clientConfig/service/namespace
+      value: capt-system
+    - op: replace
+      path: /webhooks/2/clientConfig/service/name
+      value: capt-webhook-service
+    - op: replace
+      path: /webhooks/2/clientConfig/service/namespace
+      value: capt-system
+    - op: replace
+      path: /webhooks/3/clientConfig/service/name
+      value: capt-webhook-service
+    - op: replace
+      path: /webhooks/3/clientConfig/service/namespace
+      value: capt-system
+    - op: replace
+      path: /webhooks/4/clientConfig/service/name
+      value: capt-webhook-service
+    - op: replace
+      path: /webhooks/4/clientConfig/service/namespace
+      value: capt-system
+    - op: replace
+      path: /webhooks/5/clientConfig/service/name
+      value: capt-webhook-service
+    - op: replace
+      path: /webhooks/5/clientConfig/service/namespace
+      value: capt-system
+
+- target:
+    kind: ValidatingWebhookConfiguration
+    name: capt-validating-webhook-configuration
+  patch: |-
+    - op: replace
+      path: /webhooks/0/clientConfig/service/name
+      value: capt-webhook-service
+    - op: replace
+      path: /webhooks/0/clientConfig/service/namespace
+      value: capt-system
+    - op: replace
+      path: /webhooks/1/clientConfig/service/name
+      value: capt-webhook-service
+    - op: replace
+      path: /webhooks/1/clientConfig/service/namespace
+      value: capt-system
+    - op: replace
+      path: /webhooks/2/clientConfig/service/name
+      value: capt-webhook-service
+    - op: replace
+      path: /webhooks/2/clientConfig/service/namespace
+      value: capt-system
+    - op: replace
+      path: /webhooks/3/clientConfig/service/name
+      value: capt-webhook-service
+    - op: replace
+      path: /webhooks/3/clientConfig/service/namespace
+      value: capt-system
+    - op: replace
+      path: /webhooks/4/clientConfig/service/name
+      value: capt-webhook-service
+    - op: replace
+      path: /webhooks/4/clientConfig/service/namespace
+      value: capt-system
+    - op: replace
+      path: /webhooks/5/clientConfig/service/name
+      value: capt-webhook-service
+    - op: replace
+      path: /webhooks/5/clientConfig/service/namespace
+      value: capt-system
+
+- target:
+    kind: MutatingWebhookConfiguration
+  patch: |-
+    - op: add
+      path: /metadata/annotations
+      value: {}
+    - op: add
+      path: /metadata/annotations/cert-manager.io~1inject-ca-from
+      value: capt-system/capt-serving-cert
+
+# [CERTMANAGER] Inject CA bundle into CRD conversion webhooks (reference Certificate)
+- target:
+    kind: CustomResourceDefinition
+  patch: |-
+    - op: add
+      path: /metadata/annotations
+      value: {}
+    - op: add
+      path: /metadata/annotations/cert-manager.io~1inject-ca-from
+      value: capt-system/capt-serving-cert

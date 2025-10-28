@@ -1,0 +1,23 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: serving-cert
+  namespace: capt-system
+spec:
+  isCA: true
+  secretName: webhook-server-cert
+  duration: 87600h # 10y
+  renewBefore: 720h # 30d
+  subject:
+    organizations:
+    - capt
+  commonName: capt-webhook-service.capt-system.svc
+  dnsNames:
+  - capt-webhook-service.capt-system.svc
+  - capt-webhook-service.capt-system.svc.cluster.local
+  issuerRef:
+    name: selfsigned-issuer
+    kind: Issuer
+    group: cert-manager.io
+
+

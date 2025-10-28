@@ -51,6 +51,17 @@ func (src *CAPTCluster) ConvertTo(dstRaw conversion.Hub) error {
 		dst.Status.WorkspaceTemplateStatus = nil
 	}
 
+	// WorkspaceStatus
+	if src.Status.WorkspaceStatus != nil {
+		dst.Status.WorkspaceStatus = &v1beta2.WorkspaceStatus{
+			Ready:      src.Status.WorkspaceStatus.Ready,
+			State:      src.Status.WorkspaceStatus.State,
+			AtProvider: src.Status.WorkspaceStatus.AtProvider,
+		}
+	} else {
+		dst.Status.WorkspaceStatus = nil
+	}
+
 	return nil
 }
 
@@ -98,6 +109,17 @@ func (dst *CAPTCluster) ConvertFrom(srcRaw conversion.Hub) error {
 		}
 	} else {
 		dst.Status.WorkspaceTemplateStatus = nil
+	}
+
+	// WorkspaceStatus
+	if src.Status.WorkspaceStatus != nil {
+		dst.Status.WorkspaceStatus = &WorkspaceStatus{
+			Ready:      src.Status.WorkspaceStatus.Ready,
+			State:      src.Status.WorkspaceStatus.State,
+			AtProvider: src.Status.WorkspaceStatus.AtProvider,
+		}
+	} else {
+		dst.Status.WorkspaceStatus = nil
 	}
 
 	return nil

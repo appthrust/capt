@@ -22,17 +22,18 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-//+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanes,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanes/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanes/finalizers,verbs=update
+// +kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanes,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanes/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanes/finalizers,verbs=update
 // Additional permissions required by the control plane reconciler
-//+kubebuilder:rbac:groups=tf.upbound.io,resources=workspaces;workspaces/status,verbs=get;list;watch
-//+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplates;workspacetemplateapplies;workspacetemplateapplies/status,verbs=get;list;watch;create;update;patch
-//+kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters;clusters/status,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=tf.upbound.io,resources=workspaces;workspaces/status,verbs=get;list;watch
+// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplates;workspacetemplateapplies;workspacetemplateapplies/status,verbs=get;list;watch;create;update;patch
+// +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters;clusters/status,verbs=get;list;watch;update;patch
 
 const (
 	// CAPTControlPlaneFinalizer is the finalizer added to CAPTControlPlane instances
 	CAPTControlPlaneFinalizer = "controlplane.cluster.x-k8s.io/captcontrolplane"
+	kindCluster               = "Cluster"
 )
 
 // createKubeconfigWorkspaceTemplateApply creates a WorkspaceTemplateApply for kubeconfig generation
@@ -179,11 +180,11 @@ func (r *Reconciler) cleanupResources(ctx context.Context, controlPlane *control
 	logger := log.FromContext(ctx)
 
 	// 親クラスタを取得
-	cluster := &clusterv1.Cluster{}
+	var cluster *clusterv1.Cluster
 	if err := r.Get(ctx, types.NamespacedName{
 		Name:      controlPlane.Name,
 		Namespace: controlPlane.Namespace,
-	}, cluster); err != nil {
+	}, &clusterv1.Cluster{}); err != nil {
 		if !apierrors.IsNotFound(err) {
 			return fmt.Errorf("failed to get parent cluster: %v", err)
 		}
@@ -191,11 +192,16 @@ func (r *Reconciler) cleanupResources(ctx context.Context, controlPlane *control
 		logger.Info("Parent cluster already deleted")
 	} else {
 		// エンドポイントを削除
-		cluster.Spec.ControlPlaneEndpoint = clusterv1.APIEndpoint{}
-		if err := r.Update(ctx, cluster); err != nil {
-			return fmt.Errorf("failed to update cluster endpoint: %v", err)
+		// fetch actual object to update
+		c := &clusterv1.Cluster{}
+		if err := r.Get(ctx, types.NamespacedName{Name: controlPlane.Name, Namespace: controlPlane.Namespace}, c); err == nil {
+			c.Spec.ControlPlaneEndpoint = clusterv1.APIEndpoint{}
+			if err := r.Update(ctx, c); err != nil {
+				return fmt.Errorf("failed to update cluster endpoint: %v", err)
+			}
+			logger.Info("Successfully cleared control plane endpoint")
+			cluster = c
 		}
-		logger.Info("Successfully cleared control plane endpoint")
 	}
 
 	// Find and check associated WorkspaceTemplateApply
@@ -275,7 +281,7 @@ func (r *Reconciler) cleanupResources(ctx context.Context, controlPlane *control
 	}
 
 	// Delete generated kubeconfig outputs secret if it exists
-	if cluster != nil {
+	if cluster != nil { //nolint:staticcheck // cluster is a pointer that can be nil when not found
 		outputsSecret := &corev1.Secret{}
 		outputsName := fmt.Sprintf("%s-outputs-kubeconfig", cluster.Name)
 		if err := r.Get(ctx, client.ObjectKey{Name: outputsName, Namespace: controlPlane.Namespace}, outputsSecret); err == nil {
@@ -302,6 +308,8 @@ func (r *Reconciler) cleanupResources(ctx context.Context, controlPlane *control
 }
 
 // Reconcile handles CAPTControlPlane events
+//
+//nolint:gocyclo // The reconciliation logic is intentionally verbose for clarity; refactors planned separately.
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling CAPTControlPlane")
@@ -321,8 +329,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		clusterName = name
 	} else {
 		// Fallback to OwnerReference if present
+		const kindCluster = "Cluster"
 		for _, ref := range controlPlane.OwnerReferences {
-			if ref.Kind == "Cluster" && ref.APIVersion == clusterv1.GroupVersion.String() && ref.Name != "" {
+			if ref.Kind == kindCluster && ref.APIVersion == clusterv1.GroupVersion.String() && ref.Name != "" {
 				clusterName = ref.Name
 				break
 			}
@@ -331,7 +340,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 
 	var cluster *clusterv1.Cluster
 	if clusterName != "" {
-		c := &clusterv1.Cluster{}
+		var c *clusterv1.Cluster = &clusterv1.Cluster{}
 		if err := r.Get(ctx, types.NamespacedName{Name: clusterName, Namespace: controlPlane.Namespace}, c); err != nil {
 			if !apierrors.IsNotFound(err) {
 				return ctrl.Result{}, err
@@ -411,8 +420,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		}
 	}
 
-	// Handle missing cluster case
-	if cluster == nil {
+	// Handle missing cluster case (cluster may be nil if not found above)
+	if cluster == nil { //nolint:staticcheck // cluster is intentionally allowed to be nil
 		logger.Info("Owner cluster not found")
 		meta.SetStatusCondition(&controlPlane.Status.Conditions, metav1.Condition{
 			Type:               controlplanev1beta1.ControlPlaneReadyCondition,
@@ -471,23 +480,12 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	// Get or create WorkspaceTemplateApply
-	workspaceApply, err := r.getOrCreateWorkspaceTemplateApply(ctx, controlPlane, workspaceTemplate)
+	workspaceApply, err := r.getOrCreateWorkspaceTemplateApply(ctx, controlPlane)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	// Set the WorkspaceTemplateApplyName if it's not set
-	if controlPlane.Spec.WorkspaceTemplateApplyName == "" {
-		controlPlane.Spec.WorkspaceTemplateApplyName = workspaceApply.Name
-		if err := r.Update(ctx, controlPlane); err != nil {
-			return ctrl.Result{}, err
-		}
-
-		// Fetch the updated object
-		if err := r.Get(ctx, req.NamespacedName, controlPlane); err != nil {
-			return ctrl.Result{}, err
-		}
-	}
+	// Do not write spec.WorkspaceTemplateApplyName; record workspace name in status instead
 
 	// Update status based on WorkspaceTemplateApply conditions
 	result, err := r.updateStatus(ctx, controlPlane, workspaceApply, cluster)
@@ -530,7 +528,7 @@ func (r *Reconciler) setOwnerReference(ctx context.Context, controlPlane *contro
 
 	// Check if owner reference already exists
 	for _, ref := range controlPlane.OwnerReferences {
-		if ref.Kind == "Cluster" && ref.APIVersion == clusterv1.GroupVersion.String() {
+		if ref.Kind == kindCluster && ref.APIVersion == clusterv1.GroupVersion.String() {
 			return nil
 		}
 	}

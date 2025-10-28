@@ -104,7 +104,8 @@ var _ = Describe("CAPTCluster Controller", func() {
 
 			By("Verifying WorkspaceTemplateApply properties")
 			Expect(createdVPCApply.Spec.TemplateRef.Name).Should(Equal("vpc-template"))
-			Expect(createdVPCApply.Spec.Variables["name"]).Should(Equal(ClusterName + "-vpc"))
+			Expect(createdVPCApply.Spec.Variables["vpc_name"]).Should(Equal(ClusterName + "-vpc"))
+			Expect(createdVPCApply.Spec.Variables["cluster_name"]).Should(Equal(ClusterName))
 
 			By("Creating Terraform Workspace")
 			workspace := &unstructured.Unstructured{}

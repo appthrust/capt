@@ -183,6 +183,10 @@ type WorkspaceTemplateStatus struct {
 	// LastFailureMessage contains the error message from the last failure
 	// +optional
 	LastFailureMessage string `json:"lastFailureMessage,omitempty"`
+
+	// WorkspaceName is the name of the associated Terraform Workspace
+	// +optional
+	WorkspaceName string `json:"workspaceName,omitempty"`
 }
 
 // WorkspaceStatus contains the status of the associated Workspace
@@ -245,13 +249,13 @@ type CAPTControlPlaneStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
-//+kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.ready",description="Control Plane Ready status"
-//+kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase",description="Control Plane Phase"
-//+kubebuilder:printcolumn:name="Version",type="string",JSONPath=".spec.version",description="Kubernetes version"
-//+kubebuilder:printcolumn:name="Endpoint",type="string",JSONPath=".spec.controlPlaneEndpoint.host",description="API Server Endpoint"
-//+kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.ready",description="Control Plane Ready status"
+// +kubebuilder:printcolumn:name="Phase",type="string",JSONPath=".status.phase",description="Control Plane Phase"
+// +kubebuilder:printcolumn:name="Version",type="string",JSONPath=".spec.version",description="Kubernetes version"
+// +kubebuilder:printcolumn:name="Endpoint",type="string",JSONPath=".spec.controlPlaneEndpoint.host",description="API Server Endpoint"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // CAPTControlPlane is the Schema for the captcontrolplanes API
 type CAPTControlPlane struct {
@@ -262,7 +266,7 @@ type CAPTControlPlane struct {
 	Status CAPTControlPlaneStatus `json:"status,omitempty"`
 }
 
-//+kubebuilder:object:root=true
+// +kubebuilder:object:root=true
 
 // CAPTControlPlaneList contains a list of CAPTControlPlane
 type CAPTControlPlaneList struct {

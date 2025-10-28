@@ -104,6 +104,88 @@ spec:
             type: object
         type: object
     served: true
+    storage: false
+    subresources:
+      status: {}
+  - name: v1beta2
+    schema:
+      openAPIV3Schema:
+        description: CaptMachineTemplate is the Schema for the captmachinetemplates
+          API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: CAPTMachineTemplateSpec defines the desired state of CaptMachineTemplate
+            properties:
+              template:
+                description: CAPTMachineTemplateResource describes the data needed
+                  to create a CaptMachine from a template
+                properties:
+                  spec:
+                    description: CaptMachineSpec defines the desired state of CaptMachine
+                    properties:
+                      instanceType:
+                        type: string
+                      labels:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      nodeGroupRef:
+                        properties:
+                          name:
+                            type: string
+                          namespace:
+                            type: string
+                        required:
+                        - name
+                        - namespace
+                        type: object
+                      tags:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      workspaceTemplateRef:
+                        description: WorkspaceTemplateReference contains the reference
+                          to WorkspaceTemplate
+                        properties:
+                          name:
+                            description: Name of the referenced WorkspaceTemplate
+                            type: string
+                          namespace:
+                            description: Namespace of the referenced WorkspaceTemplate
+                            type: string
+                        required:
+                        - name
+                        type: object
+                    required:
+                    - instanceType
+                    - nodeGroupRef
+                    - workspaceTemplateRef
+                    type: object
+                required:
+                - spec
+                type: object
+            required:
+            - template
+            type: object
+        type: object
+    served: true
     storage: true
     subresources:
       status: {}

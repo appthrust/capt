@@ -88,6 +88,13 @@ func (r *Reconciler) updateStatus(
 	if err := r.updateWorkspaceStatus(ctx, controlPlane, workspaceApply); err != nil {
 		return r.setFailedStatus(ctx, controlPlane, cluster, "WorkspaceStatusUpdateFailed", fmt.Sprintf("Failed to update workspace status: %v", err))
 	}
+	// Persist Workspace name into status for observability
+	if workspaceApply != nil && workspaceApply.Status.WorkspaceName != "" {
+		if controlPlane.Status.WorkspaceTemplateStatus == nil {
+			controlPlane.Status.WorkspaceTemplateStatus = &controlplanev1beta1.WorkspaceTemplateStatus{}
+		}
+		controlPlane.Status.WorkspaceTemplateStatus.WorkspaceName = workspaceApply.Status.WorkspaceName
+	}
 
 	// Log the current status
 	logger.Info("Status after workspace update",

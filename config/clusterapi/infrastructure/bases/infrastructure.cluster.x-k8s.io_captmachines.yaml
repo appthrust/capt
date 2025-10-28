@@ -8,6 +8,8 @@ metadata:
 spec:
   group: infrastructure.cluster.x-k8s.io
   names:
+    categories:
+    - cluster-api
     kind: CaptMachine
     listKind: CaptMachineList
     plural: captmachines
@@ -185,6 +187,162 @@ spec:
                 description: Ready denotes that the machine is ready and joined to
                   the node group
                 type: boolean
+            type: object
+        type: object
+    served: true
+    storage: false
+    subresources:
+      status: {}
+  - additionalPrinterColumns:
+    - description: Machine Ready status
+      jsonPath: .status.ready
+      name: Ready
+      type: boolean
+    - description: EC2 Instance ID
+      jsonPath: .status.instanceId
+      name: Instance ID
+      type: string
+    - description: Node Group name
+      jsonPath: .spec.nodeGroupRef.name
+      name: Node Group
+      type: string
+    name: v1beta2
+    schema:
+      openAPIV3Schema:
+        description: CaptMachine is the Schema for the captmachines API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: CaptMachineSpec defines the desired state of CaptMachine
+            properties:
+              instanceType:
+                type: string
+              labels:
+                additionalProperties:
+                  type: string
+                type: object
+              nodeGroupRef:
+                properties:
+                  name:
+                    type: string
+                  namespace:
+                    type: string
+                required:
+                - name
+                - namespace
+                type: object
+              tags:
+                additionalProperties:
+                  type: string
+                type: object
+              workspaceTemplateRef:
+                description: WorkspaceTemplateReference contains the reference to
+                  WorkspaceTemplate
+                properties:
+                  name:
+                    description: Name of the referenced WorkspaceTemplate
+                    type: string
+                  namespace:
+                    description: Namespace of the referenced WorkspaceTemplate
+                    type: string
+                required:
+                - name
+                type: object
+            required:
+            - instanceType
+            - nodeGroupRef
+            - workspaceTemplateRef
+            type: object
+          status:
+            description: CaptMachineStatus defines the observed state of CaptMachine
+            properties:
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              failureMessage:
+                type: string
+              failureReason:
+                type: string
+              instanceId:
+                type: string
+              lastTransitionTime:
+                format: date-time
+                type: string
+              privateIp:
+                type: string
+              ready:
+                type: boolean
+            required:
+            - ready
             type: object
         type: object
     served: true

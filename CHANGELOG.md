@@ -7,17 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+## [v0.5.0] - 2025-10-26
+
+### Added
+- Webhooks/Certificates: Align Admission/Conversion configuration with Kubebuilder best practices; resolve Service references via kustomize nameReference/namespace mapping.
+- Add name-merge patches to `capt-*-webhook-configuration` to enforce `clientConfig.service = capt-webhook-service/capt-system`.
+- Standardize CA injection into MWC/VWC and CRD conversion via cert-manager `inject-ca-from` annotations.
+- Add `make wait-ca` to wait until caBundle injection completes for both Admission and CRD conversion.
+- e2e: Add readiness waits before admission (Deployment rollout, TLS Secret, Service Endpoints, short settle time).
+- Samples: Update to CAPI v1beta2 (Cluster `spec.topology.classRef.name`, ClusterClass `*.templateRef`, KubeadmConfigTemplate v1beta2 minimal no-op).
+- API: Expose Terraform workspace name for observability via `status.workspaceTemplateStatus.workspaceName` on `CAPTControlPlane` and `CAPTCluster`.
+
+### Changed
+- Conversion Webhook: Remove manual `/convert` registration; rely on controller-runtime auto-registration.
+- Controllers: Avoid mutating `spec.workspaceTemplateApplyName` when resources are managed by ClusterTopology. A deterministic name is resolved internally and the resulting workspace name is surfaced in `status.workspaceTemplateStatus.workspaceName`.
+- Tests: Updated unit tests to assert deterministic naming and status-based introspection rather than spec mutation side-effects.
+
+### Deprecated
+- Field usage: Reliance on `spec.workspaceTemplateApplyName` by controllers under ClusterTopology is deprecated. The field remains for compatibility but is not written by controllers and may be removed in a future release.
+
+### Fixed
+- Resolve `unknown authority` (missing CA) and connection failures caused by mismatched webhook Service name/namespace.
+
+### Notes
+- Known caveat: Plan to strengthen immutability validation on `CAPTControlPlane` (forbid updates to immutable fields).
+- Webhooks: Strengthening immutability validation for `CAPTControlPlane` on `v1beta2` is planned as a follow-up to cover all served versions consistently.
+
 ## [v0.4.0] - 2025-10-24
 
 ### Added
-- ClusterClass 対応を追加 (clusterctl の ClusterClass 対応フローに適合)
+- Add ClusterClass support (aligned with the clusterctl ClusterClass flow)
 
 ### Changed
-- マニフェストの CAPI contract ラベルの明確化と整理 (v1beta1)
-- `config/*/kustomization.yaml` のイメージタグを `v0.4.0` に更新
+- Clarify and tidy up CAPI contract labels in manifests (v1beta1)
+- Update image tags in `config/*/kustomization.yaml` to `v0.4.0`
 
 ### Notes
-- 次期 `v0.5.0` で `v1beta2` 互換を実装予定
+- Heads up: v0.5.0 will implement v1beta2 compatibility
 
 ## [v0.2.1] - 2024-01-25
 

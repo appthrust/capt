@@ -1,11 +1,11 @@
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: ClusterClass
 metadata:
   name: capt-default
 spec:
   controlPlane:
     ref:
-      apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+      apiVersion: controlplane.cluster.x-k8s.io/v1beta2
       kind: CAPTControlPlaneTemplate
       name: capt-default-control-plane
       namespace: default
@@ -13,12 +13,12 @@ spec:
       # This is not used by CAPT but required by the ClusterClass spec.
       ref:
         kind: CAPTMachineTemplate
-        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+        apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
         name: capt-default-control-plane-machine
         namespace: default
   infrastructure:
     ref:
-      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
       kind: CAPTClusterTemplate
       name: capt-default-cluster
       namespace: default
@@ -28,13 +28,13 @@ spec:
         template:
           bootstrap:
             ref:
-              apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+              apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
               kind: KubeadmConfigTemplate
               name: capt-default-worker-bootstrap
               namespace: default
           infrastructure:
             ref:
-              apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+              apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
   kind: CAPTMachineTemplate
               name: capt-default-worker-machine
               namespace: default
@@ -73,12 +73,12 @@ spec:
               valueFrom:
                 variable: region
           selector:
-            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
             kind: CAPTClusterTemplate
             matchResources:
               infrastructureResource: true
 ---
-apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
 kind: CaptControlPlaneTemplate
 metadata:
   name: capt-default-control-plane
@@ -99,7 +99,7 @@ spec:
         Environment: ${cluster.environment}
         ManagedBy: "capt"
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
 kind: CAPTClusterTemplate
 metadata:
   name: capt-default-cluster
@@ -112,7 +112,7 @@ spec:
         name: vpc-template
         namespace: default
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
   kind: CAPTMachineTemplate
 metadata:
   name: capt-default-control-plane-machine
@@ -123,7 +123,7 @@ spec:
       # This is a dummy template for control plane machines as CAPT manages them.
       instanceType: "m5.large"
 ---
-apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
 kind: CAPTMachineTemplate
 metadata:
   name: capt-default-worker-machine
@@ -136,7 +136,7 @@ spec:
         namespace: default
       instanceType: "m5.large"
 ---
-apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
 kind: KubeadmConfigTemplate
 metadata:
   name: capt-default-worker-bootstrap

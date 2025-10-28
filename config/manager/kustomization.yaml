@@ -5,4 +5,5 @@ kind: Kustomization
 images:
 - name: controller
   newName: ghcr.io/appthrust/capt
-  newTag: v0.4.0
+  newTag: dev
+namespace: capt-system

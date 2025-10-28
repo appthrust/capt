@@ -23,6 +23,7 @@ const (
 	InfrastructureReadyCondition v1beta1.ConditionType = "InfrastructureReady"
 )
 
+//nolint:unused // helper kept for potential reuse in reconciliation refactors
 func (r *Reconciler) setOwnerReference(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster, cluster *v1beta1.Cluster) error {
 	if cluster == nil {
 		return nil
@@ -74,6 +75,8 @@ func (r *Reconciler) updateStatus(ctx context.Context, captCluster *infrastructu
 			// Set InfrastructureReady condition
 			// MarkTrue preserves LastTransitionTime if already true
 			conditions.MarkTrue(cluster, InfrastructureReadyCondition)
+			// Also set ControlPlaneInitialized to true when infrastructure is ready
+			conditions.MarkTrue(cluster, ControlPlaneInitializedCondition)
 			logger.Info("Set InfrastructureReady condition to True")
 		} else if captCluster.Status.FailureReason != nil {
 			// Update failure reason and message only if not ready

@@ -91,7 +91,7 @@ func TestReconciler_reconcileVPC(t *testing.T) {
 			},
 			expectedError: nil,
 			validate: func(t *testing.T, captCluster *infrastructurev1beta1.CAPTCluster) {
-				assert.NotEmpty(t, captCluster.Spec.WorkspaceTemplateApplyName)
+				// Do not validate spec writes because we never write to spec
 
 				var vpcReadyCondition *metav1.Condition
 				for i := range captCluster.Status.Conditions {

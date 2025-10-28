@@ -3,15 +3,17 @@ package captcluster
 import (
 	"context"
 	"fmt"
+	"reflect"
 
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/cluster-api/api/v1beta1"
 	capierrors "sigs.k8s.io/cluster-api/errors"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -23,29 +25,11 @@ const (
 	InfrastructureReadyCondition v1beta1.ConditionType = "InfrastructureReady"
 )
 
-func (r *Reconciler) setOwnerReference(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster, cluster *v1beta1.Cluster) error {
-	if cluster == nil {
-		return nil
-	}
-
-	// Check if owner reference is already set
-	for _, ref := range captCluster.OwnerReferences {
-		if ref.Kind == "Cluster" && ref.APIVersion == v1beta1.GroupVersion.String() {
-			return nil
-		}
-	}
-
-	// Set owner reference
-	if err := controllerutil.SetControllerReference(cluster, captCluster, r.Scheme); err != nil {
-		return fmt.Errorf("failed to set owner reference: %v", err)
-	}
-
-	return r.Update(ctx, captCluster)
-}
+// removed: unused setOwnerReference function
 
 func (r *Reconciler) updateStatus(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster, cluster *v1beta1.Cluster) error {
 	logger := log.FromContext(ctx)
-	logger.Info("Updating status", "captCluster.Status.Ready", captCluster.Status.Ready)
+	logger.V(1).Info("Updating status", "captCluster.Status.Ready", captCluster.Status.Ready)
 
 	// Update CAPTCluster status using Status().Update for envtest compatibility
 	if err := r.Status().Update(ctx, captCluster); err != nil {
@@ -55,53 +39,78 @@ func (r *Reconciler) updateStatus(ctx context.Context, captCluster *infrastructu
 
 	// Update Cluster status if it exists
 	if cluster != nil {
-		logger.Info("Updating cluster status",
+		logger.V(1).Info("Updating cluster status",
 			"InfrastructureReady", cluster.Status.InfrastructureReady,
 			"ControlPlaneReady", cluster.Status.ControlPlaneReady)
 
-		// Update infrastructure ready status
-		cluster.Status.InfrastructureReady = captCluster.Status.Ready
-		logger.Info("Set InfrastructureReady", "value", cluster.Status.InfrastructureReady)
+		if err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+			// Get latest Cluster to avoid resourceVersion conflicts
+			current := &v1beta1.Cluster{}
+			if err := r.Get(ctx, types.NamespacedName{Name: cluster.Name, Namespace: cluster.Namespace}, current); err != nil {
+				return err
+			}
 
-		// Clear failure status if ready
-		if captCluster.Status.Ready {
-			cluster.Status.FailureReason = nil
-			cluster.Status.FailureMessage = nil
-			logger.Info("Cleared failure status due to ready state")
+			base := current.DeepCopy()
 
-			// Set InfrastructureReady condition
-			// MarkTrue preserves LastTransitionTime if already true
-			conditions.MarkTrue(cluster, InfrastructureReadyCondition)
-			// For legacy tests in 0.4.x, surface ControlPlaneInitialized as true when infra is ready
-			conditions.MarkTrue(cluster, ControlPlaneInitializedCondition)
-			logger.Info("Set InfrastructureReady condition to True")
-		} else if captCluster.Status.FailureReason != nil {
-			// Update failure reason and message only if not ready
-			reason := capierrors.ClusterStatusError(*captCluster.Status.FailureReason)
-			cluster.Status.FailureReason = &reason
-			cluster.Status.FailureMessage = captCluster.Status.FailureMessage
-			logger.Info("Updated failure status",
-				"reason", *captCluster.Status.FailureReason,
-				"message", *captCluster.Status.FailureMessage)
+			// Update infrastructure ready status
+			current.Status.InfrastructureReady = captCluster.Status.Ready
+			logger.V(1).Info("Set InfrastructureReady", "value", current.Status.InfrastructureReady)
 
-			// Set InfrastructureReady condition to false
-			conditions.MarkFalse(cluster, InfrastructureReadyCondition, string(reason), v1beta1.ConditionSeverityError, "%s", *captCluster.Status.FailureMessage)
-			logger.Info("Set InfrastructureReady condition to False")
-		}
+			// Clear failure status if ready
+			if captCluster.Status.Ready {
+				current.Status.FailureReason = nil
+				current.Status.FailureMessage = nil
+				logger.V(1).Info("Cleared failure status due to ready state")
 
-		// Update failure domains if present
-		if len(captCluster.Status.FailureDomains) > 0 {
-			cluster.Status.FailureDomains = captCluster.Status.FailureDomains
-			logger.Info("Updated failure domains", "count", len(captCluster.Status.FailureDomains))
-		}
+				// Set InfrastructureReady condition
+				conditions.MarkTrue(current, InfrastructureReadyCondition)
+				// For legacy tests in 0.4.x, also set ControlPlaneInitialized true when infra is ready
+				conditions.MarkTrue(current, ControlPlaneInitializedCondition)
+				logger.V(1).Info("Set InfrastructureReady condition to True")
+			} else if captCluster.Status.FailureReason != nil {
+				// Update failure reason and message only if not ready
+				reason := capierrors.ClusterStatusError(*captCluster.Status.FailureReason)
+				current.Status.FailureReason = &reason
+				current.Status.FailureMessage = captCluster.Status.FailureMessage
+				// Avoid nil dereference in logs when FailureMessage is not set
+				var logMessage string
+				if captCluster.Status.FailureMessage != nil {
+					logMessage = *captCluster.Status.FailureMessage
+				}
+				logger.V(1).Info("Updated failure status",
+					"reason", *captCluster.Status.FailureReason,
+					"message", logMessage)
 
-		if err := r.Status().Update(ctx, cluster); err != nil {
+				// Set InfrastructureReady condition to false
+				conditions.MarkFalse(current, InfrastructureReadyCondition, string(reason), v1beta1.ConditionSeverityError, "%s", *captCluster.Status.FailureMessage)
+				logger.V(1).Info("Set InfrastructureReady condition to False")
+			}
+
+			// Update failure domains if present
+			if len(captCluster.Status.FailureDomains) > 0 {
+				current.Status.FailureDomains = captCluster.Status.FailureDomains
+				logger.V(1).Info("Updated failure domains", "count", len(captCluster.Status.FailureDomains))
+			}
+
+			// Skip patch if nothing changed
+			if reflect.DeepEqual(base.Status, current.Status) {
+				logger.Info("Cluster status unchanged, skipping patch")
+				return nil
+			}
+
+			if err := r.Status().Patch(ctx, current, client.MergeFrom(base)); err != nil {
+				return err
+			}
+			logger.V(1).Info("Successfully patched cluster status")
+			// Reflect the updated status back to the passed-in cluster object for callers/tests
+			cluster.Status = current.Status
+			return nil
+		}); err != nil {
 			logger.Error(err, "Failed to patch cluster status")
 			return fmt.Errorf("failed to update Cluster status: %v", err)
 		}
-		logger.Info("Successfully patched cluster status")
 	} else {
-		logger.Info("Cluster is nil, skipping cluster status update")
+		logger.V(1).Info("Cluster is nil, skipping cluster status update")
 	}
 
 	return nil
@@ -110,7 +119,7 @@ func (r *Reconciler) updateStatus(ctx context.Context, captCluster *infrastructu
 func (r *Reconciler) setFailedStatus(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster, cluster *v1beta1.Cluster, reason, message string) (Result, error) {
 	logger := log.FromContext(ctx)
 	// Pre-update diagnostics to aid debugging in tests
-	logger.Info("setFailedStatus called",
+	logger.V(1).Info("setFailedStatus called",
 		"reason", reason,
 		"message", message,
 		"ready_before", captCluster.Status.Ready,
@@ -139,7 +148,7 @@ func (r *Reconciler) setFailedStatus(ctx context.Context, captCluster *infrastru
 	captCluster.Status.WorkspaceTemplateStatus.LastFailureMessage = message
 
 	// Post-update diagnostics before status patch
-	logger.Info("setFailedStatus updated local status",
+	logger.V(1).Info("setFailedStatus updated local status",
 		"ready", captCluster.Status.Ready,
 		"failureReason_set", captCluster.Status.FailureReason != nil,
 		"failureMessage_set", captCluster.Status.FailureMessage != nil,
@@ -155,6 +164,6 @@ func (r *Reconciler) setFailedStatus(ctx context.Context, captCluster *infrastru
 	if err := r.updateStatus(ctx, captCluster, cluster); err != nil {
 		return Result{}, err
 	}
-	logger.Info("setFailedStatus patched status successfully")
+	logger.V(1).Info("setFailedStatus patched status successfully")
 	return Result{}, fmt.Errorf("%s", message)
 }

@@ -32,12 +32,13 @@ func (r *Reconciler) reconcileWorkspace(
 	}
 
 	// Get or create WorkspaceTemplateApply
-	workspaceApply, err := r.getOrCreateWorkspaceTemplateApply(ctx, controlPlane, workspaceTemplate)
+	workspaceApply, err := r.getOrCreateWorkspaceTemplateApply(ctx, controlPlane)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
 	// Update status based on WorkspaceTemplateApply conditions
+	// Note: updateStatus now avoids periodic requeue when ready to prevent loops
 	return r.updateStatus(ctx, controlPlane, workspaceApply, cluster)
 }
 
@@ -45,7 +46,6 @@ func (r *Reconciler) reconcileWorkspace(
 func (r *Reconciler) getOrCreateWorkspaceTemplateApply(
 	ctx context.Context,
 	controlPlane *controlplanev1beta1.CAPTControlPlane,
-	workspaceTemplate *infrastructurev1beta1.WorkspaceTemplate,
 ) (*infrastructurev1beta1.WorkspaceTemplateApply, error) {
 	// Determine the name for WorkspaceTemplateApply
 	applyName := controlPlane.Spec.WorkspaceTemplateApplyName

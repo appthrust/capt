@@ -22,17 +22,18 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-//+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanes,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanes/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanes/finalizers,verbs=update
+// +kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanes,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanes/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanes/finalizers,verbs=update
 // Additional permissions required by the control plane reconciler
-//+kubebuilder:rbac:groups=tf.upbound.io,resources=workspaces;workspaces/status,verbs=get;list;watch
-//+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplates;workspacetemplateapplies;workspacetemplateapplies/status,verbs=get;list;watch;create;update;patch
-//+kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters;clusters/status,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=tf.upbound.io,resources=workspaces;workspaces/status,verbs=get;list;watch
+// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplates;workspacetemplateapplies;workspacetemplateapplies/status,verbs=get;list;watch;create;update;patch
+// +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters;clusters/status,verbs=get;list;watch;update;patch
 
 const (
 	// CAPTControlPlaneFinalizer is the finalizer added to CAPTControlPlane instances
 	CAPTControlPlaneFinalizer = "controlplane.cluster.x-k8s.io/captcontrolplane"
+	clusterKind               = "Cluster"
 )
 
 // createKubeconfigWorkspaceTemplateApply creates a WorkspaceTemplateApply for kubeconfig generation
@@ -322,7 +323,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	} else {
 		// Fallback to OwnerReference if present
 		for _, ref := range controlPlane.OwnerReferences {
-			if ref.Kind == "Cluster" && ref.APIVersion == clusterv1.GroupVersion.String() && ref.Name != "" {
+			if ref.Kind == clusterKind && ref.APIVersion == clusterv1.GroupVersion.String() && ref.Name != "" {
 				clusterName = ref.Name
 				break
 			}
@@ -475,20 +476,22 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 	}
 
 	// Get or create WorkspaceTemplateApply
-	workspaceApply, err := r.getOrCreateWorkspaceTemplateApply(ctx, controlPlane, workspaceTemplate)
+	workspaceApply, err := r.getOrCreateWorkspaceTemplateApply(ctx, controlPlane)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	// Set the WorkspaceTemplateApplyName if it's not set
-	controlPlane.Spec.WorkspaceTemplateApplyName = workspaceApply.Name
-	if err := r.Update(ctx, controlPlane); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	// Fetch the updated object
-	if err := r.Get(ctx, req.NamespacedName, controlPlane); err != nil {
-		return ctrl.Result{}, err
+	// Set the WorkspaceTemplateApplyName only if it changed to avoid no-op updates triggering reconcile loops
+	if controlPlane.Spec.WorkspaceTemplateApplyName != workspaceApply.Name {
+		cp := controlPlane.DeepCopy()
+		cp.Spec.WorkspaceTemplateApplyName = workspaceApply.Name
+		if err := r.Update(ctx, cp); err != nil {
+			return ctrl.Result{}, err
+		}
+		// Fetch the updated object
+		if err := r.Get(ctx, req.NamespacedName, controlPlane); err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
 	// Update status based on WorkspaceTemplateApply conditions

@@ -114,11 +114,11 @@ test-e2e:
 
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
-	$(GOLANGCI_LINT) run
+	$(GOLANGCI_LINT) run -c .golangci.yml
 
 .PHONY: lint-fix
 lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
-	$(GOLANGCI_LINT) run --fix
+	$(GOLANGCI_LINT) run -c .golangci.yml --fix
 
 ##@ Build
 
@@ -185,7 +185,17 @@ undeploy: $(KUSTOMIZE_PREREQ) ## Undeploy controller from the K8s cluster specif
 ##@ Setup
 
 .PHONY: setup
-setup: setup-capi-crds setup-cert-manager setup-capi setup-crossplane setup-provider-terraform setup-webhook-certs ## Prepare local dev cluster with CAPI (clusterctl init --bootstrap kubeadm), cert-manager, Crossplane, provider-terraform, webhook certs.
+setup: ensure-kind setup-capi-crds setup-cert-manager setup-capi setup-crossplane setup-provider-terraform setup-webhook-certs ## Prepare local dev cluster with kind + CAPI, cert-manager, Crossplane, provider-terraform, webhook certs.
+
+.PHONY: ensure-kind
+ensure-kind: ## Ensure a kind cluster named 'capt' exists and is the current context.
+	@echo "Ensuring kind cluster 'capt' exists..."
+	@if ! kind get clusters | grep -qx capt; then \
+		echo "Creating kind cluster 'capt'..."; \
+		kind create cluster --name capt; \
+	else \
+		echo "kind cluster 'capt' already exists"; \
+	fi
 
 .PHONY: setup-capi-crds
 setup-capi-crds: ## Install only Cluster API Core CRDs (avoid conflicting tf.upbound.io CRDs).
@@ -257,6 +267,10 @@ setup-webhook-certs: ## Generate self-signed webhook certs for local 'make run'.
 		echo "Webhook certs already present in /tmp/k8s-webhook-server/serving-certs"; \
 	fi
 
+.PHONY: run-noop-e2e
+run-noop-e2e: ## Run no-op ClusterClass e2e scenario
+	bash test/e2e/scripts/no-op-clusterclass.sh
+
 ##@ Kind
 .PHONY: kind-capt
 kind-capt: clusterapi-manifests clusterctl-setup docker-build clusterctl ## Setup complete kind environment with CAPI and CAPT
@@ -289,9 +303,28 @@ HELM_BIN ?= $(LOCALBIN)/helm
 KUSTOMIZE_VERSION ?= v5.4.3
 CONTROLLER_TOOLS_VERSION ?= v0.16.1
 ENVTEST_VERSION ?= release-0.19
-GOLANGCI_LINT_VERSION ?= v1.59.1
+GOLANGCI_LINT_VERSION ?= v1.64.8
 CERT_MANAGER_VERSION ?= v1.16.1
 CROSSPLANE_VERSION ?= v1.16.0
+
+# golangci-lint OS/ARCH detection for prebuilt binary download
+UNAME_S_GOLANGCI := $(shell uname -s)
+ifeq ($(UNAME_S_GOLANGCI),Linux)
+  GOLANGCI_LINT_OS := linux
+else ifeq ($(UNAME_S_GOLANGCI),Darwin)
+  GOLANGCI_LINT_OS := darwin
+else
+  GOLANGCI_LINT_OS := linux
+endif
+
+UNAME_M_GOLANGCI := $(shell uname -m)
+ifeq ($(UNAME_M_GOLANGCI),x86_64)
+  GOLANGCI_LINT_ARCH := amd64
+else ifeq ($(UNAME_M_GOLANGCI),aarch64)
+  GOLANGCI_LINT_ARCH := arm64
+else
+  GOLANGCI_LINT_ARCH := amd64
+endif
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
@@ -328,7 +361,22 @@ $(ENVTEST): $(LOCALBIN)
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
-	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
+	@test -s $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION) || { \
+		set -e; \
+		VERSION=$(GOLANGCI_LINT_VERSION); \
+		VERSION_NO_V=$${VERSION#v}; \
+		OS=$(GOLANGCI_LINT_OS); \
+		ARCH=$(GOLANGCI_LINT_ARCH); \
+		URL=https://github.com/golangci/golangci-lint/releases/download/$${VERSION}/golangci-lint-$${VERSION_NO_V}-$${OS}-$${ARCH}.tar.gz; \
+		echo "Downloading $$URL"; \
+		TMP_DIR=$$(mktemp -d); \
+		curl -fsSL $$URL -o $$TMP_DIR/golangci-lint.tar.gz; \
+		tar -xzf $$TMP_DIR/golangci-lint.tar.gz -C $$TMP_DIR; \
+		cp $$TMP_DIR/golangci-lint-$${VERSION_NO_V}-$${OS}-$${ARCH}/golangci-lint $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION); \
+		chmod +x $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION); \
+		rm -rf $$TMP_DIR; \
+	}; \
+	ln -sf $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION) $(GOLANGCI_LINT)
 
 .PHONY: helmify
 helmify: $(HELMIFY) ## Download helmify locally if necessary. Used by 'helm' target to generate charts/capt.

@@ -211,8 +211,8 @@ func (r *Reconciler) updateStatus(
 		}
 	}
 
-	// Use default interval for ready state
-	return ctrl.Result{RequeueAfter: defaultRequeueInterval}, nil
+	// In ready state, don't force periodic requeue; rely on external events (Watch) only
+	return ctrl.Result{}, nil
 }
 
 // handleNotReadyStatus updates the status for a not-ready control plane

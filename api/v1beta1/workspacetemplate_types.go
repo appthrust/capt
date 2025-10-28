@@ -72,10 +72,10 @@ type WorkspaceTemplateStatus struct {
 	Conditions []xpv1.Condition `json:"conditions,omitempty"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
-//+kubebuilder:printcolumn:name="WORKSPACE",type="string",JSONPath=".status.workspaceName"
-//+kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="WORKSPACE",type="string",JSONPath=".status.workspaceName"
+// +kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
 
 // WorkspaceTemplate is the Schema for the workspacetemplates API
 type WorkspaceTemplate struct {
@@ -86,7 +86,7 @@ type WorkspaceTemplate struct {
 	Status WorkspaceTemplateStatus `json:"status,omitempty"`
 }
 
-//+kubebuilder:object:root=true
+// +kubebuilder:object:root=true
 
 // WorkspaceTemplateList contains a list of WorkspaceTemplate
 type WorkspaceTemplateList struct {

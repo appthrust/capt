@@ -41,6 +41,8 @@ func setupScheme() *runtime.Scheme {
 }
 
 // Helper function to create test conditions
+//
+//nolint:unused // test helper kept for future tests
 func createTestCondition(conditionType string, status metav1.ConditionStatus, reason, message string) metav1.Condition {
 	return metav1.Condition{
 		Type:               conditionType,
@@ -52,6 +54,8 @@ func createTestCondition(conditionType string, status metav1.ConditionStatus, re
 }
 
 // Helper function to verify conditions
+//
+//nolint:unused // test helper kept for future tests
 func containsCondition(conditions []metav1.Condition, conditionType string, status metav1.ConditionStatus) bool {
 	for _, condition := range conditions {
 		if condition.Type == conditionType && condition.Status == status {

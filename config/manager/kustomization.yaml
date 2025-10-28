@@ -6,3 +6,4 @@ images:
 - name: controller
   newName: ghcr.io/appthrust/capt
   newTag: v0.4.1
+namespace: capt-system

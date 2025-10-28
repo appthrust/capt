@@ -22,9 +22,9 @@ type CAPTClusterTemplateResource struct {
 	Spec CAPTClusterSpec `json:"spec"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:resource:path=captclustertemplates,scope=Namespaced,categories=cluster-api,shortName=captct
-//+kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+// +kubebuilder:object:root=true
+// +kubebuilder:resource:path=captclustertemplates,scope=Namespaced,categories=cluster-api,shortName=captct
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // CAPTClusterTemplate is the Schema for the captclustertemplates API
 type CAPTClusterTemplate struct {
@@ -34,7 +34,7 @@ type CAPTClusterTemplate struct {
 	Spec CAPTClusterTemplateSpec `json:"spec,omitempty"`
 }
 
-//+kubebuilder:object:root=true
+// +kubebuilder:object:root=true
 
 // CAPTClusterTemplateList contains a list of CAPTClusterTemplate
 type CAPTClusterTemplateList struct {

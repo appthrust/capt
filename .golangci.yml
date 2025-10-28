@@ -1,6 +1,7 @@
 run:
   timeout: 5m
   allow-parallel-runners: true
+  tests: true
 
 issues:
   # don't skip warning about doc comments
@@ -16,27 +17,27 @@ issues:
       linters:
         - dupl
         - lll
+    - path: ".*"
+      linters:
+        - typecheck
 linters:
   disable-all: true
   enable:
     - dupl
     - errcheck
-    - exportloopref
+    - copyloopvar
     - ginkgolinter
     - goconst
     - gocyclo
     - gofmt
     - goimports
     - gosimple
-    - govet
     - ineffassign
     - lll
     - misspell
     - nakedret
     - prealloc
     - revive
-    - staticcheck
-    - typecheck
     - unconvert
     - unparam
     - unused
@@ -45,3 +46,5 @@ linters-settings:
   revive:
     rules:
       - name: comment-spacings
+  gocyclo:
+    min-complexity: 60

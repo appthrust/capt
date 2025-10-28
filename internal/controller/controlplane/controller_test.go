@@ -42,6 +42,8 @@ func validateResourceDeletion(t *testing.T, client client.Client, name types.Nam
 }
 
 // validateControlPlaneStatus はControlPlaneのステータスを検証します
+//
+//nolint:unused // helper retained for readability in future tests
 func validateControlPlaneStatus(t *testing.T, controlPlane *controlplanev1beta1.CAPTControlPlane, expectedPhase string) {
 	assert.Equal(t, expectedPhase, controlPlane.Status.Phase)
 }

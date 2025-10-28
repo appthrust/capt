@@ -44,7 +44,7 @@ import (
 	controlplanecontroller "github.com/appthrust/capt/internal/controller/controlplane"
 	"github.com/crossplane/crossplane-runtime/pkg/logging"
 	tfv1beta1 "github.com/upbound/provider-terraform/apis/v1beta1"
-	//+kubebuilder:scaffold:imports
+	// +kubebuilder:scaffold:imports
 )
 
 var (
@@ -80,7 +80,7 @@ func init() {
 	utilruntime.Must(controlplanev1beta1.AddToScheme(scheme))
 	utilruntime.Must(tfv1beta1.SchemeBuilder.AddToScheme(scheme))
 	utilruntime.Must(clusterv1.AddToScheme(scheme))
-	//+kubebuilder:scaffold:scheme
+	// +kubebuilder:scaffold:scheme
 }
 
 func main() {
@@ -93,7 +93,9 @@ func main() {
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
-	flag.Var(&enabledControllers, "enable-controller", "The controller to enable. Can be specified multiple times. Valid options: "+strings.Join(allControllers, ", "))
+	helpEnable := "The controller to enable. Can be specified multiple times. " +
+		"Valid options: " + strings.Join(allControllers, ", ")
+	flag.Var(&enabledControllers, "enable-controller", helpEnable)
 	opts := zap.Options{
 		Development: true,
 	}
@@ -160,7 +162,10 @@ func main() {
 			os.Exit(1)
 		}
 
-		if err = controller.SetupWorkspaceTemplateApply(mgr, logging.NewLogrLogger(ctrl.Log.WithName("controllers").WithName("WorkspaceTemplateApply"))); err != nil {
+		if err = controller.SetupWorkspaceTemplateApply(
+			mgr,
+			logging.NewLogrLogger(ctrl.Log.WithName("controllers").WithName("WorkspaceTemplateApply")),
+		); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "WorkspaceTemplateApply")
 			os.Exit(1)
 		}
@@ -253,7 +258,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	//+kubebuilder:scaffold:builder
+	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")

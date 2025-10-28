@@ -334,7 +334,7 @@ func TestGetOrCreateWorkspaceTemplateApply(t *testing.T) {
 				Scheme: scheme,
 			}
 
-			workspaceApply, err := r.getOrCreateWorkspaceTemplateApply(context.Background(), tt.controlPlane, tt.template)
+			workspaceApply, err := r.getOrCreateWorkspaceTemplateApply(context.Background(), tt.controlPlane)
 			assert.NoError(t, err)
 			assert.NotNil(t, workspaceApply)
 

@@ -60,6 +60,7 @@ func (src *CAPTControlPlane) ConvertTo(dstRaw conversion.Hub) error {
 			Outputs:             src.Status.WorkspaceTemplateStatus.Outputs,
 			LastFailedRevision:  src.Status.WorkspaceTemplateStatus.LastFailedRevision,
 			LastFailureMessage:  src.Status.WorkspaceTemplateStatus.LastFailureMessage,
+			WorkspaceName:       src.Status.WorkspaceTemplateStatus.WorkspaceName,
 		}
 	}
 	if src.Status.WorkspaceStatus != nil {
@@ -132,6 +133,7 @@ func (dst *CAPTControlPlane) ConvertFrom(srcRaw conversion.Hub) error {
 			Outputs:             src.Status.WorkspaceTemplateStatus.Outputs,
 			LastFailedRevision:  src.Status.WorkspaceTemplateStatus.LastFailedRevision,
 			LastFailureMessage:  src.Status.WorkspaceTemplateStatus.LastFailureMessage,
+			WorkspaceName:       src.Status.WorkspaceTemplateStatus.WorkspaceName,
 		}
 	}
 	if src.Status.WorkspaceStatus != nil {

@@ -47,17 +47,10 @@ func (r *Reconciler) getOrCreateWorkspaceTemplateApply(
 	controlPlane *controlplanev1beta1.CAPTControlPlane,
 ) (*infrastructurev1beta1.WorkspaceTemplateApply, error) {
 	// Determine the name for WorkspaceTemplateApply
+	// Determine deterministic apply name without writing to spec
 	applyName := controlPlane.Spec.WorkspaceTemplateApplyName
 	if applyName == "" {
 		applyName = fmt.Sprintf("%s-eks-controlplane-apply", controlPlane.Name)
-		// Update WorkspaceTemplateApplyName in Spec first
-		controlPlaneCopy := controlPlane.DeepCopy()
-		controlPlaneCopy.Spec.WorkspaceTemplateApplyName = applyName
-		if err := r.Update(ctx, controlPlaneCopy); err != nil {
-			return nil, fmt.Errorf("failed to update WorkspaceTemplateApplyName in spec: %v", err)
-		}
-		// Update the original object
-		controlPlane.Spec.WorkspaceTemplateApplyName = applyName
 	}
 
 	// Try to find existing WorkspaceTemplateApply

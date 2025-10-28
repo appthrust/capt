@@ -19,9 +19,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
-// テストヘルパー関数
+// Test helper functions
 
-// validateCondition は指定された条件の存在と状態を検証します
+// validateCondition verifies the presence and state of the specified condition
 func validateCondition(t *testing.T, conditions []metav1.Condition, conditionType string, status metav1.ConditionStatus, reason string) {
 	found := false
 	for _, condition := range conditions {
@@ -35,13 +35,13 @@ func validateCondition(t *testing.T, conditions []metav1.Condition, conditionTyp
 	assert.True(t, found, "Expected condition not found: %s", conditionType)
 }
 
-// validateResourceDeletion はリソースが削除されたことを検証します
+// validateResourceDeletion verifies that a resource has been deleted
 func validateResourceDeletion(t *testing.T, client client.Client, name types.NamespacedName, obj client.Object) {
 	err := client.Get(context.Background(), name, obj)
 	assert.True(t, apierrors.IsNotFound(err), "Expected resource to be deleted, but it still exists")
 }
 
-// validateControlPlaneStatus はControlPlaneのステータスを検証します
+// validateControlPlaneStatus verifies the status of the ControlPlane
 //
 //lint:ignore U1000 helper kept for future tests
 func validateControlPlaneStatus(t *testing.T, controlPlane *controlplanev1beta1.CAPTControlPlane, expectedPhase string) {
@@ -220,7 +220,7 @@ func TestReconcile(t *testing.T) {
 				}, controlPlane)
 				assert.NoError(t, err)
 
-				// オーナー参照の検証
+				// Verify owner reference
 				found := false
 				for _, ref := range controlPlane.OwnerReferences {
 					if ref.Kind == "Cluster" {
@@ -230,20 +230,19 @@ func TestReconcile(t *testing.T) {
 				}
 				assert.True(t, found, "Expected owner reference not found")
 
-				// Finalizerの検証
+				// Verify finalizer
 				assert.True(t, controllerutil.ContainsFinalizer(controlPlane, CAPTControlPlaneFinalizer))
 
-				// WorkspaceTemplateApplyの検証
-				assert.NotEmpty(t, controlPlane.Spec.WorkspaceTemplateApplyName)
+				// Verify WorkspaceTemplateApply (using deterministic name)
 				workspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
 				err = client.Get(context.Background(), types.NamespacedName{
-					Name:      controlPlane.Spec.WorkspaceTemplateApplyName,
+					Name:      "test-controlplane-eks-controlplane-apply",
 					Namespace: "default",
 				}, workspaceApply)
 				assert.NoError(t, err)
 				assert.Equal(t, "test-template", workspaceApply.Spec.TemplateRef.Name)
 
-				// 条件の検証
+				// Verify conditions
 				validateCondition(t, controlPlane.Status.Conditions,
 					controlplanev1beta1.ControlPlaneReadyCondition,
 					metav1.ConditionFalse,
@@ -276,13 +275,13 @@ func TestReconcile(t *testing.T) {
 			validate: func(t *testing.T, client client.Client, result ctrl.Result, err error) {
 				assert.NoError(t, err)
 
-				// WorkspaceTemplateApplyの削除確認
+				// Verify WorkspaceTemplateApply deletion
 				validateResourceDeletion(t, client, types.NamespacedName{
 					Name:      "test-apply",
 					Namespace: "default",
 				}, &infrastructurev1beta1.WorkspaceTemplateApply{})
 
-				// ControlPlaneの削除確認
+				// Verify ControlPlane deletion
 				validateResourceDeletion(t, client, types.NamespacedName{
 					Name:      "test-controlplane",
 					Namespace: "default",

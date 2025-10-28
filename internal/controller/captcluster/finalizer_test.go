@@ -41,7 +41,7 @@ func TestReconciler_reconcileDelete(t *testing.T) {
 					VPCTemplateRef: &infrastructurev1beta1.WorkspaceTemplateReference{
 						Name: "vpc-template",
 					},
-					WorkspaceTemplateApplyName: "test-workspace",
+					WorkspaceTemplateApplyName: "",
 				},
 				Status: infrastructurev1beta1.CAPTClusterStatus{
 					VPCID: "vpc-123456",
@@ -50,7 +50,7 @@ func TestReconciler_reconcileDelete(t *testing.T) {
 			existingObjs: []runtime.Object{
 				&infrastructurev1beta1.WorkspaceTemplateApply{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      "test-workspace",
+						Name:      "test-cluster-vpc",
 						Namespace: "default",
 					},
 				},
@@ -69,7 +69,7 @@ func TestReconciler_reconcileDelete(t *testing.T) {
 				// Verify WorkspaceTemplateApply still exists
 				workspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
 				err = c.Get(context.Background(), types.NamespacedName{
-					Name:      "test-workspace",
+					Name:      "test-cluster-vpc",
 					Namespace: "default",
 				}, workspaceApply)
 				assert.NoError(t, err)
@@ -86,7 +86,7 @@ func TestReconciler_reconcileDelete(t *testing.T) {
 				},
 				Spec: infrastructurev1beta1.CAPTClusterSpec{
 					RetainVPCOnDelete:          false,
-					WorkspaceTemplateApplyName: "test-workspace",
+					WorkspaceTemplateApplyName: "",
 				},
 			},
 			existingObjs: []runtime.Object{
@@ -111,7 +111,7 @@ func TestReconciler_reconcileDelete(t *testing.T) {
 				// Verify WorkspaceTemplateApply is deleted
 				workspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
 				err = c.Get(context.Background(), types.NamespacedName{
-					Name:      "test-workspace",
+					Name:      "test-cluster-vpc",
 					Namespace: "default",
 				}, workspaceApply)
 				assert.Error(t, err)
@@ -244,7 +244,7 @@ func TestReconciler_cleanupWorkspaceTemplateApply(t *testing.T) {
 					Namespace: "default",
 				}, captCluster)
 				assert.NoError(t, err)
-				assert.Empty(t, captCluster.Spec.WorkspaceTemplateApplyName)
+				// No need to validate spec here because we do not mutate spec by design
 			},
 		},
 		{

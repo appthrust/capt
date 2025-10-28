@@ -10,6 +10,26 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
+      path: /mutate-controlplane-cluster-x-k8s-io-v1beta2-captcontrolplane
+  failurePolicy: Fail
+  name: mcaptcontrolplane.v1beta2.kb.io
+  rules:
+  - apiGroups:
+    - controlplane.cluster.x-k8s.io
+    apiVersions:
+    - v1beta2
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - captcontrolplanes
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
       path: /mutate-controlplane-cluster-x-k8s-io-v1beta1-captcontrolplane
   failurePolicy: Fail
   name: mcaptcontrolplane.kb.io
@@ -130,6 +150,26 @@ kind: ValidatingWebhookConfiguration
 metadata:
   name: validating-webhook-configuration
 webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-controlplane-cluster-x-k8s-io-v1beta2-captcontrolplane
+  failurePolicy: Fail
+  name: vcaptcontrolplane.v1beta2.kb.io
+  rules:
+  - apiGroups:
+    - controlplane.cluster.x-k8s.io
+    apiVersions:
+    - v1beta2
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - captcontrolplanes
+  sideEffects: None
 - admissionReviewVersions:
   - v1
   clientConfig:

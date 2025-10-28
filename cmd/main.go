@@ -237,11 +237,15 @@ func main() {
 			os.Exit(1)
 		}
 
-		// Register CAPTControlPlane webhooks
-		if err = (&controlplanev1beta1.CAPTControlPlane{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "CAPTControlPlane")
-			os.Exit(1)
-		}
+        // Register CAPTControlPlane webhooks (v1beta1 + v1beta2)
+        if err = (&controlplanev1beta1.CAPTControlPlane{}).SetupWebhookWithManager(mgr); err != nil {
+            setupLog.Error(err, "unable to create webhook", "webhook", "CAPTControlPlane v1beta1")
+            os.Exit(1)
+        }
+        if err = (&controlplanev1beta2.CAPTControlPlane{}).SetupWebhookWithManager(mgr); err != nil {
+            setupLog.Error(err, "unable to create webhook", "webhook", "CAPTControlPlane v1beta2")
+            os.Exit(1)
+        }
 
 		// Register CAPTControlPlaneTemplate webhooks
 		if err = (&controlplanev1beta1.CAPTControlPlaneTemplate{}).SetupWebhookWithManager(mgr); err != nil {

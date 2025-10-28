@@ -183,6 +183,10 @@ type WorkspaceTemplateStatus struct {
 	// LastFailureMessage contains the error message from the last failure
 	// +optional
 	LastFailureMessage string `json:"lastFailureMessage,omitempty"`
+
+	// WorkspaceName is the name of the associated Terraform Workspace
+	// +optional
+	WorkspaceName string `json:"workspaceName,omitempty"`
 }
 
 // WorkspaceStatus contains the status of the associated Workspace

@@ -67,6 +67,9 @@ type WorkspaceTemplateStatus struct {
 	Outputs             map[string]string `json:"outputs,omitempty"`
 	LastFailedRevision  string            `json:"lastFailedRevision,omitempty"`
 	LastFailureMessage  string            `json:"lastFailureMessage,omitempty"`
+	// WorkspaceName is the name of the associated Terraform Workspace
+	// +optional
+	WorkspaceName string `json:"workspaceName,omitempty"`
 }
 
 type WorkspaceStatus struct {

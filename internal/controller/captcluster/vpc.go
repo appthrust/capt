@@ -14,7 +14,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -247,13 +246,7 @@ func (r *Reconciler) getOrCreateWorkspaceTemplateApply(ctx context.Context, capt
 		return nil, fmt.Errorf("failed to create WorkspaceTemplateApply: %v", err)
 	}
 
-	// Update WorkspaceTemplateApplyName in Spec
-	patch := client.MergeFrom(captCluster.DeepCopy())
-	captCluster.Spec.WorkspaceTemplateApplyName = applyName
-	if err := r.Patch(ctx, captCluster, patch); err != nil {
-		logger.Error(err, "Failed to update WorkspaceTemplateApplyName in spec")
-		return nil, fmt.Errorf("failed to update WorkspaceTemplateApplyName in spec: %v", err)
-	}
+	// Do not write spec.WorkspaceTemplateApplyName; rely on deterministic name
 
 	return workspaceApply, nil
 }

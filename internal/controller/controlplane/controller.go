@@ -485,18 +485,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{}, err
 	}
 
-	// Set the WorkspaceTemplateApplyName if it's not set
-	if controlPlane.Spec.WorkspaceTemplateApplyName == "" {
-		controlPlane.Spec.WorkspaceTemplateApplyName = workspaceApply.Name
-		if err := r.Update(ctx, controlPlane); err != nil {
-			return ctrl.Result{}, err
-		}
-
-		// Fetch the updated object
-		if err := r.Get(ctx, req.NamespacedName, controlPlane); err != nil {
-			return ctrl.Result{}, err
-		}
-	}
+	// Do not write spec.WorkspaceTemplateApplyName; record workspace name in status instead
 
 	// Update status based on WorkspaceTemplateApply conditions
 	result, err := r.updateStatus(ctx, controlPlane, workspaceApply, cluster)

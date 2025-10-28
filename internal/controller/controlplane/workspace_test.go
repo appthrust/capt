@@ -286,7 +286,7 @@ func TestGetOrCreateWorkspaceTemplateApply(t *testing.T) {
 						Name:      "test-template",
 						Namespace: "default",
 					},
-					WorkspaceTemplateApplyName: "test-apply",
+					WorkspaceTemplateApplyName: "",
 				},
 			},
 			template: &infrastructurev1beta1.WorkspaceTemplate{
@@ -297,13 +297,13 @@ func TestGetOrCreateWorkspaceTemplateApply(t *testing.T) {
 			},
 			existingApply: &infrastructurev1beta1.WorkspaceTemplateApply{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      "test-apply",
+					Name:      "test-controlplane-eks-controlplane-apply",
 					Namespace: "default",
 				},
 			},
 			expectCreate: false,
 			validate: func(t *testing.T, workspaceApply *infrastructurev1beta1.WorkspaceTemplateApply) {
-				assert.Equal(t, "test-apply", workspaceApply.Name)
+				assert.Equal(t, "test-controlplane-eks-controlplane-apply", workspaceApply.Name)
 				assert.Equal(t, "default", workspaceApply.Namespace)
 				assert.Equal(t, "test-template", workspaceApply.Spec.TemplateRef.Name)
 				assert.Equal(t, "1.21", workspaceApply.Spec.Variables["kubernetes_version"])

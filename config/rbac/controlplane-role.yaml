@@ -10,6 +10,7 @@ rules:
   - secrets
   verbs:
   - create
+  - delete
   - get
   - list
   - patch
@@ -63,6 +64,7 @@ rules:
   - workspacetemplates
   verbs:
   - create
+  - delete
   - get
   - list
   - patch

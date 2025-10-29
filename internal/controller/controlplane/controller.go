@@ -27,7 +27,7 @@ import (
 // +kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=captcontrolplanes/finalizers,verbs=update
 // Additional permissions required by the control plane reconciler
 // +kubebuilder:rbac:groups=tf.upbound.io,resources=workspaces;workspaces/status,verbs=get;list;watch
-// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplates;workspacetemplateapplies;workspacetemplateapplies/status,verbs=get;list;watch;create;update;patch
+// +kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=workspacetemplates;workspacetemplateapplies;workspacetemplateapplies/status,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters;clusters/status,verbs=get;list;watch;update;patch
 
 const (

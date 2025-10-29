@@ -1,6 +1,7 @@
 namespace: capt-system
 
 namePrefix: capt-
+nameSuffix: -control-plane
 
 resources:
 - ../../clusterapi/controlplane

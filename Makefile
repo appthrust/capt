@@ -76,11 +76,11 @@ clusterctl-setup: clusterapi-manifests kustomize $(KUSTOMIZE_PREREQ) ## Build co
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	# Add controller args patch for infrastructure components
 	cd config/manager && $(KUSTOMIZE) edit add patch --path infrastructure-args-patch.yaml
-	$(KUSTOMIZE) build config/clusterapi/infrastructure > capt/infrastructure-capt/v0.0.0/infrastructure-components.yaml
+	$(KUSTOMIZE) build --load-restrictor LoadRestrictionsNone config/clusterctl/infrastructure > capt/infrastructure-capt/v0.0.0/infrastructure-components.yaml
 	cd config/manager && $(KUSTOMIZE) edit remove patch --path infrastructure-args-patch.yaml
 	# Add controller args patch for control plane components
 	cd config/manager && $(KUSTOMIZE) edit add patch --path controlplane-args-patch.yaml
-	$(KUSTOMIZE) build config/clusterapi/controlplane > capt/control-plane-capt/v0.0.0/control-plane-components.yaml
+	$(KUSTOMIZE) build --load-restrictor LoadRestrictionsNone config/clusterctl/controlplane > capt/control-plane-capt/v0.0.0/control-plane-components.yaml
 	cd config/manager && $(KUSTOMIZE) edit remove patch --path controlplane-args-patch.yaml
 	git restore config/manager/kustomization.yaml
 	# Copy metadata files

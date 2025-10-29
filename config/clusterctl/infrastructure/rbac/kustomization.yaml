@@ -1,0 +1,13 @@
+resources:
+- ../../../rbac/service_account.yaml
+- ../../../rbac/role.yaml
+- ../../../rbac/role_binding.yaml
+- ../../../rbac/leader_election_role.yaml
+- ../../../rbac/leader_election_role_binding.yaml
+- ../../../rbac/metrics_auth_role.yaml
+- ../../../rbac/metrics_auth_role_binding.yaml
+- ../../../rbac/metrics_reader_role.yaml
+- ../../../rbac/infrastructure-role.yaml
+- ../../../rbac/infrastructure-role-binding.yaml
+
+

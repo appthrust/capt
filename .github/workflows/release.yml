@@ -182,6 +182,21 @@ jobs:
         run: |
           echo TAG_NAME="${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
+      - name: Cleanup duplicate draft releases for this tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ steps.branch_name.outputs.TAG_NAME }}
+        run: |
+          set -euo pipefail
+          url="https://api.github.com/repos/$REPO/releases?per_page=100"
+          releases=$(curl -fsSL -H "Authorization: token $GH_TOKEN" "$url")
+          # Delete all draft releases that match this tag (if any)
+          echo "$releases" | jq -r ".[] | select(.tag_name==\"$TAG\" and .draft==true) | .id" | while read -r id; do
+            echo "Deleting draft release id=$id for tag=$TAG"
+            curl -fsSL -X DELETE -H "Authorization: token $GH_TOKEN" "https://api.github.com/repos/$REPO/releases/$id" >/dev/null 2>&1 || true
+          done
+
       - name: Create Release
         id: create_release
         uses: shogo82148/actions-create-release@v1.7.8

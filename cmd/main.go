@@ -88,11 +88,13 @@ func main() {
 	var enableLeaderElection bool
 	var probeAddr string
 	var enabledControllers controllerFlag
+	var enableWebhooks bool
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+	flag.BoolVar(&enableWebhooks, "enable-webhooks", false, "Enable registering and running admission webhooks (default: disabled)")
 	helpEnable := "The controller to enable. Can be specified multiple times. " +
 		"Valid options: " + strings.Join(allControllers, ", ")
 	flag.Var(&enabledControllers, "enable-controller", helpEnable)
@@ -204,14 +206,18 @@ func main() {
 			os.Exit(1)
 		}
 
-		if err = (&infrastructurev1beta1.CAPTCluster{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "CAPTCluster")
-			os.Exit(1)
-		}
+		if enableWebhooks {
+			if err = (&infrastructurev1beta1.CAPTCluster{}).SetupWebhookWithManager(mgr); err != nil {
+				setupLog.Error(err, "unable to create webhook", "webhook", "CAPTCluster")
+				os.Exit(1)
+			}
 
-		if err = (&infrastructurev1beta1.CAPTClusterTemplate{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "CAPTClusterTemplate")
-			os.Exit(1)
+			if err = (&infrastructurev1beta1.CAPTClusterTemplate{}).SetupWebhookWithManager(mgr); err != nil {
+				setupLog.Error(err, "unable to create webhook", "webhook", "CAPTClusterTemplate")
+				os.Exit(1)
+			}
+		} else {
+			setupLog.Info("webhooks disabled; skipping infrastructure webhook registration")
 		}
 	}
 
@@ -235,27 +241,35 @@ func main() {
 			os.Exit(1)
 		}
 
-		// Register CAPTControlPlane webhooks
-		if err = (&controlplanev1beta1.CAPTControlPlane{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "CAPTControlPlane")
-			os.Exit(1)
-		}
+		if enableWebhooks {
+			// Register CAPTControlPlane webhooks
+			if err = (&controlplanev1beta1.CAPTControlPlane{}).SetupWebhookWithManager(mgr); err != nil {
+				setupLog.Error(err, "unable to create webhook", "webhook", "CAPTControlPlane")
+				os.Exit(1)
+			}
 
-		// Register CAPTControlPlaneTemplate webhooks
-		if err = (&controlplanev1beta1.CAPTControlPlaneTemplate{}).SetupWebhookWithManager(mgr); err != nil {
-			setupLog.Error(err, "unable to create webhook", "webhook", "CAPTControlPlaneTemplate")
-			os.Exit(1)
+			// Register CAPTControlPlaneTemplate webhooks
+			if err = (&controlplanev1beta1.CAPTControlPlaneTemplate{}).SetupWebhookWithManager(mgr); err != nil {
+				setupLog.Error(err, "unable to create webhook", "webhook", "CAPTControlPlaneTemplate")
+				os.Exit(1)
+			}
+		} else {
+			setupLog.Info("webhooks disabled; skipping control-plane webhook registration")
 		}
 	}
 
-	if err = (&infrastructurev1beta1.CaptMachineTemplate{}).SetupWebhookWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create webhook", "webhook", "CaptMachineTemplate")
-		os.Exit(1)
-	}
+	if enableWebhooks {
+		if err = (&infrastructurev1beta1.CaptMachineTemplate{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "CaptMachineTemplate")
+			os.Exit(1)
+		}
 
-	if err = (&infrastructurev1beta1.CaptMachine{}).SetupWebhookWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create webhook", "webhook", "CaptMachine")
-		os.Exit(1)
+		if err = (&infrastructurev1beta1.CaptMachine{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "CaptMachine")
+			os.Exit(1)
+		}
+	} else {
+		setupLog.Info("webhooks disabled; skipping machine webhook registration")
 	}
 
 	// +kubebuilder:scaffold:builder

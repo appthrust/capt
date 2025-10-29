@@ -199,7 +199,7 @@ func (r *Reconciler) getOrCreateWorkspaceTemplateApply(ctx context.Context, capt
 		return latest, nil
 	}
 
-	if err != nil && !apierrors.IsNotFound(err) {
+	if !apierrors.IsNotFound(err) {
 		return nil, err
 	}
 

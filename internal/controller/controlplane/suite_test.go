@@ -29,7 +29,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -135,7 +135,7 @@ var _ = BeforeSuite(func() {
 											Required: []string{"host", "port"},
 											Properties: map[string]apiextensionsv1.JSONSchemaProps{
 												"host": {Type: "string"},
-												"port": {Type: "integer", Minimum: pointer.Float64(1), Maximum: pointer.Float64(65535)},
+												"port": {Type: "integer", Minimum: ptr.To[float64](1), Maximum: ptr.To[float64](65535)},
 											},
 										},
 									},

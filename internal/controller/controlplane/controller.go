@@ -190,6 +190,7 @@ func (r *Reconciler) cleanupResources(ctx context.Context, controlPlane *control
 		}
 		// 親クラスタが既に削除されている場合は処理を続行
 		logger.Info("Parent cluster already deleted")
+		cluster = nil
 	} else {
 		// エンドポイントを削除
 		cluster.Spec.ControlPlaneEndpoint = clusterv1.APIEndpoint{}

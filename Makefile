@@ -8,6 +8,17 @@ IMG ?= ghcr.io/appthrust/capt:v$(VERSION)
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.31.0
 
+# Control whether controller-gen generates webhook manifests
+# 0 = do not generate (default), 1 = generate
+GENERATE_WEBHOOKS ?= 0
+
+# Controller-gen generators to run
+ifeq ($(GENERATE_WEBHOOKS),1)
+CONTROLLER_GEN_TARGETS = crd:generateEmbeddedObjectMeta=true webhook
+else
+CONTROLLER_GEN_TARGETS = crd:generateEmbeddedObjectMeta=true
+endif
+
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
 GOBIN=$(shell go env GOPATH)/bin
@@ -53,20 +64,20 @@ manifests: controller-gen
 	mkdir -p config/clusterapi/controlplane/bases
 	mkdir -p config/rbac
 	$(CONTROLLER_GEN) rbac:roleName=manager-role-controlplane paths="./internal/controller/controlplane/..." output:stdout > config/rbac/controlplane-role.yaml
-	$(CONTROLLER_GEN) crd:generateEmbeddedObjectMeta=true webhook paths="./api/controlplane/..." output:crd:artifacts:config=config/clusterapi/controlplane/bases
+	$(CONTROLLER_GEN) $(CONTROLLER_GEN_TARGETS) paths="./api/controlplane/..." output:crd:artifacts:config=config/clusterapi/controlplane/bases
 	mkdir -p config/clusterapi/infrastructure/bases
 	$(CONTROLLER_GEN) rbac:roleName=manager-role-infrastructure paths="./internal/controller" output:stdout > config/rbac/infrastructure-role.yaml
-	$(CONTROLLER_GEN) crd:generateEmbeddedObjectMeta=true webhook paths="./api/v1beta1/..." output:crd:artifacts:config=config/clusterapi/infrastructure/bases
+	$(CONTROLLER_GEN) $(CONTROLLER_GEN_TARGETS) paths="./api/v1beta1/..." output:crd:artifacts:config=config/clusterapi/infrastructure/bases
 
 .PHONY: clusterapi-manifests
 clusterapi-manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	mkdir -p config/clusterapi/controlplane/bases
 	mkdir -p config/rbac
 	$(CONTROLLER_GEN) rbac:roleName=manager-role-controlplane paths="./internal/controller/controlplane/..." output:stdout > config/rbac/controlplane-role.yaml
-	$(CONTROLLER_GEN) crd:generateEmbeddedObjectMeta=true webhook paths="./api/controlplane/..." output:crd:artifacts:config=config/clusterapi/controlplane/bases
+	$(CONTROLLER_GEN) $(CONTROLLER_GEN_TARGETS) paths="./api/controlplane/..." output:crd:artifacts:config=config/clusterapi/controlplane/bases
 	mkdir -p config/clusterapi/infrastructure/bases
 	$(CONTROLLER_GEN) rbac:roleName=manager-role-infrastructure paths="./internal/controller" output:stdout > config/rbac/infrastructure-role.yaml
-	$(CONTROLLER_GEN) crd:generateEmbeddedObjectMeta=true webhook paths="./api/v1beta1/..." output:crd:artifacts:config=config/clusterapi/infrastructure/bases
+	$(CONTROLLER_GEN) $(CONTROLLER_GEN_TARGETS) paths="./api/v1beta1/..." output:crd:artifacts:config=config/clusterapi/infrastructure/bases
 
 .PHONY: clusterctl-setup
 clusterctl-setup: clusterapi-manifests kustomize $(KUSTOMIZE_PREREQ) ## Build components and create local config for clusterctl testing.

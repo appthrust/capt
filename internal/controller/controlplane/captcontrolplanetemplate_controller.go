@@ -1,18 +1,18 @@
 package controlplane
 
 import (
-    "context"
+	"context"
 
-    "github.com/pkg/errors"
-    apierrors "k8s.io/apimachinery/pkg/api/errors"
-    "k8s.io/apimachinery/pkg/runtime"
-    "k8s.io/client-go/tools/record"
-    ctrl "sigs.k8s.io/controller-runtime"
-    "sigs.k8s.io/controller-runtime/pkg/client"
-    "sigs.k8s.io/controller-runtime/pkg/log"
+	"github.com/pkg/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
-    controlplanev1beta1 "github.com/appthrust/capt/api/controlplane/v1beta1"
-    infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
+	controlplanev1beta1 "github.com/appthrust/capt/api/controlplane/v1beta1"
+	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
 )
 
 // CaptControlPlaneTemplateReconciler reconciles a CAPTControlPlaneTemplate object
@@ -54,16 +54,16 @@ func (r *CaptControlPlaneTemplateReconciler) Reconcile(ctx context.Context, req 
 
 // validateWorkspaceTemplateRef validates that the referenced WorkspaceTemplate exists
 func (r *CaptControlPlaneTemplateReconciler) validateWorkspaceTemplateRef(ctx context.Context, template *controlplanev1beta1.CAPTControlPlaneTemplate) error {
-    // Optional in templates: skip validation if ref is not provided or name is empty
-    if template.Spec.Template.Spec.WorkspaceTemplateRef == nil || template.Spec.Template.Spec.WorkspaceTemplateRef.Name == "" {
-        return nil
-    }
+	// Optional in templates: skip validation if ref is not provided or name is empty
+	if template.Spec.Template.Spec.WorkspaceTemplateRef == nil || template.Spec.Template.Spec.WorkspaceTemplateRef.Name == "" {
+		return nil
+	}
 
-    workspaceTemplate := &infrastructurev1beta1.WorkspaceTemplate{}
-    key := client.ObjectKey{
-        Name:      template.Spec.Template.Spec.WorkspaceTemplateRef.Name,
-        Namespace: template.Spec.Template.Spec.WorkspaceTemplateRef.Namespace,
-    }
+	workspaceTemplate := &infrastructurev1beta1.WorkspaceTemplate{}
+	key := client.ObjectKey{
+		Name:      template.Spec.Template.Spec.WorkspaceTemplateRef.Name,
+		Namespace: template.Spec.Template.Spec.WorkspaceTemplateRef.Namespace,
+	}
 	if key.Namespace == "" {
 		key.Namespace = template.Namespace
 	}

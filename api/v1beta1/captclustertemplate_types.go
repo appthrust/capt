@@ -19,7 +19,7 @@ type CAPTClusterTemplateResource struct {
 	// Spec is the specification for the template. All fields are optional to
 	// allow ClusterClass/topology patches to populate values.
 	// +optional
-	Spec CAPTClusterTemplateSpec `json:"spec,omitempty"`
+	Spec CAPTClusterTemplateResourceSpec `json:"spec,omitempty"`
 }
 
 // TemplateWorkspaceTemplateReference contains the reference to a WorkspaceTemplate (all optional for templates)
@@ -30,8 +30,8 @@ type TemplateWorkspaceTemplateReference struct {
 	Namespace string `json:"namespace,omitempty"`
 }
 
-// CAPTClusterTemplateSpec defines the desired state of CAPTCluster for templates (all optional)
-type CAPTClusterTemplateSpec struct {
+// CAPTClusterTemplateResourceSpec defines the desired state of CAPTCluster for templates (all optional)
+type CAPTClusterTemplateResourceSpec struct {
 	// +optional
 	Region string `json:"region,omitempty"`
 

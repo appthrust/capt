@@ -20,7 +20,7 @@ type CAPTControlPlaneTemplateResource struct {
 	// Spec is the specification for the template. All fields are optional to
 	// allow ClusterClass/topology patches to populate values.
 	// +optional
-	Spec CAPTControlPlaneTemplateSpec `json:"spec,omitempty"`
+	Spec CAPTControlPlaneTemplateResourceSpec `json:"spec,omitempty"`
 }
 
 // APIEndpointTemplate represents the endpoint used to communicate with the control plane (all optional for templates)
@@ -95,8 +95,8 @@ type ControlPlaneConfigTemplate struct {
 	Timeouts *TimeoutConfigTemplate `json:"timeouts,omitempty"`
 }
 
-// CAPTControlPlaneTemplateSpec is the template spec with all fields optional
-type CAPTControlPlaneTemplateSpec struct {
+// CAPTControlPlaneTemplateResourceSpec is the template spec with all fields optional
+type CAPTControlPlaneTemplateResourceSpec struct {
 	// +optional
 	Version string `json:"version,omitempty"`
 	// +optional

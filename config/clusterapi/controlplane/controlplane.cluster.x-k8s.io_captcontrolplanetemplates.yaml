@@ -130,8 +130,6 @@ spec:
                                 minimum: 1
                                 type: integer
                             type: object
-                        required:
-                        - region
                         type: object
                       controlPlaneEndpoint:
                         description: ControlPlaneEndpoint represents the endpoint
@@ -169,9 +167,6 @@ spec:
                         required:
                         - name
                         type: object
-                    required:
-                    - version
-                    - workspaceTemplateRef
                     type: object
                 type: object
             required:

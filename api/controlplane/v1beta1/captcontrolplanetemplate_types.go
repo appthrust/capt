@@ -20,7 +20,7 @@ type CAPTControlPlaneTemplateResource struct {
 	// Spec is the specification of the desired behavior of the CAPTControlPlane.
 	// This spec allows for all the same configuration as CAPTControlPlane.
 	// +optional
-	Spec CAPTControlPlaneSpec `json:"spec"`
+	Spec CAPTControlPlaneSpec `json:"spec,omitempty"`
 }
 
 // +kubebuilder:object:root=true

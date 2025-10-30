@@ -19,7 +19,7 @@ type CAPTClusterTemplateResource struct {
 	// Spec is the specification of the desired behavior of the CAPTCluster.
 	// This spec allows for all the same configuration as CAPTCluster.
 	// +optional
-	Spec CAPTClusterSpec `json:"spec"`
+	Spec CAPTClusterSpec `json:"spec,omitempty"`
 }
 
 // +kubebuilder:object:root=true

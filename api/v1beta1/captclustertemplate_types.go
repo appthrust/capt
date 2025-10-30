@@ -16,10 +16,44 @@ type CAPTClusterTemplateResource struct {
 	// +optional
 	ObjectMeta metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	// Spec is the specification of the desired behavior of the CAPTCluster.
-	// This spec allows for all the same configuration as CAPTCluster.
+	// Spec is the specification for the template. All fields are optional to
+	// allow ClusterClass/topology patches to populate values.
 	// +optional
-	Spec CAPTClusterSpec `json:"spec,omitempty"`
+	Spec CAPTClusterTemplateSpec `json:"spec,omitempty"`
+}
+
+// TemplateWorkspaceTemplateReference contains the reference to a WorkspaceTemplate (all optional for templates)
+type TemplateWorkspaceTemplateReference struct {
+	// +optional
+	Name string `json:"name,omitempty"`
+	// +optional
+	Namespace string `json:"namespace,omitempty"`
+}
+
+// CAPTClusterTemplateSpec defines the desired state of CAPTCluster for templates (all optional)
+type CAPTClusterTemplateSpec struct {
+	// +optional
+	Region string `json:"region,omitempty"`
+
+	// VPCTemplateRef is a reference to a WorkspaceTemplate resource for VPC configuration
+	// +optional
+	VPCTemplateRef *TemplateWorkspaceTemplateReference `json:"vpcTemplateRef,omitempty"`
+
+	// ExistingVPCID is the ID of an existing VPC to use
+	// +optional
+	ExistingVPCID string `json:"existingVpcId,omitempty"`
+
+	// RetainVPCOnDelete specifies whether to retain the VPC when the parent cluster is deleted
+	// +optional
+	RetainVPCOnDelete bool `json:"retainVpcOnDelete,omitempty"`
+
+	// VPCConfig contains VPC-specific configuration
+	// +optional
+	VPCConfig *VPCConfig `json:"vpcConfig,omitempty"`
+
+	// WorkspaceTemplateApplyName is the name of the WorkspaceTemplateApply used for this cluster.
+	// +optional
+	WorkspaceTemplateApplyName string `json:"workspaceTemplateApplyName,omitempty"`
 }
 
 // +kubebuilder:object:root=true

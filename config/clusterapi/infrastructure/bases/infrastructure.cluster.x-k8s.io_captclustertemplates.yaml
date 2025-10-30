@@ -114,8 +114,6 @@ spec:
                           namespace:
                             description: Namespace of the referenced WorkspaceTemplate
                             type: string
-                        required:
-                        - name
                         type: object
                       workspaceTemplateApplyName:
                         description: |-

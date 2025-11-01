@@ -378,6 +378,17 @@ func (r *workspaceTemplateApplyReconciler) reconcileWorkspaceStatus(ctx context.
 		Name:      cr.Status.WorkspaceName,
 		Namespace: cr.Namespace,
 	}, workspace); err != nil {
+		// If the Workspace was deleted or not found, mark as not applied so that
+		// the create path runs again on the next reconciliation.
+		if apierrors.IsNotFound(err) {
+			r.log.Debug(errGetWorkspace+": will recreate", "error", err)
+			cr.Status.WorkspaceName = ""
+			cr.Status.Applied = false
+			if uerr := r.client.Status().Update(ctx, cr); uerr != nil {
+				return ctrl.Result{}, uerr
+			}
+			return ctrl.Result{RequeueAfter: requeueAfterStatus}, nil
+		}
 		r.log.Debug(errGetWorkspace, "error", err)
 		return ctrl.Result{}, err
 	}

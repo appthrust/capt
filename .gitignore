@@ -46,3 +46,4 @@ refs
 .specstory
 .cursorindexingignore
 work/
+cc-kubeconfig

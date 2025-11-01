@@ -1,0 +1,123 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplate
+metadata:
+  name: vpc-template
+  namespace: mgmt
+spec:
+  template:
+    metadata:
+      description: "Template for creating AWS VPC with public and private subnets"
+      version: "1.0.0"
+      tags:
+        provider: "aws"
+        resource: "vpc"
+        environment: "dev"
+    spec:
+      providerConfigRef:
+        name: aws-provider-config
+      forProvider:
+        source: Inline
+        vars:
+          - key: name
+            value: "${vpc_name}"
+          - key: cluster_name
+            value: "${cluster_name}"
+        module: |
+          data "aws_availability_zones" "available" {
+            filter {
+              name   = "opt-in-status"
+              values = ["opt-in-not-required"]
+            }
+          }
+
+          locals {
+            azs = slice(data.aws_availability_zones.available.names, 0, 3)
+            name = try(var.name, basename(path.cwd))
+            cluster_name = var.cluster_name
+            tags = {
+              Module     = basename(path.cwd)
+              GithubRepo = "github.com/appthrust/terraform-aws"
+            }
+          }
+
+          variable "name" {
+            type        = string
+            description = "Name of the VPC"
+          }
+
+          variable "cluster_name" {
+            type        = string
+            description = "Name of the cluster"
+          }
+
+          module "vpc" {
+            source             = "terraform-aws-modules/vpc/aws"
+            version           = "~> 5.0"
+            name              = var.name
+            cidr              = "10.0.0.0/16"
+            azs               = local.azs
+            private_subnets   = [for k, v in local.azs : cidrsubnet("10.0.0.0/16", 4, k)]
+            public_subnets    = [for k, v in local.azs : cidrsubnet("10.0.0.0/16", 8, k + 48)]
+            enable_nat_gateway = true
+            single_nat_gateway = true
+            public_subnet_tags = {
+              "kubernetes.io/role/elb" = "1"
+            }
+            private_subnet_tags = {
+              "karpenter.sh/discovery"          = "${local.cluster_name}"
+              "kubernetes.io/role/internal-elb" = "1"
+            }
+            tags = {
+              Environment = "dev"
+              Terraform   = "true"
+            }
+          }
+
+          output "vpc_id" {
+            description = "The ID of the VPC"
+            value       = module.vpc.vpc_id
+          }
+
+          output "private_subnets" {
+            description = "List of IDs of private subnets"
+            value       = module.vpc.private_subnets
+          }
+
+          output "public_subnets" {
+            description = "List of IDs of public subnets"
+            value       = module.vpc.public_subnets
+          }
+
+          output "vpc_config" {
+            description = "VPC configuration in HCL format"
+            value = <<-EOT
+            vpc_id = "${module.vpc.vpc_id}"
+            private_subnets = ${jsonencode(module.vpc.private_subnets)}
+            EOT
+            sensitive   = true
+          }
+
+          output "public_subnets_with_zones" {
+            description = "Public subnets paired with their availability zones"
+            value = [
+              for idx, az in local.azs : {
+                zone   = az
+                subnet = module.vpc.public_subnets[idx]
+              }
+            ]
+          }
+
+          output "private_subnets_with_zones" {
+            description = "Private subnets paired with their availability zones"
+            value = [
+              for idx, az in local.azs : {
+                zone   = az
+                subnet = module.vpc.private_subnets[idx]
+              }
+            ]
+          }
+      writeConnectionSecretToRef:
+        name: "${WORKSPACE_NAME}-vpc-connection"
+        namespace: mgmt
+
+

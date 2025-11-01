@@ -1,0 +1,476 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: WorkspaceTemplate
+metadata:
+  name: eks-controlplane-template
+  namespace: mgmt
+spec:
+  template:
+    metadata:
+      description: "Template for creating EKS Control Plane without Karpenter Helm installation"
+      version: "1.0.0"
+      tags:
+        provider: "aws"
+        resource: "eks"
+        environment: "dev"
+    spec:
+      writeConnectionSecretToRef:
+        name: "${WORKSPACE_NAME}-eks-connection"
+        namespace: mgmt
+      providerConfigRef:
+        name: aws-provider-config
+      forProvider:
+        source: Inline
+        enableTerraformCLILogging: true
+        env:
+          - name: HELM_REPOSITORY_CACHE
+            value: /tmp/.helmcache
+        vars:
+          - key: cluster_name
+            value: "${cluster_name}"
+          - key: kubernetes_version
+            value: "${kubernetes_version}"
+          - key: region
+            value: "${region}"
+        varFiles:
+          - source: SecretKey
+            format: HCL
+            secretKeyRef:
+              namespace: mgmt
+              name: "${vpc_workspace_name}-vpc-connection"
+              key: vpc_config
+        module: |
+          variable "region" {
+            type        = string
+            description = "Name of AWS Region"
+          }
+          variable "cluster_name" {
+            type        = string
+            description = "Name of the EKS cluster"
+          }
+          variable "kubernetes_version" {
+            type        = string
+            description = "Kubernetes version for the EKS cluster"
+          }
+          variable "vpc_id" {
+            type        = string
+            description = "ID of the VPC where EKS cluster will be created"
+          }
+          variable "private_subnets" {
+            type        = list(string)
+            description = "List of private subnet IDs for EKS cluster"
+          }
+
+          locals {
+            tags = {
+              Terraform = "true"
+            }
+            k8s_version_clean = replace(var.kubernetes_version, "v", "")
+            k8s_version_parts = split(".", local.k8s_version_clean)
+            k8s_version_mm    = length(local.k8s_version_parts) > 1 ? join(".", slice(local.k8s_version_parts, 0, 2)) : local.k8s_version_clean
+          }
+
+          module "kms" {
+            source  = "terraform-aws-modules/kms/aws"
+            version = "~> 2.1"
+            description           = "${var.cluster_name} cluster encryption key"
+            enable_default_policy = true
+            key_owners            = [data.aws_caller_identity.current.arn]
+            tags = local.tags
+          }
+
+          module "eks" {
+            source  = "terraform-aws-modules/eks/aws"
+            version = "~> 20.29"
+            cluster_name    = var.cluster_name
+            cluster_version = local.k8s_version_mm
+            enable_cluster_creator_admin_permissions = true
+            cluster_endpoint_public_access           = true
+            create_kms_key = false
+            cluster_encryption_config = {
+              resources        = ["secrets"]
+              provider_key_arn = module.kms.key_arn
+            }
+            cluster_addons = {
+              coredns = {
+                configuration_values = jsonencode({
+                  computeType = "Fargate"
+                  resources = {
+                    limits = {
+                      cpu    = "0.25"
+                      memory = "256M"
+                    }
+                    requests = {
+                      cpu    = "0.25"
+                      memory = "256M"
+                    }
+                  }
+                })
+              }
+              snapshot-controller = {
+                most_recent       = true
+                resolve_conflicts = "OVERWRITE"
+              }
+              aws-ebs-csi-driver = {
+                most_recent       = true
+                resolve_conflicts = "OVERWRITE"
+              }
+              eks-pod-identity-agent = {
+                configuration_values = jsonencode({
+                  resources = {
+                    requests = {
+                      cpu    = "0.1"
+                      memory = "32M"
+                    }
+                  }
+                })
+              }
+              kube-proxy = {
+                configuration_values = jsonencode({
+                  resources = {
+                    requests = {
+                      cpu    = "0.1"
+                      memory = "64M"
+                    }
+                  }
+                })
+              }
+              vpc-cni = {
+                configuration_values = jsonencode({
+                  resources = {
+                    requests = {
+                      cpu    = "0.1"
+                      memory = "128M"
+                    }
+                  }
+                })
+              }
+            }
+            vpc_id     = var.vpc_id
+            subnet_ids = var.private_subnets
+            create_cluster_security_group = false
+            create_node_security_group    = false
+            fargate_profiles = {
+              karpenter = {
+                selectors = [
+                  { namespace = "karpenter" }
+                ]
+              }
+            }
+
+            # no managed node groups in Fargate-first setup
+            tags = merge(local.tags, {
+              "karpenter.sh/discovery" = var.cluster_name
+            })
+          }
+
+          module "karpenter" {
+            source  = "terraform-aws-modules/eks/aws//modules/karpenter"
+            version = "~> 20.29"
+
+            cluster_name          = module.eks.cluster_name
+            enable_v1_permissions = true
+            namespace             = "karpenter"
+
+            node_iam_role_use_name_prefix = false
+            node_iam_role_name            = "${module.eks.cluster_name}-node"
+
+            create_pod_identity_association = false
+            enable_irsa                     = true
+            irsa_oidc_provider_arn          = module.eks.oidc_provider_arn
+
+            tags = local.tags
+          }
+
+          output "cluster_endpoint" {
+            description = "Endpoint for EKS control plane"
+            value       = module.eks.cluster_endpoint
+          }
+          output "cluster_name" {
+            description = "The name of the EKS cluster"
+            value       = module.eks.cluster_name
+          }
+          output "cluster_certificate_authority_data" {
+            description = "Base64 encoded certificate data required to communicate with the cluster"
+            value       = module.eks.cluster_certificate_authority_data
+          }
+          output "oidc_provider" {
+            description = "The OpenID Connect identity provider (issuer URL without leading https://)"
+            value       = module.eks.oidc_provider
+          }
+          output "oidc_provider_arn" {
+            description = "The ARN of the OIDC Provider"
+            value       = module.eks.oidc_provider_arn
+          }
+          output "karpenter" {
+            value = {
+              service_account = {
+                annotations = {
+                  "eks.amazonaws.com/role-arn" = module.karpenter.iam_role_arn
+                }
+              }
+              ec2_node_class = {
+                role = "${module.eks.cluster_name}-node"
+              }
+              discovery_tag = {
+                key = "karpenter.sh/discovery"
+                value = module.eks.cluster_name
+              }
+              queue_name = module.karpenter.queue_name
+            }
+          }
+          data "aws_caller_identity" "current" {}
+
+          resource "aws_iam_role" "ebs_csi_driver" {
+            name               = "${var.cluster_name}-ebs-csi-driver"
+            assume_role_policy = jsonencode({
+              Version = "2012-10-17",
+              Statement = [{
+                Sid       = "EBSCSIDriver",
+                Effect    = "Allow",
+                Principal = { Service = "pods.eks.amazonaws.com" },
+                Action    = ["sts:AssumeRole", "sts:TagSession"]
+              }]
+            })
+          }
+          resource "aws_iam_role_policy_attachment" "ebs_csi_policy" {
+            role       = aws_iam_role.ebs_csi_driver.name
+            policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+          }
+
+          resource "aws_eks_pod_identity_association" "ebs_csi" {
+            cluster_name  = module.eks.cluster_name
+            namespace     = "kube-system"
+            service_account = "ebs-csi-controller-sa"
+            role_arn      = aws_iam_role.ebs_csi_driver.arn
+          }
+
+          data "http" "aws_load_balancer_controller_policy" {
+            url = "https://raw.githubusercontent.com/kubernetes-sigs/aws-alb-ingress-controller/main/docs/install/iam_policy.json"
+          }
+
+          resource "aws_iam_policy" "aws_load_balancer_controller" {
+            name   = "${var.cluster_name}-AWSLoadBalancerControllerPolicy"
+            policy = data.http.aws_load_balancer_controller_policy.response_body
+          }
+
+          resource "aws_iam_role" "aws_load_balancer_controller" {
+            name = "${var.cluster_name}-AWSLoadBalancerControllerRole"
+            assume_role_policy = jsonencode({
+              Version = "2012-10-17",
+              Statement = [{
+                Sid       = "AWSLoadBalancerController",
+                Effect    = "Allow",
+                Principal = { Service = "pods.eks.amazonaws.com" },
+                Action    = ["sts:AssumeRole", "sts:TagSession"]
+              }]
+            })
+          }
+
+          resource "aws_iam_role_policy_attachment" "aws_load_balancer_controller" {
+            role       = aws_iam_role.aws_load_balancer_controller.name
+            policy_arn = aws_iam_policy.aws_load_balancer_controller.arn
+          }
+
+          resource "aws_eks_pod_identity_association" "aws_load_balancer_controller" {
+            cluster_name    = module.eks.cluster_name
+            namespace       = "kube-system"
+            service_account = "aws-load-balancer-controller"
+            role_arn        = aws_iam_role.aws_load_balancer_controller.arn
+          }
+
+          data "aws_route53_zone" "external_dns" {
+            name         = "labthrust.internal"
+            private_zone = true
+          }
+
+          resource "aws_iam_policy" "external_dns" {
+            name        = "${var.cluster_name}-ExternalDNSPolicy"
+            description = "Least-privilege policy for ExternalDNS limited to a specific hosted zone"
+            policy = jsonencode({
+              Version = "2012-10-17",
+              Statement = [
+                {
+                  Sid      = "ChangeRecordsInSpecificZone",
+                  Effect   = "Allow",
+                  Action   = ["route53:ChangeResourceRecordSets"],
+                  Resource = "arn:aws:route53:::hostedzone/${data.aws_route53_zone.external_dns.zone_id}"
+                },
+                {
+                  Sid    = "ListAndDiscover",
+                  Effect = "Allow",
+                  Action = [
+                    "route53:ListHostedZones",
+                    "route53:ListResourceRecordSets",
+                    "route53:ListTagsForResources",
+                    "route53:GetHostedZone",
+                    "route53:GetChange"
+                  ],
+                  Resource = "*"
+                }
+              ]
+            })
+          }
+
+          resource "aws_iam_role" "external_dns" {
+            name               = "${var.cluster_name}-ExternalDNSRole"
+            assume_role_policy = jsonencode({
+              Version = "2012-10-17",
+              Statement = [{
+                Sid       = "ExternalDNSPodIdentity",
+                Effect    = "Allow",
+                Principal = { Service = "pods.eks.amazonaws.com" },
+                Action    = ["sts:AssumeRole", "sts:TagSession"]
+              }]
+            })
+            tags = local.tags
+          }
+
+          resource "aws_iam_role_policy_attachment" "external_dns" {
+            role       = aws_iam_role.external_dns.name
+            policy_arn = aws_iam_policy.external_dns.arn
+          }
+
+          resource "aws_eks_pod_identity_association" "external_dns" {
+            cluster_name    = module.eks.cluster_name
+            namespace       = "external-dns"
+            service_account = "external-dns"
+            role_arn        = aws_iam_role.external_dns.arn
+          }
+
+          output "external_dns" {
+            value = {
+              service_account = {
+                namespace = "external-dns"
+                name      = "external-dns"
+              }
+              iam_role_arn = aws_iam_role.external_dns.arn
+            }
+          }
+
+          locals {
+            observability_apps = toset(["mimir", "loki", "tempo"])
+          }
+
+          resource "random_id" "suffix" {
+            for_each    = local.observability_apps
+            byte_length = 8
+          }
+
+          resource "aws_s3_bucket" "obs" {
+            for_each = local.observability_apps
+
+            bucket = "appthrust-monitoring-${each.key}-${random_id.suffix[each.key].hex}"
+            tags   = merge(local.tags, { app = each.key, component = "monitoring" })
+          }
+
+          resource "aws_s3_bucket_public_access_block" "obs" {
+            for_each = local.observability_apps
+
+            bucket                  = aws_s3_bucket.obs[each.key].id
+            block_public_acls       = true
+            block_public_policy     = true
+            ignore_public_acls      = true
+            restrict_public_buckets = true
+          }
+
+          resource "aws_s3_bucket_server_side_encryption_configuration" "obs" {
+            for_each = local.observability_apps
+
+            bucket = aws_s3_bucket.obs[each.key].id
+            rule {
+              apply_server_side_encryption_by_default {
+                sse_algorithm = "AES256"
+              }
+            }
+          }
+
+          resource "aws_iam_policy" "s3" {
+            for_each    = local.observability_apps
+            name        = "${var.cluster_name}-${each.key}-s3-policy"
+            description = "Least-privilege S3 access for ${each.key}"
+
+            policy = (
+              each.key == "mimir"
+              ? jsonencode({
+                  Version   = "2012-10-17",
+                  Statement = [
+                    {
+                      Sid     = "Statement"
+                      Effect  = "Allow"
+                      Action  = [
+                        "s3:ListBucket",
+                        "s3:GetObject",
+                        "s3:DeleteObject",
+                        "s3:PutObject",
+                      ]
+                      Resource = [
+                        "${aws_s3_bucket.obs[each.key].arn}/*",
+                        aws_s3_bucket.obs[each.key].arn,
+                      ]
+                    }
+                  ]
+                })
+              : jsonencode({
+                  Version = "2012-10-17",
+                  Statement = [
+                    {
+                      Sid      = "BucketLevel"
+                      Effect   = "Allow"
+                      Action   = [
+                        "s3:ListBucket",
+                        "s3:GetBucketLocation",
+                        "s3:ListBucketMultipartUploads"
+                      ]
+                      Resource = "*"
+                    },
+                    {
+                      Sid      = "ObjectLevel"
+                      Effect   = "Allow"
+                      Action   = [
+                        "s3:GetObject",
+                        "s3:PutObject",
+                        "s3:DeleteObject",
+                        "s3:AbortMultipartUpload",
+                        "s3:ListMultipartUploadParts"
+                      ]
+                      Resource = "${aws_s3_bucket.obs[each.key].arn}/*"
+                    }
+                  ]
+                })
+            )
+          }
+
+          resource "aws_iam_role" "obs" {
+            for_each = local.observability_apps
+
+            name = "${var.cluster_name}-${each.key}-role"
+            assume_role_policy = jsonencode({
+              Version = "2012-10-17",
+              Statement = [{
+                Sid       = "PodIdentityAssumeRole",
+                Effect    = "Allow",
+                Principal = { Service = "pods.eks.amazonaws.com" },
+                Action    = ["sts:AssumeRole", "sts:TagSession"]
+              }]
+            })
+
+            tags = merge(local.tags, { app = each.key })
+          }
+
+          resource "aws_iam_role_policy_attachment" "s3" {
+            for_each = local.observability_apps
+
+            role       = aws_iam_role.obs[each.key].name
+            policy_arn = aws_iam_policy.s3[each.key].arn
+          }
+
+          resource "aws_eks_pod_identity_association" "obs" {
+            for_each = local.observability_apps
+
+            cluster_name    = module.eks.cluster_name
+            namespace       = each.key
+            service_account = each.key
+            role_arn        = aws_iam_role.obs[each.key].arn
+          }
+
+

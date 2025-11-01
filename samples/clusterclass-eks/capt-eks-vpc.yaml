@@ -1,0 +1,124 @@
+---
+# CAPTClusterTemplate
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+kind: CAPTClusterTemplate
+metadata:
+  name: capt-eks-vpc
+  namespace: mgmt
+spec:
+  template:
+    spec:
+      vpcTemplateRef:
+        name: vpc-template
+        namespace: mgmt
+---
+# CAPTControlPlaneTemplate
+apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+kind: CAPTControlPlaneTemplate
+metadata:
+  name: capt-eks-vpc
+  namespace: mgmt
+spec:
+  template:
+    spec:
+      workspaceTemplateRef:
+        name: eks-controlplane-template
+        namespace: mgmt
+      controlPlaneConfig: {}
+---
+# ClusterClass
+apiVersion: cluster.x-k8s.io/v1beta1
+kind: ClusterClass
+metadata:
+  name: capt-eks-vpc
+  namespace: mgmt
+spec:
+  controlPlane:
+    ref:
+      apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+      kind: CAPTControlPlaneTemplate
+      name: capt-eks-vpc
+      namespace: mgmt
+  infrastructure:
+    ref:
+      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+      kind: CAPTClusterTemplate
+      name: capt-eks-vpc
+      namespace: mgmt
+  variables:
+    - name: region
+      required: true
+      schema:
+        openAPIV3Schema:
+          type: string
+    - name: tags
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: object
+          additionalProperties:
+            type: string
+          default:
+            ManagedBy: "capt"
+    - name: endpointAccess
+      required: false
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            public:
+              type: boolean
+            private:
+              type: boolean
+          default:
+            public: true
+            private: true
+  patches:
+    - name: region
+      definitions:
+        - selector:
+            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
+            kind: CAPTClusterTemplate
+            matchResources:
+              infrastructureCluster: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/region
+              valueFrom:
+                variable: region
+        - selector:
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+            kind: CAPTControlPlaneTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/controlPlaneConfig/region
+              valueFrom:
+                variable: region
+    - name: additionalTags
+      definitions:
+        - selector:
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+            kind: CAPTControlPlaneTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/additionalTags
+              valueFrom:
+                variable: tags
+    - name: endpointAccess
+      definitions:
+        - selector:
+            apiVersion: controlplane.cluster.x-k8s.io/v1beta1
+            kind: CAPTControlPlaneTemplate
+            matchResources:
+              controlPlane: true
+          jsonPatches:
+            - op: add
+              path: /spec/template/spec/controlPlaneConfig/endpointAccess
+              valueFrom:
+                variable: endpointAccess
+
+

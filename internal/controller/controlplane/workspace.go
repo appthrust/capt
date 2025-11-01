@@ -3,6 +3,7 @@ package controlplane
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	controlplanev1beta1 "github.com/appthrust/capt/api/controlplane/v1beta1"
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
@@ -12,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
@@ -134,24 +136,50 @@ func (r *Reconciler) generateWorkspaceTemplateApplySpec(controlPlane *controlpla
 	}
 
 	// Add VPC workspace dependency: use owner cluster name if available
-	vpcOwnerName := controlPlane.Name
-	if name, ok := controlPlane.Labels[clusterv1.ClusterNameLabel]; ok && name != "" {
-		vpcOwnerName = name
+	// Determine associated CAPTCluster to derive the actual VPC WorkspaceTemplateApply name
+	clusterName := controlPlane.Labels[clusterv1.ClusterNameLabel]
+	// Prefer owner cluster name for cluster_name variable when available
+	if clusterName != "" {
+		spec.Variables["cluster_name"] = clusterName
 	}
-	vpcWorkspaceApplyName := fmt.Sprintf("%s-vpc", vpcOwnerName)
-	vpcWorkspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
-	err := r.Get(context.Background(), types.NamespacedName{
-		Name:      vpcWorkspaceApplyName,
-		Namespace: controlPlane.Namespace,
-	}, vpcWorkspaceApply)
-	if err == nil {
-		spec.WaitForWorkspaces = []infrastructurev1beta1.WorkspaceReference{
-			{
-				Name:      vpcWorkspaceApplyName,
-				Namespace: controlPlane.Namespace,
-			},
+	vpcWorkspaceApplyName := ""
+	if clusterName != "" {
+		// List CAPTClusters owned by this cluster
+		captClusters := &infrastructurev1beta1.CAPTClusterList{}
+		if err := r.List(context.Background(), captClusters, client.InNamespace(controlPlane.Namespace), client.MatchingLabels{clusterv1.ClusterNameLabel: clusterName}); err == nil {
+			if len(captClusters.Items) > 0 {
+				cc := captClusters.Items[0]
+				if cc.Spec.WorkspaceTemplateApplyName != "" {
+					vpcWorkspaceApplyName = cc.Spec.WorkspaceTemplateApplyName
+				} else {
+					vpcWorkspaceApplyName = fmt.Sprintf("%s-vpc", cc.Name)
+				}
+			}
 		}
 	}
+	if vpcWorkspaceApplyName == "" {
+		// Fallback to controlPlane-based naming (best-effort)
+		owner := controlPlane.Name
+		if clusterName != "" {
+			owner = clusterName
+		}
+		vpcWorkspaceApplyName = fmt.Sprintf("%s-vpc", owner)
+	}
+
+	// Wait for the VPC Workspace to be ready (its name equals applyName without "-apply")
+	vpcWorkspaceName := strings.TrimSuffix(vpcWorkspaceApplyName, "-apply")
+	spec.WaitForWorkspaces = []infrastructurev1beta1.WorkspaceReference{{
+		Name:      vpcWorkspaceName,
+		Namespace: controlPlane.Namespace,
+	}}
+
+	// Provide VPC workspace name to the template and wait for its connection secret as a required secret
+	spec.Variables["vpc_workspace_name"] = vpcWorkspaceName
+	vpcSecretName := fmt.Sprintf("%s-vpc-connection", vpcWorkspaceName)
+	spec.WaitForSecrets = append(spec.WaitForSecrets, xpv1.SecretReference{
+		Name:      vpcSecretName,
+		Namespace: controlPlane.Namespace,
+	})
 
 	return spec
 }

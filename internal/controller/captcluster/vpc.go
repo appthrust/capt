@@ -147,6 +147,12 @@ func (r *Reconciler) getOrCreateWorkspaceTemplateApply(ctx context.Context, capt
 	// Get VPC name
 	vpcName := r.getVPCName(captCluster)
 
+	// Derive cluster_name for templates: prefer owner CAPI Cluster name when available
+	clusterNameVar := captCluster.Name
+	if lbl := captCluster.Labels[clusterv1.ClusterNameLabel]; lbl != "" {
+		clusterNameVar = lbl
+	}
+
 	// Try to find existing WorkspaceTemplateApply
 	workspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
 	err := r.Get(ctx, types.NamespacedName{Name: applyName, Namespace: captCluster.Namespace}, workspaceApply)
@@ -161,7 +167,7 @@ func (r *Reconciler) getOrCreateWorkspaceTemplateApply(ctx context.Context, capt
 		desiredSpec := infrastructurev1beta1.WorkspaceTemplateApplySpec{
 			TemplateRef: *captCluster.Spec.VPCTemplateRef,
 			Variables: map[string]string{
-				"cluster_name": captCluster.Name,
+				"cluster_name": clusterNameVar,
 				"vpc_name":     vpcName,
 				// Some templates expect a generic "name" variable
 				"name": vpcName,
@@ -213,7 +219,7 @@ func (r *Reconciler) getOrCreateWorkspaceTemplateApply(ctx context.Context, capt
 			TemplateRef: *captCluster.Spec.VPCTemplateRef,
 			Variables: func() map[string]string {
 				vars := map[string]string{
-					"cluster_name": captCluster.Name,
+					"cluster_name": clusterNameVar,
 					"vpc_name":     vpcName,
 					// Some templates expect a generic "name" variable
 					"name": vpcName,

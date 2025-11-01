@@ -6,10 +6,12 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
@@ -255,7 +257,7 @@ func (r *Reconciler) cleanupWorkspaceTemplateApply(ctx context.Context, captClus
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&infrastructurev1beta1.CAPTCluster{}).
+		For(&infrastructurev1beta1.CAPTCluster{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Owns(&infrastructurev1beta1.WorkspaceTemplateApply{}).
 		// Watch Cluster and enqueue all CAPTClusters that belong to it (label match)
 		Watches(
@@ -273,5 +275,6 @@ func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 				return reqs
 			}),
 		).
+		WithEventFilter(predicate.GenerationChangedPredicate{}).
 		Complete(r)
 }

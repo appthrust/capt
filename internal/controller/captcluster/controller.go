@@ -35,6 +35,9 @@ const (
 
 	// ClusterNameLabel is the label used to identify the cluster name
 	ClusterNameLabel = "cluster.x-k8s.io/cluster-name"
+
+	// ControllerVersion indicates the running version of the CAPTCluster controller
+	ControllerVersion = "v0.4.2"
 )
 
 // Reconciler reconciles a CAPTCluster object
@@ -108,6 +111,27 @@ func (r *Reconciler) ensureClusterLabels(ctx context.Context, captCluster *infra
 	return nil
 }
 
+// setOwnerReference sets the owner reference to the parent Cluster
+func (r *Reconciler) setOwnerReference(ctx context.Context, captCluster *infrastructurev1beta1.CAPTCluster, cluster *clusterv1.Cluster) error {
+	if cluster == nil {
+		return nil
+	}
+
+	// Check if owner reference already exists
+	for _, ref := range captCluster.OwnerReferences {
+		if ref.Kind == "Cluster" && ref.APIVersion == clusterv1.GroupVersion.String() {
+			return nil
+		}
+	}
+
+	// Set owner reference
+	if err := controllerutil.SetControllerReference(cluster, captCluster, r.Scheme); err != nil {
+		return err
+	}
+
+	return r.Update(ctx, captCluster)
+}
+
 func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (Result, error) {
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling CAPTCluster")
@@ -140,6 +164,15 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (Result, e
 		return r.reconcileDelete(ctx, captCluster)
 	}
 
+	// Add finalizer if it doesn't exist
+	if !controllerutil.ContainsFinalizer(captCluster, CAPTClusterFinalizer) {
+		controllerutil.AddFinalizer(captCluster, CAPTClusterFinalizer)
+		if err := r.Update(ctx, captCluster); err != nil {
+			logger.Error(err, "Failed to add finalizer")
+			return Result{}, err
+		}
+	}
+
 	// Ensure required labels are set. This is done before the topology check
 	// to ensure that the cluster name label is always present, which is used
 	// by other parts of the system.
@@ -148,16 +181,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (Result, e
 		return Result{}, err
 	}
 
-	if cluster.Spec.Topology == nil {
-		// Set owner reference if cluster exists
-		if err := controllerutil.SetControllerReference(cluster, captCluster, r.Scheme); err != nil {
-			logger.Error(err, "Failed to set owner reference")
-			return Result{}, err
-		}
-
-		// Clear WaitingForCluster condition if it exists
-		meta.RemoveStatusCondition(&captCluster.Status.Conditions, WaitingForClusterCondition)
+	// Set owner reference if cluster exists (Topology有無に関わらず)
+	if err := r.setOwnerReference(ctx, captCluster, cluster); err != nil {
+		logger.Error(err, "Failed to set owner reference")
+		return Result{}, err
 	}
+
+	// Clear WaitingForCluster condition if it exists
+	meta.RemoveStatusCondition(&captCluster.Status.Conditions, WaitingForClusterCondition)
 
 	// Validate VPC configuration
 	if err := captCluster.Spec.ValidateVPCConfiguration(); err != nil {
@@ -256,6 +287,8 @@ func (r *Reconciler) cleanupWorkspaceTemplateApply(ctx context.Context, captClus
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// Log controller version at startup
+	log.Log.WithName("captcluster").Info("Starting CAPTCluster controller", "version", ControllerVersion)
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&infrastructurev1beta1.CAPTCluster{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Owns(&infrastructurev1beta1.WorkspaceTemplateApply{}).

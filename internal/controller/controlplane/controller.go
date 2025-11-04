@@ -2,6 +2,7 @@ package controlplane
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 
@@ -40,71 +41,39 @@ const (
 func (r *Reconciler) createKubeconfigWorkspaceTemplateApply(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane, cluster *clusterv1.Cluster, workspaceApply *infrastructurev1beta1.WorkspaceTemplateApply) error {
 	logger := log.FromContext(ctx)
 
-	// Check if the main WorkspaceTemplateApply is ready
-	readyCondition := FindStatusCondition(workspaceApply.Status.Conditions, xpv1.TypeReady)
-	if readyCondition == nil || readyCondition.Status != corev1.ConditionTrue {
-		logger.Info("Main WorkspaceTemplateApply not ready yet")
-		return nil
-	}
-
-	// Get workspace
-	workspace := &unstructured.Unstructured{}
-	workspace.SetGroupVersionKind(schema.GroupVersionKind{
-		Group:   "tf.upbound.io",
-		Version: "v1beta1",
-		Kind:    "Workspace",
-	})
-
-	if err := r.Get(ctx, client.ObjectKey{
-		Name:      workspaceApply.Status.WorkspaceName,
-		Namespace: workspaceApply.Namespace,
-	}, workspace); err != nil {
-		return fmt.Errorf("failed to get workspace: %v", err)
-	}
-
-	// Get connection secret
-	secret := &corev1.Secret{}
-	secretRef := workspaceApply.Spec.WriteConnectionSecretToRef
-	if secretRef == nil {
-		return fmt.Errorf("workspace connection secret reference is not set")
-	}
-
-	if err := r.Get(ctx, client.ObjectKey{
-		Name:      secretRef.Name,
-		Namespace: secretRef.Namespace,
-	}, secret); err != nil {
-		if !apierrors.IsNotFound(err) {
-			return fmt.Errorf("failed to get secret: %v", err)
-		}
-		logger.Info("Waiting for secret to be created")
-		return nil
-	}
-
-	// Get cluster endpoint and CA data from secret
-	clusterEndpoint := string(secret.Data["cluster_endpoint"])
-	if clusterEndpoint == "" {
-		logger.Info("Cluster endpoint not found in secret, waiting...")
-		return nil
-	}
-
-	clusterCA := string(secret.Data["cluster_certificate_authority_data"])
-	if clusterCA == "" {
-		logger.Info("Cluster CA data not found in secret, waiting...")
-		return nil
-	}
 
 	// Get region from ControlPlaneConfig or cluster annotations
 	var region string
 	if controlPlane.Spec.ControlPlaneConfig != nil {
 		region = controlPlane.Spec.ControlPlaneConfig.Region
 	}
-	if region == "" {
-		// Fallback to cluster annotations
-		region = cluster.Annotations["cluster.x-k8s.io/region"]
-		if region == "" {
-			logger.Info("Region not found in ControlPlaneConfig or cluster annotations")
-			return nil
+	if region == "" && cluster != nil {
+		// Fallback: Cluster topology.variables[name=region]
+		if cluster.Spec.Topology != nil {
+			for _, v := range cluster.Spec.Topology.Variables {
+				if v.Name == "region" {
+					var s string
+					if err := json.Unmarshal(v.Value.Raw, &s); err == nil && s != "" {
+						region = s
+						break
+					}
+				}
+			}
 		}
+	}
+	if region == "" && cluster != nil {
+		// Fallback: Cluster annotation
+		if ann := cluster.GetAnnotations(); ann != nil {
+			if v := ann["cluster.x-k8s.io/region"]; v != "" {
+				region = v
+			} else if v := ann["installation.appthrust.com/aws-primary-region"]; v != "" {
+				region = v
+			}
+		}
+	}
+	if region == "" {
+		logger.Info("Region not found in ControlPlaneConfig, topology variables, or annotations")
+		return nil
 	}
 
 	// Create kubeconfig WorkspaceTemplateApply
@@ -120,19 +89,12 @@ func (r *Reconciler) createKubeconfigWorkspaceTemplateApply(ctx context.Context,
 				Namespace: controlPlane.Spec.WorkspaceTemplateRef.Namespace,
 			},
 			Variables: map[string]string{
-				"cluster_name":                       cluster.Name,
-				"region":                             region,
-				"cluster_endpoint":                   clusterEndpoint,
-				"cluster_certificate_authority_data": clusterCA,
+				"cluster_name": cluster.Name,
+                "region": region,
 			},
 			WriteConnectionSecretToRef: &xpv1.SecretReference{
 				Name:      fmt.Sprintf("%s-outputs-kubeconfig", cluster.Name),
 				Namespace: controlPlane.Namespace,
-			},
-			WaitForWorkspaces: []infrastructurev1beta1.WorkspaceReference{
-				{
-					Name: workspaceApply.Status.WorkspaceName,
-				},
 			},
 		},
 	}

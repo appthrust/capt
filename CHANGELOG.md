@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.4.5] - 2025-11-04
+
+### Changed
+- Bumped CAPTControlPlane controller startup version to `v0.4.5` for log visibility and release metadata alignment.
+
+### Notes
+- No functional changes from v0.4.4; this is a metadata/version alignment release.
+
 ## [v0.4.4] - 2025-11-04
 
 ### Changed

@@ -5,33 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.4.3] - 2025-11-04
+
+### Changed
+- Relaxed kubeconfig generation dependencies; removed EKS Workspace readiness wait and `WaitForWorkspaces` requirement.
+- Switched the kubeconfig WorkspaceTemplate to fetch `endpoint` and `certificate_authority.data` via Terraform `data "aws_eks_cluster"`.
+- Expanded region resolution precedence (`ControlPlaneConfig.Region` → Cluster topology variable `region` → annotation `cluster.x-k8s.io/region` → annotation `installation.appthrust.com/aws-primary-region`).
+
+### Notes
+- Resolved the circular dependency that caused a deadlock between EKS provisioning and kubeconfig retrieval.
+
 ## [v0.4.1] - 2025-10-28
 
 ### Added
-- CAPTCluster.status.workspaceStatus (v1beta1): WorkspaceのReady/State/AtProviderを公開
-- CAPTClusterコントローラ: WorkspaceからのatProvider収集ロジックを追加
+ - CAPTCluster.status.workspaceStatus (v1beta1): Expose Workspace Ready/State/AtProvider fields.
+ - CAPTCluster controller: Add collection logic for atProvider from Workspace.
 
 ### Changed
-- CAPTClusterのステータス更新をPatch方式に変更（競合耐性・atProvider保持のため）
-- ClusterClassサンプルをv1beta1構造で整備（0.4系契約の完全対応）
+ - Switched CAPTCluster status updates to patch-based to improve conflict resilience and preserve atProvider.
+ - Reworked ClusterClass samples to the v1beta1 structure (full compliance with the 0.4.x contract).
 
 ### Notes
-- 依存はCAPI v1beta1のまま。ClusterClassはv1beta1での完全対応を維持
-- 生成物（DeepCopy/CRD）を更新済み。`make install`で適用可能
+ - Dependencies remain on CAPI v1beta1; ClusterClass maintains full v1beta1 compatibility.
+ - Generated artifacts (DeepCopy/CRDs) are updated; apply with `make install`.
 
 ## [Unreleased]
 
 ## [v0.4.0] - 2025-10-24
 
 ### Added
-- ClusterClass 対応を追加 (clusterctl の ClusterClass 対応フローに適合)
+ - Added ClusterClass support (compatible with clusterctl's ClusterClass workflow).
 
 ### Changed
-- マニフェストの CAPI contract ラベルの明確化と整理 (v1beta1)
-- `config/*/kustomization.yaml` のイメージタグを `v0.4.0` に更新
+ - Clarified and organized CAPI contract labels in manifests (v1beta1).
+ - Updated image tags in `config/*/kustomization.yaml` to `v0.4.0`.
 
 ### Notes
-- 次期 `v0.5.0` で `v1beta2` 互換を実装予定
+ - v1beta2 compatibility planned for `v0.5.0`.
 
 ## [v0.2.1] - 2024-01-25
 

@@ -36,8 +36,8 @@ const (
 	// ClusterNameLabel is the label used to identify the cluster name
 	ClusterNameLabel = "cluster.x-k8s.io/cluster-name"
 
-	// ControllerVersion indicates the running version of the CAPTCluster controller
-	ControllerVersion = "v0.4.2"
+    // ControllerVersion indicates the running version of the CAPTCluster controller
+    ControllerVersion = "v0.4.3"
 )
 
 // Reconciler reconciles a CAPTCluster object

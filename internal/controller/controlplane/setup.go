@@ -9,7 +9,7 @@ import (
 )
 
 // ControllerVersion indicates the running version of the CAPTControlPlane controller
-const ControllerVersion = "v0.4.2"
+const ControllerVersion = "v0.4.3"
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *Reconciler) SetupWithManager(mgr ctrl.Manager) error {

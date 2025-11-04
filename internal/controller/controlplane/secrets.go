@@ -34,11 +34,13 @@ func (r *Reconciler) reconcileSecrets(ctx context.Context, controlPlane *control
 	logger := log.FromContext(ctx)
 	logger.Info("Reconciling secrets")
 
-	// Verify WorkspaceTemplateApply is ready and has a workspace name
-	if workspaceApply.Status.WorkspaceName == "" {
-		logger.Info("Workspace name not set, waiting for WorkspaceTemplateApply to be ready")
-		return fmt.Errorf("workspace name not set")
-	}
+    // Verify WorkspaceTemplateApply is ready and has a workspace name
+    if workspaceApply.Status.WorkspaceName == "" {
+        // Avoid failing the reconciliation in early phases to prevent deadlocks.
+        // We'll rely on kubeconfig-based readiness path when available.
+        logger.Info("Workspace name not set, waiting for WorkspaceTemplateApply to be ready")
+        return nil
+    }
 
 	// Get workspace
 	workspace := &unstructured.Unstructured{}
@@ -276,6 +278,17 @@ func (r *Reconciler) reconcileKubeconfigSecret(ctx context.Context, controlPlane
 		} else {
 			logger.Info("Kubeconfig secret unchanged, skipping update")
 		}
+	}
+
+	// Mark secrets as ready when kubeconfig secret is present
+	if !controlPlane.Status.SecretsReady {
+		patchBase := controlPlane.DeepCopy()
+		controlPlane.Status.SecretsReady = true
+		if err := r.Status().Patch(ctx, controlPlane, client.MergeFrom(patchBase)); err != nil {
+			logger.Error(err, "Failed to update secrets status (kubeconfig path)")
+			return err
+		}
+		logger.Info("Marked secrets as ready via kubeconfig path")
 	}
 
 	return nil

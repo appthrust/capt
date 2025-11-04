@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.4.4] - 2025-11-04
+
+### Changed
+- ControlPlane readiness prioritizes kubeconfig WorkspaceTemplateApply when available to avoid provisioning deadlocks.
+- Kubeconfig secret reconciliation is preferred via dedicated kubeconfig apply; marks `SecretsReady` earlier.
+- Secrets reconciliation no longer fails early when main Workspace is not yet ready; waits gracefully.
+
+### Notes
+- This release refines the bootstrapping flow so CAPI consumers (e.g., sveltos) can proceed once kubeconfig is retrievable, even if EKS addons are still applying.
+
 ## [v0.4.3] - 2025-11-04
 
 ### Changed

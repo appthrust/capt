@@ -472,13 +472,37 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		return ctrl.Result{RequeueAfter: errorRequeueInterval}, err
 	}
 
-	// Reconcile secrets after kubeconfig generation
-	if err := r.reconcileSecrets(ctx, controlPlane, cluster, workspaceApply); err != nil {
-		logger.Error(err, "Failed to reconcile secrets")
-		if _, setErr := r.setFailedStatus(ctx, controlPlane, cluster, "SecretReconciliationFailed", fmt.Sprintf("Failed to reconcile secrets: %v", err)); setErr != nil {
-			return ctrl.Result{}, fmt.Errorf("failed to set status: %v (original error: %v)", setErr, err)
+	// If kubeconfig WorkspaceTemplateApply is Ready, prioritize generating kubeconfig secret
+	// and mark secrets ready, skipping main workspace-based secret reconciliation to avoid deadlocks.
+	kubeApplyName := fmt.Sprintf("%s-kubeconfig-apply", controlPlane.Name)
+	kubeApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
+	kubeReady := false
+	if err := r.Get(ctx, types.NamespacedName{Name: kubeApplyName, Namespace: controlPlane.Namespace}, kubeApply); err == nil {
+		for _, cond := range kubeApply.Status.Conditions {
+			if cond.Type == xpv1.TypeReady && cond.Status == corev1.ConditionTrue {
+				kubeReady = true
+				break
+			}
 		}
-		return ctrl.Result{RequeueAfter: errorRequeueInterval}, err
+	}
+	if kubeReady {
+		// Ensure kubeconfig Secret exists; reconcileKubeconfigSecret will also mark SecretsReady.
+		if err := r.reconcileKubeconfigSecret(ctx, controlPlane, cluster); err != nil {
+			logger.Error(err, "Failed to reconcile kubeconfig secret")
+			if _, setErr := r.setFailedStatus(ctx, controlPlane, cluster, "KubeconfigSecretFailed", fmt.Sprintf("Failed to reconcile kubeconfig secret: %v", err)); setErr != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to set status: %v (original error: %v)", setErr, err)
+			}
+			return ctrl.Result{RequeueAfter: errorRequeueInterval}, err
+		}
+	} else {
+		// Fallback: reconcile secrets based on the main WorkspaceTemplateApply
+		if err := r.reconcileSecrets(ctx, controlPlane, cluster, workspaceApply); err != nil {
+			logger.Error(err, "Failed to reconcile secrets")
+			if _, setErr := r.setFailedStatus(ctx, controlPlane, cluster, "SecretReconciliationFailed", fmt.Sprintf("Failed to reconcile secrets: %v", err)); setErr != nil {
+				return ctrl.Result{}, fmt.Errorf("failed to set status: %v (original error: %v)", setErr, err)
+			}
+			return ctrl.Result{RequeueAfter: errorRequeueInterval}, err
+		}
 	}
 
 	// Fetch the final updated object

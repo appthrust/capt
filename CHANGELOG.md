@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Notes
 - No functional changes from v0.4.4; this is a metadata/version alignment release.
 
+## [v0.4.6] - 2025-11-11
+
+### Fixed
+- CAPTControlPlane: `updateStatus` 内で `WorkspaceTemplateStatus` が `nil` の場合に panic する不具合を修正。使用直前での初期化を追加し、`workspaceApply` の `LastAppliedTime` 参照にも `nil` ガードを追加しました。これにより `runtime.sigpanic`（status.go:190 付近）が発生しなくなります。
+
+### Notes
+- コントローラ安定性向上のための推奨アップデートです。Helm Chart のバージョンは変更していません。
+
 ## [v0.4.4] - 2025-11-04
 
 ### Changed

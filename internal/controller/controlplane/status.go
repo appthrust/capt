@@ -1,25 +1,25 @@
 package controlplane
 
 import (
-    "context"
-    "fmt"
-    "reflect"
+	"context"
+	"fmt"
+	"reflect"
 
-    controlplanev1beta1 "github.com/appthrust/capt/api/controlplane/v1beta1"
-    infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
-    "github.com/appthrust/capt/internal/controller/controlplane/endpoint"
-    xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
-    corev1 "k8s.io/api/core/v1"
-    apierrors "k8s.io/apimachinery/pkg/api/errors"
-    "k8s.io/apimachinery/pkg/api/meta"
-    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-    "k8s.io/apimachinery/pkg/types"
-    clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-    "sigs.k8s.io/cluster-api/errors"
-    "sigs.k8s.io/cluster-api/util/conditions"
-    ctrl "sigs.k8s.io/controller-runtime"
-    "sigs.k8s.io/controller-runtime/pkg/client"
-    "sigs.k8s.io/controller-runtime/pkg/log"
+	controlplanev1beta1 "github.com/appthrust/capt/api/controlplane/v1beta1"
+	infrastructurev1beta1 "github.com/appthrust/capt/api/v1beta1"
+	"github.com/appthrust/capt/internal/controller/controlplane/endpoint"
+	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	"sigs.k8s.io/cluster-api/errors"
+	"sigs.k8s.io/cluster-api/util/conditions"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 const (
@@ -95,32 +95,32 @@ func (r *Reconciler) updateStatus(
 		"workspaceStatus", controlPlane.Status.WorkspaceStatus,
 		"workspaceTemplateStatus", controlPlane.Status.WorkspaceTemplateStatus)
 
-    // Decide readiness and which WorkspaceTemplateApply to use for endpoint based on
-    // either the main control plane workspace OR the kubeconfig workspace.
-    effectiveApply := workspaceApply
-    ready := isWorkspaceReady(effectiveApply)
-    errorMessage := getWorkspaceError(effectiveApply)
+	// Decide readiness and which WorkspaceTemplateApply to use for endpoint based on
+	// either the main control plane workspace OR the kubeconfig workspace.
+	effectiveApply := workspaceApply
+	ready := isWorkspaceReady(effectiveApply)
+	errorMessage := getWorkspaceError(effectiveApply)
 
-    // Prefer kubeconfig WorkspaceTemplateApply if it exists and is Ready.
-    // This allows marking the control plane Ready even when addon installation
-    // is pending, avoiding deadlocks (e.g., sveltos waiting on Cluster Ready).
-    kubeApplyName := fmt.Sprintf("%s-kubeconfig-apply", controlPlane.Name)
-    kubeApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
-    if err := r.Client.Get(ctx, types.NamespacedName{Name: kubeApplyName, Namespace: controlPlane.Namespace}, kubeApply); err == nil {
-        if isWorkspaceReady(kubeApply) {
-            effectiveApply = kubeApply
-            ready = true
-            errorMessage = ""
-        }
-    }
+	// Prefer kubeconfig WorkspaceTemplateApply if it exists and is Ready.
+	// This allows marking the control plane Ready even when addon installation
+	// is pending, avoiding deadlocks (e.g., sveltos waiting on Cluster Ready).
+	kubeApplyName := fmt.Sprintf("%s-kubeconfig-apply", controlPlane.Name)
+	kubeApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
+	if err := r.Client.Get(ctx, types.NamespacedName{Name: kubeApplyName, Namespace: controlPlane.Namespace}, kubeApply); err == nil {
+		if isWorkspaceReady(kubeApply) {
+			effectiveApply = kubeApply
+			ready = true
+			errorMessage = ""
+		}
+	}
 
-    if !ready {
-        return r.handleNotReadyStatus(ctx, controlPlane, cluster, errorMessage)
-    }
+	if !ready {
+		return r.handleNotReadyStatus(ctx, controlPlane, cluster, errorMessage)
+	}
 
 	// Update endpoint from workspace first
-    if effectiveApply.Status.WorkspaceName != "" {
-        if apiEndpoint, err := endpoint.GetEndpointFromWorkspace(ctx, r.Client, effectiveApply.Status.WorkspaceName); err != nil {
+	if effectiveApply.Status.WorkspaceName != "" {
+		if apiEndpoint, err := endpoint.GetEndpointFromWorkspace(ctx, r.Client, effectiveApply.Status.WorkspaceName); err != nil {
 			errMsg := fmt.Sprintf("Failed to get endpoint from workspace: %v", err)
 			return r.setFailedStatus(ctx, controlPlane, cluster, ReasonEndpointUpdateFailed, errMsg)
 		} else if apiEndpoint != nil {
@@ -187,12 +187,16 @@ func (r *Reconciler) updateStatus(
 	controlPlane.Status.Phase = controlplanev1beta1.ControlPlaneReadyCondition
 	controlPlane.Status.Ready = true
 	controlPlane.Status.Initialized = true
+	// Ensure WorkspaceTemplateStatus is initialized before accessing its fields
+	if controlPlane.Status.WorkspaceTemplateStatus == nil {
+		controlPlane.Status.WorkspaceTemplateStatus = &controlplanev1beta1.WorkspaceTemplateStatus{}
+	}
 	controlPlane.Status.WorkspaceTemplateStatus.Ready = true
 	controlPlane.Status.FailureReason = nil
 	controlPlane.Status.FailureMessage = nil
 	controlPlane.Status.WorkspaceTemplateStatus.LastFailureMessage = ""
 
-	if workspaceApply.Status.LastAppliedTime != nil {
+	if workspaceApply != nil && workspaceApply.Status.LastAppliedTime != nil {
 		controlPlane.Status.WorkspaceTemplateStatus.LastAppliedRevision = workspaceApply.Status.LastAppliedTime.String()
 	}
 

@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.4.8] - 2025-11-11
+
+### Fixed
+- Cascading deletion could fail in some paths due to missing ownerReferences on existing resources. Controllers now adopt pre-existing resources and ensure ownerReferences are present:
+  - CAPTControlPlane main WorkspaceTemplateApply
+  - CAPTControlPlane kubeconfig WorkspaceTemplateApply
+  - CAPTCluster VPC WorkspaceTemplateApply
+  - EC2 Spot Service-Linked Role check/create WorkspaceTemplateApply
+- Adoption logic is idempotent: missing ownerReferences are repaired on the next reconciliation loop.
+
+### Notes
+- Helm chart version is unchanged in this release.
+
 ## [v0.4.7] - 2025-11-11
 
 ### Changed

@@ -31,6 +31,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -215,6 +216,7 @@ func SetupWorkspaceTemplateApply(mgr ctrl.Manager, l logging.Logger) error {
 			client: mgr.GetClient(),
 			log:    l,
 			record: event.NewAPIRecorder(mgr.GetEventRecorderFor(controllerName)),
+			scheme: mgr.GetScheme(),
 		})
 }
 
@@ -222,6 +224,7 @@ type workspaceTemplateApplyReconciler struct {
 	client client.Client
 	log    logging.Logger
 	record event.Recorder
+	scheme *runtime.Scheme
 }
 
 func (r *workspaceTemplateApplyReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -282,6 +285,29 @@ func (r *workspaceTemplateApplyReconciler) Reconcile(ctx context.Context, req ct
 		return ctrl.Result{}, err
 	}
 
+	// If a Workspace with the expected name already exists (e.g., from previous versions),
+	// adopt it by setting ownerReference and updating status instead of failing creation.
+	existing := &tfv1beta1.Workspace{}
+	if err := r.client.Get(ctx, types.NamespacedName{
+		Name:      workspaceName,
+		Namespace: cr.Namespace,
+	}, existing); err == nil {
+		// Ensure owner reference to this WorkspaceTemplateApply so GC can cascade on delete.
+		if setErr := controllerutil.SetControllerReference(cr, existing, r.scheme); setErr == nil {
+			_ = r.client.Update(ctx, existing)
+		}
+		// Update status to reflect adoption
+		cr.Status.WorkspaceName = existing.GetName()
+		cr.Status.Applied = true
+		now := metav1.Now()
+		cr.Status.LastAppliedTime = &now
+		if uerr := r.client.Status().Update(ctx, cr); uerr != nil {
+			return ctrl.Result{}, uerr
+		}
+		r.record.Event(cr, event.Normal(reasonCreatedWorkspace, "Adopted existing Workspace"))
+		return ctrl.Result{RequeueAfter: requeueAfterStatus}, nil
+	}
+
 	// Create Workspace from template
 	workspace := &tfv1beta1.Workspace{
 		ObjectMeta: metav1.ObjectMeta{
@@ -294,6 +320,12 @@ func (r *workspaceTemplateApplyReconciler) Reconcile(ctx context.Context, req ct
 	// Set connection secret if specified
 	if cr.Spec.WriteConnectionSecretToRef != nil {
 		workspace.Spec.WriteConnectionSecretToReference = cr.Spec.WriteConnectionSecretToRef
+	}
+
+	// Set owner reference so Workspace is garbage-collected when WTA is deleted.
+	if err := controllerutil.SetControllerReference(cr, workspace, r.scheme); err != nil {
+		log.Debug("Failed to set owner reference on Workspace", "error", err)
+		return ctrl.Result{}, err
 	}
 
 	if err := r.client.Create(ctx, workspace); err != nil {
@@ -393,6 +425,13 @@ func (r *workspaceTemplateApplyReconciler) reconcileWorkspaceStatus(ctx context.
 		return ctrl.Result{}, err
 	}
 
+	// Ensure owner reference to WTA is present on Workspace (adopt if missing).
+	if !hasOwnerReference(workspace.GetOwnerReferences(), cr.APIVersion, cr.Kind, cr.Name, string(cr.UID)) {
+		if err := controllerutil.SetControllerReference(cr, workspace, r.scheme); err == nil {
+			_ = r.client.Update(ctx, workspace)
+		}
+	}
+
 	// Copy conditions from workspace to WorkspaceTemplateApply
 	cr.Status.Conditions = workspace.Status.Conditions
 
@@ -418,4 +457,14 @@ func (r *workspaceTemplateApplyReconciler) reconcileWorkspaceStatus(ctx context.
 	// Both synced and ready are true
 	r.record.Event(cr, event.Normal(reasonWorkspaceReady, "Workspace is synced and ready"))
 	return ctrl.Result{}, nil
+}
+
+// hasOwnerReference returns true if an owner reference matching the given attributes exists.
+func hasOwnerReference(refs []metav1.OwnerReference, apiVersion, kind, name, uid string) bool {
+	for _, ref := range refs {
+		if ref.APIVersion == apiVersion && ref.Kind == kind && ref.Name == name && string(ref.UID) == uid {
+			return true
+		}
+	}
+	return false
 }

@@ -163,6 +163,20 @@ func (r *Reconciler) getOrCreateWorkspaceTemplateApply(ctx context.Context, capt
 			return nil, err
 		}
 
+		// Adopt: ensure owner reference to CAPTCluster is present on existing resource
+		{
+			hasOwner := false
+			for _, ref := range latest.OwnerReferences {
+				if ref.APIVersion == infrastructurev1beta1.GroupVersion.String() && ref.Kind == "CAPTCluster" && ref.Name == captCluster.Name {
+					hasOwner = true
+					break
+				}
+			}
+			if !hasOwner {
+				_ = controllerutil.SetControllerReference(captCluster, latest, r.Scheme)
+			}
+		}
+
 		// Desired spec based on current CAPTCluster
 		desiredSpec := infrastructurev1beta1.WorkspaceTemplateApplySpec{
 			TemplateRef: *captCluster.Spec.VPCTemplateRef,

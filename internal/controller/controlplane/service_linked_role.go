@@ -72,6 +72,20 @@ func (r *Reconciler) reconcileSpotServiceLinkedRole(ctx context.Context, control
 	}
 
 	// Check if the workspace apply is ready
+	{
+		// Adopt: ensure owner reference to CAPTControlPlane is present on existing check WTA
+		hasOwner := false
+		for _, ref := range checkWorkspaceApply.OwnerReferences {
+			if ref.APIVersion == controlplanev1beta1.GroupVersion.String() && ref.Kind == "CAPTControlPlane" && ref.Name == controlPlane.Name {
+				hasOwner = true
+				break
+			}
+		}
+		if !hasOwner {
+			_ = controllerutil.SetControllerReference(controlPlane, checkWorkspaceApply, r.Scheme)
+			_ = r.Update(ctx, checkWorkspaceApply)
+		}
+	}
 	if !checkWorkspaceApply.Status.Applied {
 		logger.Info("Waiting for Spot Role check workspace apply to be applied", "workspace", checkWorkspaceName)
 		return nil
@@ -146,6 +160,21 @@ func (r *Reconciler) reconcileSpotServiceLinkedRole(ctx context.Context, control
 
 			logger.Info("Created Spot Role create workspace apply", "workspace", createWorkspaceName)
 			return nil
+		}
+
+		// Adopt: ensure owner reference to CAPTControlPlane is present on existing create WTA
+		{
+			hasOwner := false
+			for _, ref := range createWorkspaceApply.OwnerReferences {
+				if ref.APIVersion == controlplanev1beta1.GroupVersion.String() && ref.Kind == "CAPTControlPlane" && ref.Name == controlPlane.Name {
+					hasOwner = true
+					break
+				}
+			}
+			if !hasOwner {
+				_ = controllerutil.SetControllerReference(controlPlane, createWorkspaceApply, r.Scheme)
+				_ = r.Update(ctx, createWorkspaceApply)
+			}
 		}
 
 		// Check if the workspace apply is ready

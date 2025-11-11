@@ -41,7 +41,6 @@ const (
 func (r *Reconciler) createKubeconfigWorkspaceTemplateApply(ctx context.Context, controlPlane *controlplanev1beta1.CAPTControlPlane, cluster *clusterv1.Cluster, workspaceApply *infrastructurev1beta1.WorkspaceTemplateApply) error {
 	logger := log.FromContext(ctx)
 
-
 	// Get region from ControlPlaneConfig or cluster annotations
 	var region string
 	if controlPlane.Spec.ControlPlaneConfig != nil {
@@ -90,7 +89,7 @@ func (r *Reconciler) createKubeconfigWorkspaceTemplateApply(ctx context.Context,
 			},
 			Variables: map[string]string{
 				"cluster_name": cluster.Name,
-                "region": region,
+				"region":       region,
 			},
 			WriteConnectionSecretToRef: &xpv1.SecretReference{
 				Name:      fmt.Sprintf("%s-outputs-kubeconfig", cluster.Name),
@@ -122,6 +121,20 @@ func (r *Reconciler) createKubeconfigWorkspaceTemplateApply(ctx context.Context,
 			return fmt.Errorf("failed to get kubeconfig WorkspaceTemplateApply: %v", err)
 		}
 	} else {
+		// Adopt: ensure owner reference to CAPTControlPlane exists on the existing WTA
+		{
+			hasOwner := false
+			for _, ref := range kubeconfigApply.OwnerReferences {
+				if ref.APIVersion == controlplanev1beta1.GroupVersion.String() && ref.Kind == "CAPTControlPlane" && ref.Name == controlPlane.Name {
+					hasOwner = true
+					break
+				}
+			}
+			if !hasOwner {
+				_ = controllerutil.SetControllerReference(controlPlane, existingApply, r.Scheme)
+				_ = r.Update(ctx, existingApply)
+			}
+		}
 		// Update existing WorkspaceTemplateApply only if spec changed
 		if !reflect.DeepEqual(existingApply.Spec, kubeconfigApply.Spec) {
 			existingApply.Spec = kubeconfigApply.Spec

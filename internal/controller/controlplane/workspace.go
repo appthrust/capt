@@ -67,7 +67,20 @@ func (r *Reconciler) getOrCreateWorkspaceTemplateApply(
 	workspaceApply := &infrastructurev1beta1.WorkspaceTemplateApply{}
 	err := r.Get(ctx, types.NamespacedName{Name: applyName, Namespace: controlPlane.Namespace}, workspaceApply)
 	if err == nil {
-		// Update existing WorkspaceTemplateApply
+		// Adopt: ensure owner reference to CAPTControlPlane is present on existing resource
+		{
+			hasOwner := false
+			for _, ref := range workspaceApply.OwnerReferences {
+				if ref.APIVersion == controlplanev1beta1.GroupVersion.String() && ref.Kind == "CAPTControlPlane" && ref.Name == controlPlane.Name {
+					hasOwner = true
+					break
+				}
+			}
+			if !hasOwner {
+				_ = controllerutil.SetControllerReference(controlPlane, workspaceApply, r.Scheme)
+			}
+		}
+		// Update existing WorkspaceTemplateApply spec
 		workspaceApply.Spec = r.generateWorkspaceTemplateApplySpec(controlPlane)
 		if err := r.Update(ctx, workspaceApply); err != nil {
 			return nil, fmt.Errorf("failed to update WorkspaceTemplateApply: %v", err)

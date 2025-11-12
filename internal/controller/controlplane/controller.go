@@ -518,6 +518,9 @@ func (r *Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Resu
 		}
 	}
 
+	// Best-effort: Update EKS outputs status from the connection secret (does not alter secrets.go path)
+	_ = r.reconcileEKSOutputsStatus(ctx, controlPlane, workspaceApply)
+
 	// Fetch the final updated object
 	if err := r.Get(ctx, req.NamespacedName, controlPlane); err != nil {
 		return ctrl.Result{}, err

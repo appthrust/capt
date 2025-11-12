@@ -19,6 +19,10 @@ const (
 
 	// ControlPlaneCreatingCondition indicates the control plane is being created
 	ControlPlaneCreatingCondition = "Creating"
+
+	// EKSOutputsReadyCondition indicates the EKS outputs (from Workspace connection secret)
+	// have been successfully parsed and stored on the status.
+	EKSOutputsReadyCondition = "EKSOutputsReady"
 )
 
 // Default timeout values
@@ -200,6 +204,53 @@ type WorkspaceStatus struct {
 	AtProvider *runtime.RawExtension `json:"atProvider,omitempty"`
 }
 
+// EKSOutputsStatus holds parsed outputs from the EKS Workspace connection Secret.
+type EKSOutputsStatus struct {
+	ClusterName                     string             `json:"clusterName,omitempty"`
+	ClusterEndpoint                 string             `json:"clusterEndpoint,omitempty"`
+	ClusterCertificateAuthorityData string             `json:"clusterCertificateAuthorityData,omitempty"`
+	OIDCProvider                    string             `json:"oidcProvider,omitempty"`
+	OIDCProviderARN                 string             `json:"oidcProviderArn,omitempty"`
+	ExternalDNS                     *ExternalDNSStatus `json:"externalDNS,omitempty"`
+	Karpenter                       *KarpenterStatus   `json:"karpenter,omitempty"`
+}
+
+type ExternalDNSStatus struct {
+	IAMRoleARN     string                `json:"iamRoleArn,omitempty"`
+	ServiceAccount *NamespacedNameStatus `json:"serviceAccount,omitempty"`
+}
+
+type NamespacedNameStatus struct {
+	Name      string `json:"name,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
+}
+
+type KarpenterStatus struct {
+	DiscoveryTag   *KVPStatus            `json:"discoveryTag,omitempty"`
+	EC2NodeClass   *KarpenterNodeClass   `json:"ec2NodeClass,omitempty"`
+	QueueName      string                `json:"queueName,omitempty"`
+	ServiceAccount *ServiceAccountStatus `json:"serviceAccount,omitempty"`
+}
+
+type KarpenterNodeClass struct {
+	Role string `json:"role,omitempty"`
+}
+
+type KVPStatus struct {
+	Key   string `json:"key,omitempty"`
+	Value string `json:"value,omitempty"`
+}
+
+type ServiceAccountStatus struct {
+	Annotations map[string]string `json:"annotations,omitempty"`
+}
+
+// WorkspaceOutputsRef references the Secret containing the EKS outputs.
+type WorkspaceOutputsRef struct {
+	Name      string `json:"name,omitempty"`
+	Namespace string `json:"namespace,omitempty"`
+}
+
 // CAPTControlPlaneStatus defines the observed state of CAPTControlPlane
 type CAPTControlPlaneStatus struct {
 	// Ready denotes that the control plane is ready
@@ -222,6 +273,18 @@ type CAPTControlPlaneStatus struct {
 	// WorkspaceStatus contains the status of the associated Workspace
 	// +optional
 	WorkspaceStatus *WorkspaceStatus `json:"workspaceStatus,omitempty"`
+
+	// EKSOutputs contains parsed EKS connection details from the Workspace secret.
+	// +optional
+	EKSOutputs *EKSOutputsStatus `json:"eksOutputs,omitempty"`
+
+	// EKSOutputsChecksum is a checksum of the normalized EKSOutputs for change detection.
+	// +optional
+	EKSOutputsChecksum string `json:"eksOutputsChecksum,omitempty"`
+
+	// WorkspaceOutputsRef holds a reference to the source Secret for the EKSOutputs.
+	// +optional
+	WorkspaceOutputsRef *WorkspaceOutputsRef `json:"workspaceOutputsRef,omitempty"`
 
 	// FailureReason indicates that there is a terminal problem reconciling the
 	// state, and will be set to a token value suitable for programmatic

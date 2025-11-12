@@ -5,7 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.4.9] - 2025-11-12
+
+### Changed
+- CAPTControlPlane: `reconcileEKSOutputsStatus` を新規追加し、コントローラ本体（`controller.go`）からベストエフォートで呼び出して `status.eksOutputs` を更新するようにしました。既存の `secrets.go` の実装は変更せず後方互換を維持しています。
+- 参照する Workspace/Secret 名の解決は、WTA.Spec → Workspace.Spec → 既存命名候補の順でフォールバックし、`status.workspaceOutputsRef` と `EKSOutputsReady` Condition で待機状態を可視化します。
+
+### Notes
+- Helm Chart のチャート版数は今回更新していません。
+
 ## [v0.4.8] - 2025-11-11
+
+### Added
+- CAPTControlPlane: `status.eksOutputs`, `status.workspaceOutputsRef`, `status.eksOutputsChecksum` を追加。EKS Workspace の connection Secret から endpoint / CA / OIDC / ExternalDNS / Karpenter を型付きで収集し、`EKSOutputsReady` Condition を更新します（チェックサムで変化検知）。
 
 ### Fixed
 - Cascading deletion could fail in some paths due to missing ownerReferences on existing resources. Controllers now adopt pre-existing resources and ensure ownerReferences are present:
